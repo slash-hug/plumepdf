@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="plumepdf">
+  <!-- plumepdf · "the plume" — a single quill feather, the one from the coop's bird.
+       coop family: warm-dark tile (rx 112), monoline, round caps + joins, two weights (38 hero / 19 fine).
+       Vane = an asymmetric lens from two circular arcs (leading edge sagitta 36, trailing edge 64) —
+       the asymmetry is what makes it a quill rather than a leaf. Teal = the working colour.
+       Spine = fine amber (the coop beak's material), running out of the vane to the nib.
+       Local frame: nib at the origin, shaft up the -y axis; the quill leans 40° from vertical.
+       Optical centre: midpoint of bbox-centre and ink-centroid (nib lands at 128,398). -->
+  <rect width="512" height="512" rx="112" fill="#0b0a09"/>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round" transform="translate(128 398) rotate(40)">
+    <!-- vane: point at -100 (bare shaft below), tip at -340 -->
+    <path d="M0 -100 A218 218 0 0 1 0 -340 A144.5 144.5 0 0 1 0 -100 Z" stroke="#3fc7bd" stroke-width="38"/>
+    <!-- spine: cap sits one fine weight (19) below the vane's inner tip corner (-311.5), then straight to the nib -->
+    <line x1="0" y1="-283" x2="0" y2="0" stroke="#e8a33d" stroke-width="19"/>
+  </g>
+</svg>

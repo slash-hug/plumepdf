@@ -18,7 +18,8 @@
     <Copyright>Copyright © the PlumePDF contributors</Copyright>
     <PackageTags>pdf;pdf-library;pdf-generation;pdf-parser;text-extraction;acroforms;digital-signatures;pades;pdfa;pdf-ua;redaction;rasterization;jbig2;jpeg2000;nativeaot</PackageTags>
     <PackageReleaseNotes>See https://github.com/slash-hug/plumepdf/blob/main/CHANGELOG.md</PackageReleaseNotes>
-    <!-- <PackageIcon>icon.png</PackageIcon>: add a 128x128 PNG (and pack it at the package root) before 1.0.0. -->
+    <!-- Rendered from brand/plumepdf-icon.svg (the source of truth); packed at the package root below. -->
+    <PackageIcon>plumepdf-icon-128.png</PackageIcon>
 
     <!-- SourceLink (built into the .NET 8 SDK) + a .snupkg so consumers can step into the source. -->
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
@@ -37,6 +38,7 @@
 
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="/" />
+    <None Include="../../brand/plumepdf-icon-128.png" Pack="true" PackagePath="/" />
     <!-- Apache-2.0 §4(d): the Core-14 AFM attribution must reach package consumers. -->
     <None Include="../../NOTICE" Pack="true" PackagePath="/" />
   </ItemGroup>
