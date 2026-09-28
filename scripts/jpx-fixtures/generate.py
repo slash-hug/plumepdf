@@ -147,7 +147,7 @@ def write_pgm(path: Path, w: int, h: int, seed: int):
 
 
 def write_scan_ppm(path: Path, w: int, h: int, seed: int):
-    """Deterministic scan-like RGB source (the shape of a motivating W-9 page: a
+    """Deterministic scan-like RGB source (the shape of a typical scanned form page: a
     near-white sheet with dark text-like strokes, ruled boxes and a little sensor noise) --
     so the 9/7 + ICT fixture at a real compression ratio (-r 20) carries the sharp-edge
     ringing and near-saturated background a synthetic gradient never produces. Every
@@ -679,7 +679,7 @@ def build_matrix(opj: dict, build_dir: Path) -> Matrix:
         "generator's own first assumption, not a recipe change.",
     )
 
-    # 2b. 9/7 + ICT on a 3-component source -- the production path (motivating W-9 scans are
+    # 2b. 9/7 + ICT on a 3-component source -- the production path (typical scanned forms are
     #     RGB, single tile, 9/7 + ICT) and the one combination the matrix never exercised
     #     before this fixture: wavelet-97 is single-component (no MCT), every RGB fixture is
     #     5/3 (RCT). opj_compress selects the irreversible colour transform whenever -I meets a
@@ -689,7 +689,7 @@ def build_matrix(opj: dict, build_dir: Path) -> Matrix:
         [opj["opj_compress"], "-i", str(rgb_64x48), "-I", "-r", "1"],
         "wavelet-97-ict.jp2", "tolerance-a",
         "9/7 (irreversible) wavelet with the irreversible colour transform (ICT): a 3-component "
-        "RGB source under -I. The production path of a motivating W-9 scan; the only fixture "
+        "RGB source under -I. The production path of a typical scanned form; the only fixture "
         "combining 9/7 with mct=1 (wavelet-97 has one component; every other mct=1 fixture is "
         "5/3, i.e. RCT). Both steps are irreversible, hence tolerance-a.",
     )
@@ -705,7 +705,7 @@ def build_matrix(opj: dict, build_dir: Path) -> Matrix:
         "scan-97-ict-640x480.jp2", "tolerance-a",
         "640x480 scan-like RGB page (near-white paper, dark text-like strokes, ruled boxes, "
         "sensor noise -- this generator's write_scan_ppm) encoded 9/7 + ICT at -r 20, the "
-        "shape and ratio of a motivating W-9 scan. The matrix's second large "
+        "shape and ratio of a typical scanned form. The matrix's second large "
         "fixture; the rate keeps it small.",
     )
 

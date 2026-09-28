@@ -13,7 +13,7 @@ BenchmarkDotNet.Artifacts/
 __pycache__/
 *.pyc
 
-# Local-only working material (maintainer workflows) — never published
+# Local-only working files — never committed
 /plans/
 /tasks/
 /.claude/workflow-config.json

@@ -165,7 +165,7 @@
     },
     {
       "file": "wavelet-97-ict.jp2",
-      "description": "9/7 (irreversible) wavelet with the irreversible colour transform (ICT): a 3-component RGB source under -I. The production path of a motivating W-9 scan; the only fixture combining 9/7 with mct=1 (wavelet-97 has one component; every other mct=1 fixture is 5/3, i.e. RCT). Both steps are irreversible, hence tolerance-a.",
+      "description": "9/7 (irreversible) wavelet with the irreversible colour transform (ICT): a 3-component RGB source under -I. The production path of a typical scanned form; the only fixture combining 9/7 with mct=1 (wavelet-97 has one component; every other mct=1 fixture is 5/3, i.e. RCT). Both steps are irreversible, hence tolerance-a.",
       "hand_built": false,
       "command": "opj_compress -i src_rgb_64x48.ppm -I -r 1 -o wavelet-97-ict.jp2",
       "references": [
@@ -231,7 +231,7 @@
     },
     {
       "file": "scan-97-ict-640x480.jp2",
-      "description": "640x480 scan-like RGB page (near-white paper, dark text-like strokes, ruled boxes, sensor noise -- this generator's write_scan_ppm) encoded 9/7 + ICT at -r 20, the shape and ratio of a motivating W-9 scan. The matrix's second large fixture; the rate keeps it small.",
+      "description": "640x480 scan-like RGB page (near-white paper, dark text-like strokes, ruled boxes, sensor noise -- this generator's write_scan_ppm) encoded 9/7 + ICT at -r 20, the shape and ratio of a typical scanned form. The matrix's second large fixture; the rate keeps it small.",
       "hand_built": false,
       "command": "opj_compress -i src_scan_640x480.ppm -I -r 20 -o scan-97-ict-640x480.jp2",
       "references": [

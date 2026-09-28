@@ -11,7 +11,7 @@
     <PackageReference Include="BenchmarkDotNet" Version="0.14.0" />
     <!--
       AGPL ISOLATION WALL (the clean-room policy in AGENTS.md; docs/architecture.md): the wall is
-      solution-level, not project-level - competitor packages (iText7, PdfPig, PDFsharp)
+      solution-level, not project-level - competitor packages (currently iText7 and its pdfSweep add-on)
       live in benchmarks/bench.sln's dedicated PlumePdf.Benchmarks.Comparisons project
       and only there, never here and never in the main PlumePdf.sln. This project stays
       competitor-free so its own build output is never AGPL-linked.

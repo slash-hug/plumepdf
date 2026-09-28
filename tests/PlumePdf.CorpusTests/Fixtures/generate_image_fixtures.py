@@ -165,7 +165,7 @@ del _jp2_rgba_premul
 
 # JP2_SCAN_B64 -- 640x480 /DeviceRGB scan-like page (near-white paper, dark text-like
 # strokes, ruled boxes, sensor noise), 9/7 wavelet + ICT at a real ~20x compression ratio
-# -- the shape and rate of a motivating W-9 scan. Produced ONCE by:
+# -- the shape and rate of a typical scanned form. Produced ONCE by:
 #   python3 -c "import sys; sys.path.insert(0,'scripts/jpx-fixtures'); \
 #               from generate import write_scan_ppm; from pathlib import Path; \
 #               write_scan_ppm(Path('scan.ppm'), 640, 480, seed=53)"

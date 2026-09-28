@@ -12,6 +12,27 @@
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/slash-hug/plumepdf</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/slash-hug/plumepdf</PackageProjectUrl>
+    <Authors>The PlumePDF contributors</Authors>
+    <Copyright>Copyright © the PlumePDF contributors</Copyright>
+    <PackageTags>pdf;pdf-library;pdf-generation;pdf-parser;text-extraction;acroforms;digital-signatures;pades;pdfa;pdf-ua;redaction;rasterization;jbig2;jpeg2000;nativeaot</PackageTags>
+    <PackageReleaseNotes>See https://github.com/slash-hug/plumepdf/blob/main/CHANGELOG.md</PackageReleaseNotes>
+    <!-- <PackageIcon>icon.png</PackageIcon>: add a 128x128 PNG (and pack it at the package root) before 1.0.0. -->
+
+    <!-- SourceLink (built into the .NET 8 SDK) + a .snupkg so consumers can step into the source. -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <!--
+    Release builds come from CI (.github/workflows/release.yml). ContinuousIntegrationBuild
+    normalizes source paths to /_/ so no builder's local path is embedded in the DLL or PDB.
+  -->
+  <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true'">
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
   </PropertyGroup>
 
   <ItemGroup>
