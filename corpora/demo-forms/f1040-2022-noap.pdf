@@ -1,0 +1,45 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R /AcroForm 5 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /ProcSet [/PDF] >> /Contents 4 0 R /Annots [6 0 R] >>
+endobj
+4 0 obj
+<< /Length 31 >>
+stream
+1 0 0 RG 2 w 36 36 540 720 re S
+endstream
+endobj
+5 0 obj
+<< /Type /AcroForm /Fields [6 0 R] /DA (/Helv 0 Tf 0 g) /DR << /Font << /Helv 7 0 R >> >> >>
+endobj
+6 0 obj
+<< /Type /Annot /Subtype /Widget /FT /Tx /Rect [100 700 400 724] /T (LegalName) /V (Jane Q. Public) /F 4 /Parent 5 0 R /P 3 0 R >>
+endobj
+7 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+8 0 obj
+<< /Producer (PlumePDF WS-D synthetic fixture builder \(plans/phase-9-rasterizer-completeness-of-plumepdf-per-do.md task E-4\)) /Title (Synthetic /V-no-/AP exit-demo fixture) /Keywords (hand-authored; NOT derived from IRS Form 1040; built without network access to the real corpora/demo-forms/f1040-2022.pdf fetch target; exercises exactly one genuinely un-appearanced \(/V present, /AP absent\) Widget annotation for the Phase 9 exit demo's render-time appearance-synthesis leg) /CreationDate (D:20260821000000Z) >>
+endobj
+xref
+0 9
+0000000000 65535 f 
+0000000015 00000 n 
+0000000080 00000 n 
+0000000137 00000 n 
+0000000273 00000 n 
+0000000354 00000 n 
+0000000462 00000 n 
+0000000608 00000 n 
+0000000705 00000 n 
+trailer
+<< /Size 9 /Root 1 0 R /Info 8 0 R >>
+startxref
+1237
+%%EOF
