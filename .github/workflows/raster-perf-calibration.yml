@@ -54,7 +54,7 @@ jobs:
           jq -r '.Benchmarks[] | "\(.FullName): \(.Statistics.Mean) ns  (\(.Statistics.Mean / 1000000) ms)"' \
             BenchmarkDotNet.Artifacts/results/PlumePdf.Benchmarks.RasterizeBenchmarks-report-full.json
       - name: Upload BenchmarkDotNet artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: raster-benchmark-calibration
           path: BenchmarkDotNet.Artifacts/results/
