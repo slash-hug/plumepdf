@@ -1,0 +1,69 @@
+name: Release
+
+# Publishes PlumePdf to nuget.org when a version tag (v1.0.0-preview.1, v1.0.0, …) is pushed.
+# Uses NuGet Trusted Publishing: GitHub issues a short-lived OIDC token, nuget.org exchanges it
+# for a one-hour API key — no long-lived key is stored in this repository.
+#
+# One-time owner setup (nuget.org → your profile → Trusted Publishing → add a policy):
+#   Repository Owner: slash-hug   Repository: plumepdf   Workflow File: release.yml
+#   Environment: nuget-release
+# and a repository secret NUGET_USER = the nuget.org profile name (not an email address).
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: nuget-release
+    permissions:
+      contents: read
+      id-token: write  # lets the job request the OIDC token NuGet/login exchanges
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Check the tag matches the package version
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(dotnet msbuild src/PlumePdf/PlumePdf.csproj -getProperty:Version)"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::Tag v$tag does not match <Version>$version</Version> in src/PlumePdf/PlumePdf.csproj"
+            exit 1
+          fi
+
+      # GITHUB_ACTIONS=true turns on ContinuousIntegrationBuild (see PlumePdf.csproj), so the
+      # packed DLL and PDB carry /_/-normalized source paths.
+      - name: Build
+        run: dotnet build PlumePdf.sln -c Release
+      - name: Test
+        run: dotnet test PlumePdf.sln -c Release --no-build
+      - name: Pack
+        run: dotnet pack src/PlumePdf/PlumePdf.csproj -c Release --no-build -o artifacts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: artifacts/
+
+      - name: NuGet login (OIDC → short-lived API key)
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      # Pushing the .nupkg also pushes the matching .snupkg from the same folder.
+      - name: Push to nuget.org
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+        run: dotnet nuget push "artifacts/*.nupkg" --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json

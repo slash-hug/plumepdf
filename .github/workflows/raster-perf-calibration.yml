@@ -22,6 +22,11 @@ name: Raster perf calibration (image-XObject re-baseline)
 on:
   workflow_dispatch: {}
 
+# Least privilege: every job only reads the repository. No job needs a write
+# token, and untrusted fork PRs must not receive one.
+permissions:
+  contents: read
+
 jobs:
   calibrate:
     runs-on: ubuntu-latest

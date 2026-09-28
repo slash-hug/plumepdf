@@ -25,7 +25,7 @@ endobj
 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
 endobj
 8 0 obj
-<< /Producer (PlumePDF WS-D synthetic fixture builder \(plans/phase-9-rasterizer-completeness-of-plumepdf-per-do.md task E-4\)) /Title (Synthetic /V-no-/AP exit-demo fixture) /Keywords (hand-authored; NOT derived from IRS Form 1040; built without network access to the real corpora/demo-forms/f1040-2022.pdf fetch target; exercises exactly one genuinely un-appearanced \(/V present, /AP absent\) Widget annotation for the Phase 9 exit demo's render-time appearance-synthesis leg) /CreationDate (D:20260821000000Z) >>
+<< /CreationDate (D:20260821000000Z) /Keywords (hand-authored synthetic fixture; NOT derived from IRS Form 1040; exercises exactly one un-appearanced \(/V present, /AP absent\) Widget annotation for render-time appearance synthesis) /Producer (PlumePDF synthetic fixture) /Title (Synthetic /V-no-/AP form fixture) >>
 endobj
 xref
 0 9
@@ -41,5 +41,5 @@ xref
 trailer
 << /Size 9 /Root 1 0 R /Info 8 0 R >>
 startxref
-1237
+1037
 %%EOF

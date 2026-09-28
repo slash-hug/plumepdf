@@ -8,7 +8,7 @@ PlumePDF: a fully-featured, high-performance, agent-forward PDF library for .NET
 - Test: `dotnet test PlumePdf.sln` (unit + architecture + corpus projects; corpus tests self-skip without corpora)
 - Format check: `dotnet format PlumePdf.sln --verify-no-changes` — run `dotnet format PlumePdf.sln` to fix
 - Fetch corpora (optional, for the corpus lane): `./scripts/fetch-corpora.sh`
-- Benchmarks: `dotnet run -c Release --project benchmarks/PlumePdf.Benchmarks` — the benchmarks solution is `benchmarks/bench.sln`; competitor PDF libraries (PdfPig, PDFsharp, iText7) live only in `benchmarks/PlumePdf.Benchmarks.Comparisons` within that solution (the AGPL isolation wall is solution-level, not project-level); NEVER add them to `PlumePdf.sln`, and never to `PlumePdf.Benchmarks` itself
+- Benchmarks: `dotnet run -c Release --project benchmarks/PlumePdf.Benchmarks` — the benchmarks solution is `benchmarks/bench.sln`; competitor PDF libraries (currently iText7 and pdfSweep) live only in `benchmarks/PlumePdf.Benchmarks.Comparisons` within that solution (the AGPL isolation wall is solution-level, not project-level); NEVER add them to `PlumePdf.sln`, and never to `PlumePdf.Benchmarks` itself
 - Do NOT run `dotnet test` inside an individual project directory — always at the root, so architecture tests run.
 
 ## Layout

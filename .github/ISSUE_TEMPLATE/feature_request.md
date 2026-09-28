@@ -8,8 +8,8 @@ assignees: ""
 
 <!--
 Scope check before filing: docs/spec.md defines what PlumePDF is and deliberately is not
-(rendering/rasterization, XFA, OCR, HTML-to-PDF, and Office conversion are permanently out
-of scope). Features already declined need a new argument, not a re-request.
+(XFA, OCR, HTML-to-PDF, Office conversion, and barcode decoding are permanently out of
+scope). Features already declined need a new argument, not a re-request.
 -->
 
 **The problem**

@@ -8,18 +8,14 @@ namespace PlumePdf.Benchmarks.Comparisons;
 /// Enforcement section: "manual and informational, run per-phase, not CI-gated").
 /// Per-page text extraction, timed head-to-head
 /// against the same pinned real-world corpus files, using ONLY each competitor's
-/// published binary NuGet API (their source is never read, regardless of
-/// license — UglyToad.PdfPig is Apache-2.0 and the clean-room policy in AGENTS.md would
-/// otherwise allow reading it for porting, but this project holds it to the same
-/// binary-only rule as itext7 for a fair, symmetric comparison methodology).
+/// published binary NuGet API (their source is never read).
 ///
 /// A PlumePdf-side benchmark method (calling <c>PdfPage.ExtractText()</c>) shares this
-/// class's [Benchmark] table so all three competitors show up in one BenchmarkDotNet
+/// class's [Benchmark] table so both libraries show up in one BenchmarkDotNet
 /// summary — <see cref="PlumePdf_MultiPageRealWorld"/>/<see cref="PlumePdf_SinglePageTrivial"/>,
 /// added once extraction landed <c>PdfPage.ExtractText()</c> (this project's
 /// ProjectReference to src/PlumePdf/PlumePdf.csproj was already in place for exactly this).
-/// Note PlumePdf.PdfDocument,
-/// UglyToad.PdfPig.PdfDocument, and iText.Kernel.Pdf.PdfDocument all share a type name —
+/// Note PlumePdf.PdfDocument and iText.Kernel.Pdf.PdfDocument share a type name —
 /// this file deliberately fully-qualifies every competitor type instead of `using`-importing
 /// their namespaces, so adding that PlumePdf row later doesn't need every existing call site
 /// touched to disambiguate.
@@ -52,11 +48,8 @@ public class ExtractionComparisons
     /// A trivial single-line, single-page, structurally clean document — the
     /// extraction-benchmark equivalent of Phase 1's OpenBenchmarks "SmallClean"
     /// baseline. Deliberately NOT one of pdf.js's "-bad"/damaged-xref fixtures
-    /// (e.g. helloworld-bad.pdf): PdfPig's own recovery ladder does not tolerate
-    /// this particular corpus's specific damage (missing xref /Size — it throws
-    /// UglyToad.PdfPig.Core.PdfDocumentFormatException rather than repairing it),
-    /// which would make this scenario measure "does it open at all", not
-    /// extraction throughput. The clean-vs-damaged axis is Phase 1's OpenBenchmarks
+    /// (e.g. helloworld-bad.pdf): a comparison library that cannot repair that damage
+    /// would make this scenario measure "does it open at all", not extraction throughput. The clean-vs-damaged axis is Phase 1's OpenBenchmarks
     /// concern, not this suite's.
     /// </summary>
     private const string SinglePageTrivialFileName = "issue4575.pdf";
@@ -68,42 +61,21 @@ public class ExtractionComparisons
         _singlePageTrivialPath = ComparisonCorpora.ResolvePdfJsSubsetFile(SinglePageTrivialFileName);
     }
 
-    [Benchmark(Baseline = true)]
-    [BenchmarkCategory("MultiPageRealWorld")]
-    public int PdfPig_MultiPageRealWorld() => ExtractTotalTextLengthWithPdfPig(_multiPageRealWorldPath);
-
     [Benchmark]
     [BenchmarkCategory("MultiPageRealWorld")]
     public int ITextSeven_MultiPageRealWorld() => ExtractTotalTextLengthWithItextSeven(_multiPageRealWorldPath);
 
-    [Benchmark]
+    [Benchmark(Baseline = true)]
     [BenchmarkCategory("MultiPageRealWorld")]
     public int PlumePdf_MultiPageRealWorld() => ExtractTotalTextLengthWithPlumePdf(_multiPageRealWorldPath);
-
-    [Benchmark(Baseline = true)]
-    [BenchmarkCategory("SinglePageTrivial")]
-    public int PdfPig_SinglePageTrivial() => ExtractTotalTextLengthWithPdfPig(_singlePageTrivialPath);
 
     [Benchmark]
     [BenchmarkCategory("SinglePageTrivial")]
     public int ITextSeven_SinglePageTrivial() => ExtractTotalTextLengthWithItextSeven(_singlePageTrivialPath);
 
-    [Benchmark]
+    [Benchmark(Baseline = true)]
     [BenchmarkCategory("SinglePageTrivial")]
     public int PlumePdf_SinglePageTrivial() => ExtractTotalTextLengthWithPlumePdf(_singlePageTrivialPath);
-
-    /// <summary>Per-page text extraction via PdfPig's public binary API (UglyToad.PdfPig.PdfDocument.GetPages()[i].Text) — never its source.</summary>
-    private static int ExtractTotalTextLengthWithPdfPig(string path)
-    {
-        using var document = UglyToad.PdfPig.PdfDocument.Open(path);
-        var total = 0;
-        foreach (var page in document.GetPages())
-        {
-            total += page.Text.Length;
-        }
-
-        return total;
-    }
 
     /// <summary>Per-page text extraction via iText7's public binary API (PdfTextExtractor.GetTextFromPage) — never its source.</summary>
     private static int ExtractTotalTextLengthWithItextSeven(string path)

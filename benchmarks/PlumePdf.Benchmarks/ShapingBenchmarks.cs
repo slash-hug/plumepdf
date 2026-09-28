@@ -22,8 +22,8 @@ namespace PlumePdf.Benchmarks;
 /// paragraphs that exercise the new OpenType Layout engine end to end (script segmentation,
 /// GSUB/GPOS lookup execution, UAX#9 bidi resolution, cluster-driven <c>/ToUnicode</c>).
 /// No permissively-licensed .NET complex shaper exists to compare against, and
-/// <c>bench.sln</c>'s AGPL-isolated competitors (iText7, PdfPig, PDFsharp, confined to
-/// <c>benchmarks/PlumePdf.Benchmarks.Comparisons/</c> per the AGPL isolation wall) do not
+/// <c>bench.sln</c>'s AGPL-isolated competitor (iText7, confined to
+/// <c>benchmarks/PlumePdf.Benchmarks.Comparisons/</c> per the AGPL isolation wall) does not
 /// shape complex scripts on the creation side either — so this phase's benchmark
 /// gate is demoted to a PlumePDF-only suite with a stored baseline (the <see cref="LatinParagraph"/>
 /// benchmark, <c>Baseline = true</c>) rather than a competitor comparison, amending
