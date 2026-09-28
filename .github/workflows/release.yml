@@ -63,7 +63,8 @@ jobs:
           user: ${{ secrets.NUGET_USER }}
 
       # Pushing the .nupkg also pushes the matching .snupkg from the same folder.
+      # --skip-duplicate makes a re-run after a partial failure finish cleanly instead of 409-ing.
       - name: Push to nuget.org
         env:
           NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
-        run: dotnet nuget push "artifacts/*.nupkg" --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json
+        run: dotnet nuget push "artifacts/*.nupkg" --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
