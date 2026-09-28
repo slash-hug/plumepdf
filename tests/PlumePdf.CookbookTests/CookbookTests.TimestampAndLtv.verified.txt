@@ -1,0 +1,2 @@
+HasTimestamp: True
+Has /DSS (LTV material embedded): True

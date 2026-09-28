@@ -1,0 +1,29 @@
+# Dependabot configuration.
+#
+# Note on the nuget ecosystem: src/PlumePdf carries exactly one deliberate runtime
+# dependency — System.Security.Cryptography.Pkcs, exact-pinned (see AGENTS.md) — and the
+# benchmark solutions pin competitor packages behind the AGPL isolation wall. Dependabot PRs
+# for any of these are reviewed like any other dependency ruling (never auto-merged); the
+# point of this config is visibility, not automatic adoption.
+version: 2
+updates:
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    ignore:
+      # Exact-pinned to an 8.0.x patch (see AGENTS.md); major/minor bumps are not
+      # reviewable-in-place. Patch visibility stays.
+      - dependency-name: "System.Security.Cryptography.Pkcs"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # The shipped analyzer's Roslyn reference is its consumer compatibility floor;
+      # major AND minor bumps raise every consumer's minimum SDK - the analyzer stays on the lowest supported Roslyn.
+      - dependency-name: "Microsoft.CodeAnalysis.CSharp"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5

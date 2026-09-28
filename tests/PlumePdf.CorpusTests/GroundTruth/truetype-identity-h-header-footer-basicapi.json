@@ -1,0 +1,39 @@
+{
+  "id": "truetype-identity-h-header-footer-basicapi",
+  "category": "truetype-embedded-identity-h",
+  "description": "3-page real-world TCPDF-generated document (a table-of-contents front page + two body pages). Object 7 is 'AAAAAE+DejaVuSans', an embedded, subsetted CID TrueType font under Identity-H encoding (confirmed via `pdffonts`: emb=yes sub=yes uni=yes) used for the heading text; the Standard-14 fonts (Helvetica/Times-Bold/Helvetica-Bold, objects 3/4/6) carry the rest. Every page also carries a 'page N / 3' footer line and page 3 carries a 'Powered by TCPDF' footer — incidental but genuine header/footer coverage (see category note: this fixture's primary bucket is truetype-embedded-identity-h; header-footer is a secondary, real bonus rather than a separately-authored fixture).",
+  "source": { "kind": "corpus", "corpus": "pdfjs-subset-0adc2e7c6652", "relativePath": "basicapi.pdf" },
+  "oracle": {
+    "method": "poppler pdftotext -f/-l per-page (independent third-party extractor, never PlumePdf); pdffonts for the font-table facts cited above.",
+    "generatedAt": "2026-08-18",
+    "notes": "pdftotext -f N -l N basicapi.pdf - for N in 1..3."
+  },
+  "pageCount": 3,
+  "mediaBoxPoints": { "width": 595.28, "height": 841.89 },
+  "extractPermission": null,
+  "encryptMetadataFalse": false,
+  "knownFailure": { "expected": false },
+  "pages": [
+    {
+      "page": 1,
+      "expectedText": "Table Of Content\nChapter 1 .......................................................... 2\nParagraph 1.1 ...................................................... 3\npage 1 / 3",
+      "firstWord": "Table",
+      "lastWord": "3",
+      "readingOrder": "single-block"
+    },
+    {
+      "page": 2,
+      "expectedText": "Chapter 1\npage 2 / 3",
+      "firstWord": "Chapter",
+      "lastWord": "3",
+      "readingOrder": "single-block"
+    },
+    {
+      "page": 3,
+      "expectedText": "Paragraph 1.1\npage 3 / 3\nPowered by TCPDF (www.tcpdf.org)",
+      "firstWord": "Paragraph",
+      "lastWord": "(www.tcpdf.org)",
+      "readingOrder": "single-block"
+    }
+  ]
+}

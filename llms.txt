@@ -1,0 +1,25 @@
+# PlumePDF
+
+> A fully-featured, high-performance, agent-forward PDF library for .NET (Apache 2.0, clean-room). Two entry-point names: `PdfDocument` (the hub — open, inspect, mutate, save) and `Pdf` (one-line task verbs); `Manuscript` for data-first document creation. Every failure carries a stable `PLUME####` code with its own documentation page. Surfaces: read/manipulate (merge, split, reorder, incremental + full-rewrite save), creation (elements, fonts, layout, watermark/stamp), extraction (positioned text, reading order, images, metadata), AcroForms (fill, flatten, appearance generation), digital signatures (PAdES sign/verify/LTV), compliance (PDF/A create + validate, tagged PDF/PDF-UA, true redaction, optimize/linearize, opened-document stamping), raster image codecs (PNG/JPEG/TIFF/CCITT/JBIG2/JPEG 2000 decode, PNG/JPEG encode, image→PDF), and page rasterization (an in-house managed renderer).
+
+Important conventions: `SaveIncremental` is the default save (append-only, signature-preserving); `Save` is a full rewrite. Redacted documents accept only `Save` (`PLUME5016`). Reading is lenient by default — deviations land on `doc.Diagnostics`, never silently swallowed. Everything is NativeAOT-safe (no reflection).
+
+## Docs
+
+- [AGENTS.md](AGENTS.md): the binding agent guide — status, commands, layout, rules that bite
+- [Cookbook](docs/cookbook/README.md): one task per recipe, every snippet embedded from a CI-run test with verified expected output
+- [Error-code index](docs/errors/README.md): every `PLUME####` code, one page each (Cause / Example / Fix / Recovery attempted)
+- [Specification](docs/spec.md): scope and charter commitments
+- [Architecture](docs/architecture.md): layers, reading/writing pipelines, threading, AOT
+- [Agent-forward contract](docs/agent-forward.md): documentation/error/testing bar the library holds itself to
+- [Vocabulary](CONTEXT.md): canonical terms (and synonyms to avoid)
+
+## Quick reference
+
+- Open/inspect: `PdfDocument.Open(path)` → `doc.Pages`, `doc.Diagnostics`, `doc.Objects`
+- Verbs: `Pdf.Merge`, `Pdf.Split`, `Pdf.ExtractText`, `Pdf.FillForm`, `Pdf.FlattenForm`, `Pdf.Sign`, `Pdf.Verify`, `Pdf.Redact`, `Pdf.ValidatePdfA`, `Pdf.Linearize`, `Pdf.Stamp`, `Pdf.Rasterize`, `Pdf.FromImages`
+- Create: `PdfDocument.Compose(page => ...)` or `new Manuscript { ... }.Render(options)`
+- PDF/A: `PdfOptions.PdfAConformance = PdfAConformance.A2b`; validate with `Pdf.ValidatePdfA`
+- Render: `Pdf.Rasterize(path, new PdfRasterizeOptions { Dpi = 150 })` or `doc.Pages[i].Rasterize()` → `RasterImage`; decode images with `RasterImage.Decode(bytes)`
+- Tagged PDF: set `Manuscript.Language` (+ `Title`, `HeadingLevel`, `AltText` semantics)
+- Verify usage: `dotnet test PlumePdf.sln --filter CookbookTests` and diff `.received` vs `.verified`

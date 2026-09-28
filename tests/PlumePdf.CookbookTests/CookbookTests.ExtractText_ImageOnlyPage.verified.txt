@@ -1,0 +1,1 @@
+﻿Image-only page: empty result, zero diagnostics (success, not an error): True

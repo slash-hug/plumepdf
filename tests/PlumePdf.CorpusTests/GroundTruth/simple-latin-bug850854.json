@@ -1,0 +1,25 @@
+{
+  "id": "simple-latin-bug850854",
+  "category": "simple-latin",
+  "description": "Trivial single-line Helvetica/WinAnsi document.",
+  "source": { "kind": "corpus", "corpus": "pdfjs-subset-0adc2e7c6652", "relativePath": "bug850854.pdf" },
+  "oracle": {
+    "method": "poppler pdftotext (independent third-party extractor, never PlumePdf)",
+    "generatedAt": "2026-08-18",
+    "notes": "pdftotext bug850854.pdf -"
+  },
+  "pageCount": 1,
+  "mediaBoxPoints": { "width": 200, "height": 50 },
+  "extractPermission": null,
+  "encryptMetadataFalse": false,
+  "knownFailure": { "expected": false },
+  "pages": [
+    {
+      "page": 1,
+      "expectedText": "Bug 850854",
+      "firstWord": "Bug",
+      "lastWord": "850854",
+      "readingOrder": "not-asserted"
+    }
+  ]
+}

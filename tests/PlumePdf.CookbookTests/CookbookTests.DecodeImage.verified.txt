@@ -1,0 +1,2 @@
+﻿2x2 Rgb24 @ 300x300 dpi
+Diagnostics: 0

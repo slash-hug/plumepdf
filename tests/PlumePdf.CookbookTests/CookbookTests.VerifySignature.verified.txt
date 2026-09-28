@@ -1,0 +1,3 @@
+CryptographicStatus: Valid
+CoversWholeDocument: True
+IsValid: True

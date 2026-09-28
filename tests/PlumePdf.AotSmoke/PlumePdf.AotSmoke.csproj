@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    A NativeAOT publish smoke consumer.
+    A library's own build cannot see downstream trimmer/AOT reachability — only
+    an actual `dotnet publish -p:PublishAot=true` of a real consumer proves the
+    public surface survives trimming and ahead-of-time compilation. Deliberately
+    kept OUT of PlumePdf.sln (see docs/architecture.md "Enforcement & solution
+    layout"): it is a downstream consumer, not part of the library's own build.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Exempt from the library's XML-doc-coverage requirement; this is a test consumer, not public API. -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/PlumePdf/PlumePdf.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Roots the whole PlumePdf assembly for trimming analysis, so the smoke
+         test exercises AOT/trimming compatibility of the full public surface,
+         not just the handful of members Program.cs happens to call directly. -->
+    <TrimmerRootAssembly Include="PlumePdf" />
+  </ItemGroup>
+
+</Project>

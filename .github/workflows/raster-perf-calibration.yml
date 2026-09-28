@@ -1,0 +1,56 @@
+name: Raster perf calibration (image-XObject re-baseline)
+
+# RasterizeImageHeavyPage measures a page whose six images don't paint until
+# Documents.ImageXObjectResolver is wired up — the largest legitimate throughput shift
+# benchmarks/perf-baselines/raster-baselines.json will ever see for that benchmark. Updating
+# that benchmark's baselineMs and flipping its "calibrated" flag to true requires a PROPER
+# multi-run BenchmarkDotNet statistical calibration on the linux-CI runner platform — not
+# another single-CI-observation number (the existing baseline file flagged the method as
+# provisional) and never a locally-fabricated one.
+#
+# This is the calibration MECHANISM, not a per-commit gate: a full statistical BenchmarkDotNet
+# run stays manual/on-demand for every benchmark suite in this repo (the existing
+# raster-perf-gate job's own `--job short` fast run stays exactly as it is, unchanged, as the
+# per-commit regression gate). Trigger this manually from the Actions tab (or
+# `gh workflow run raster-perf-calibration.yml`) once the image-XObject resolver work has merged
+# to main, wait for the run summary/uploaded artifact, then hand-copy the measured
+# PlumePdf.Benchmarks.RasterizeBenchmarks.RasterizeImageHeavyPage mean into
+# benchmarks/perf-baselines/raster-baselines.json in a follow-up commit that carries the
+# "PERF-LOOSEN:" token with this run's numbers as the measured justification
+# (scripts/check-raster-perf-baseline.sh's own governance check requires that token whenever a
+# baselineMs value is raised).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  calibrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - name: Build benchmarks solution
+        run: dotnet build benchmarks/bench.sln -c Release
+      # Deliberately NOT --job short (that flag is raster-perf-gate's own fast per-commit gate):
+      # this is the full, default BenchmarkDotNet job — multiple pilot/warmup/actual iterations,
+      # its own statistical outlier handling — the "PROPER multi-run" calibration this workflow asks for.
+      # `--buildTimeout 900` (seconds) is load-bearing here exactly as in ci.yml's raster-perf-gate:
+      # BenchmarkDotNet builds its auto-generated boilerplate project out-of-process, and on the
+      # 2-core hosted runner that build overran the 120 s default, leaving every benchmark inert (NA).
+      - name: Run RasterizeBenchmarks (full statistical job) and export JSON
+        run: dotnet run -c Release --no-build --project benchmarks/PlumePdf.Benchmarks -- --filter '*RasterizeBenchmarks*' --exporters json --buildTimeout 900
+      - name: Print measured means (copy into raster-baselines.json by hand)
+        run: |
+          echo "Measured means for this linux-CI run:"
+          jq -r '.Benchmarks[] | "\(.FullName): \(.Statistics.Mean) ns  (\(.Statistics.Mean / 1000000) ms)"' \
+            BenchmarkDotNet.Artifacts/results/PlumePdf.Benchmarks.RasterizeBenchmarks-report-full.json
+      - name: Upload BenchmarkDotNet artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: raster-benchmark-calibration
+          path: BenchmarkDotNet.Artifacts/results/
+          retention-days: 30

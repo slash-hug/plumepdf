@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/slash-hug/plumepdf/tests/PlumePdf.CorpusTests/GroundTruth/ground-truth.schema.json",
+  "title": "PlumePdf Phase 3 extraction ground-truth fixture",
+  "description": "Schema for every other *.json file in this directory (MANIFEST.json excluded). Hand-authored during ground-truth authoring: each file pairs one PDF (real corpus file or a self-authored, hand-rolled-bytes generator, never PlumePdf's own writer, so the oracle is independent of the code under test) with expected per-page text. Loaded and structurally validated (independent of PlumePdf) by GroundTruthSchemaTests in ../ExtractionCorpusTests.cs; the full extraction-assertion gate (comparing actual PdfPage.ExtractText() output against these values) is added once page.ExtractText() ships — see the 'STATUS' note at the top of ExtractionCorpusTests.cs.",
+  "type": "object",
+  "required": ["id", "category", "description", "source", "oracle", "pageCount", "knownFailure", "pages"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Stable identifier, kebab-case, matches the JSON file's basename without extension.",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "category": {
+      "type": "string",
+      "description": "One of the curated scenario buckets. Not exclusive in reality (e.g. basicapi.pdf is both truetype-embedded and header-footer) — this field names the PRIMARY scenario this fixture was chosen for; other incidental coverage is called out in 'description'.",
+      "enum": [
+        "simple-latin",
+        "differences-encoding",
+        "truetype-embedded-identity-h",
+        "header-footer",
+        "two-column",
+        "rotated-text",
+        "encrypted-extract-permission",
+        "encrypt-metadata-false",
+        "known-failure-cjk-predefined-cmap"
+      ]
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable note on what this fixture exercises and why it was picked."
+    },
+    "source": {
+      "type": "object",
+      "required": ["kind"],
+      "oneOf": [
+        {
+          "properties": {
+            "kind": { "const": "corpus" },
+            "corpus": {
+              "type": "string",
+              "description": "Directory name under corpora/ as produced by scripts/fetch-corpora.sh (e.g. 'pdfjs-subset-0adc2e7c6652')."
+            },
+            "relativePath": {
+              "type": "string",
+              "description": "Path relative to corpora/<corpus>/."
+            }
+          },
+          "required": ["kind", "corpus", "relativePath"]
+        },
+        {
+          "properties": {
+            "kind": { "const": "generated" },
+            "generatorId": {
+              "type": "string",
+              "description": "Name of the static byte-builder method on the internal GeneratedFixtures class in ExtractionCorpusTests.cs. The generator writes raw PDF bytes directly from ISO 32000-1 grammar (an approach the clean-room policy in AGENTS.md allows), the same hand-rolled-bytes pattern as tests/PlumePdf.CorpusTests/Fixtures/generate_fixtures.py and benchmarks/PlumePdf.Benchmarks/OpenBenchmarks.cs's SampleDocuments — never PlumePdf's own writer, so the ground truth stays independent of the code under test in both directions (reader AND writer)."
+            }
+          },
+          "required": ["kind", "generatorId"]
+        }
+      ]
+    },
+    "oracle": {
+      "type": "object",
+      "required": ["method", "notes"],
+      "properties": {
+        "method": {
+          "type": "string",
+          "description": "How the expected values were derived: an independent third-party tool (never PlumePdf) for corpus files, or direct hand-computation from the known content-stream operators for generated files."
+        },
+        "generatedAt": { "type": "string", "format": "date" },
+        "notes": { "type": "string" }
+      }
+    },
+    "pageCount": { "type": "integer", "minimum": 1 },
+    "mediaBoxPoints": {
+      "type": ["object", "null"],
+      "description": "Page 1 MediaBox width/height in points, informational only (sanity check against PdfPage.MediaBox once wired).",
+      "properties": {
+        "width": { "type": "number" },
+        "height": { "type": "number" }
+      }
+    },
+    "extractPermission": {
+      "type": ["boolean", "null"],
+      "description": "For encrypted fixtures: whether the /P permission bits grant extraction (bit 5). Null when not applicable (unencrypted)."
+    },
+    "encryptMetadataFalse": {
+      "type": "boolean",
+      "description": "Whether /EncryptMetadata false is set in this document's encryption dictionary (ISO 32000-1 7.6.2)."
+    },
+    "knownFailure": {
+      "type": "object",
+      "required": ["expected"],
+      "description": "When true, the corpus gate asserts the DIAGNOSTIC is recorded (a specific PLUME8xxx code), not the text — the failure itself is the thing under test, made explicit rather than silently skipped.",
+      "properties": {
+        "expected": { "type": "boolean" },
+        "diagnosticCodePrefix": {
+          "type": ["string", "null"],
+          "description": "e.g. 'PLUME8' — the exact 4-digit code is filled in once known; the prefix is enough to write a non-vacuous assertion today."
+        },
+        "reason": { "type": ["string", "null"] }
+      }
+    },
+    "pages": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["page", "expectedText", "firstWord", "lastWord", "readingOrder"],
+        "properties": {
+          "page": { "type": "integer", "minimum": 1 },
+          "expectedText": {
+            "type": "string",
+            "description": "Normalized expected text for the page: words separated by a single space, lines separated by '\\n'. The corpus gate compares against a similarly-normalized actual result (whitespace-collapsed) rather than byte-exact, since exact inter-word spacing is a rendering nuance, not a correctness contract."
+          },
+          "firstWord": { "type": "string" },
+          "lastWord": { "type": "string" },
+          "readingOrder": {
+            "type": "string",
+            "enum": ["single-block", "top-to-bottom-columns-left-to-right", "not-asserted"],
+            "description": "'not-asserted' is used only for pages with no meaningful multi-line/multi-block structure (e.g. a single short line) where reading order is trivially satisfied by any correct implementation."
+          },
+          "letters": {
+            "type": "array",
+            "description": "Optional: a small selection of letters with expected approximate bounding boxes ('selected letter bboxes with tolerance'). Deliberately sparse and loosely toleranced — the bbox is documented as a v1 approximation (advance width + font-size-derived height, not true glyph-outline metrics), so this checks gross position/order correctness, not sub-pixel glyph metrics.",
+            "items": {
+              "type": "object",
+              "required": ["char", "indexInPage", "originXPoints", "originYPoints", "tolerancePoints"],
+              "properties": {
+                "char": { "type": "string", "minLength": 1 },
+                "indexInPage": { "type": "integer", "minimum": 0, "description": "0-based index of this letter within the page's flattened letter sequence in expected reading order." },
+                "originXPoints": { "type": "number" },
+                "originYPoints": { "type": "number" },
+                "tolerancePoints": { "type": "number", "minimum": 0 },
+                "note": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

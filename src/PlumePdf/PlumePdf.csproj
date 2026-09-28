@@ -1,0 +1,74 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- .NET 8+ only. Single package. -->
+    <IsAotCompatible>true</IsAotCompatible>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <EnablePackageValidation>true</EnablePackageValidation>
+
+    <PackageId>PlumePdf</PackageId>
+    <Version>1.0.0-preview.1</Version>
+    <Description>A fully-featured, high-performance, agent-forward PDF library for .NET. Apache 2.0.</Description>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/slash-hug/plumepdf</RepositoryUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="/" />
+    <!-- Apache-2.0 §4(d): the Core-14 AFM attribution must reach package consumers. -->
+    <None Include="../../NOTICE" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+  <!--
+    Phase 6: a 456-byte CC0-1.0 compact sRGB v2 ICC profile
+    (github.com/saucecontrol/Compact-ICC-Profiles, see NOTICE) PlumePdf.Documents.PdfA.
+    OutputIntentBuilder embeds in every PDF/A output intent it builds.
+
+    NOT an <EmbeddedResource>: reading one back via
+    Assembly.GetManifestResourceStream is System.Reflection's member-enumeration/invocation
+    surface, which PlumePdf.ArchitectureTests.ReflectionBanTests forbids anywhere in src/ (the
+    NativeAOT-safety commitment, docs/architecture.md/docs/agent-forward.md "From Phase 2 on")
+    — confirmed by that test actually failing when this was first wired up as one. Instead this
+    file is the source of record for provenance/NOTICE/regeneration; the bytes actually
+    consumed at runtime are a compiled-in literal in OutputIntentBuilder.cs (see its own
+    comment for the regeneration command), the same "checked-in generated table, never
+    reflection" shape as Fonts/Standard14/Standard14Metrics.g.cs. No explicit item group is
+    needed — the SDK's default None glob already includes it, unpacked, which is exactly right
+    for a file nothing packs or loads at runtime.
+  -->
+
+  <!--
+    The package carries one runtime assembly (this project) plus one
+    build-time-only Roslyn analyzer assembly under analyzers/dotnet/cs/. The ProjectReference
+    both wires PlumePdf.Analyzers in as an analyzer for this project's own build (so the
+    library's own code is linted too) and, via the target below, makes its build output
+    available to pack once compilation has produced it.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\analyzers\PlumePdf.Analyzers\PlumePdf.Analyzers.csproj"
+                       ReferenceOutputAssembly="false"
+                       OutputItemType="Analyzer" />
+  </ItemGroup>
+
+  <Target Name="_PackAnalyzerAssembly" AfterTargets="Build" BeforeTargets="_GetPackageFiles">
+    <ItemGroup>
+      <None Include="..\..\analyzers\PlumePdf.Analyzers\bin\$(Configuration)\netstandard2.0\PlumePdf.Analyzers.dll"
+            Pack="true"
+            PackagePath="analyzers\dotnet\cs"
+            Visible="false" />
+    </ItemGroup>
+  </Target>
+
+  <!--
+    The first-ever runtime PackageReference in this project. Microsoft-owned
+    (BCL), zero transitive dependencies on net8.0, NativeAOT-cleared by an empirical publish
+    probe during Phase 5 research. Pinned to the exact 8.0.x patch (never a floating range) so
+    the signing surface's behavior can't drift under an unreviewed restore. Bump deliberately,
+    in its own PR, when a new 8.0.x patch ships - never silently via a version range.
+  -->
+  <ItemGroup>
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="[8.0.1]" />
+  </ItemGroup>
+
+</Project>

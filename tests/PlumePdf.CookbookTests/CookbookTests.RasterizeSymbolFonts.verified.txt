@@ -1,0 +1,3 @@
+﻿Rendered 267x133 with RenderAnnotations = true.
+Check mark painted inside the checkbox: True
+Substitute faces used: FoxitDingbats, FoxitSymbol, Liberation

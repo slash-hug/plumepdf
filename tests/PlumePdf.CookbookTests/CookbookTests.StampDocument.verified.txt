@@ -1,0 +1,3 @@
+﻿Pages: 3
+Page 1 carries the stamp: True
+Verb-stamped page 3 carries the stamp: True

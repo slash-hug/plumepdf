@@ -1,0 +1,25 @@
+{
+  "id": "simple-latin-bug1606566",
+  "category": "simple-latin",
+  "description": "Trivial single-line document; pdf.js flags it with 'may not be a PDF file' at the header level (a header-recognition edge case), so it also exercises the lenient header-sniffing path while extracting.",
+  "source": { "kind": "corpus", "corpus": "pdfjs-subset-0adc2e7c6652", "relativePath": "bug1606566.pdf" },
+  "oracle": {
+    "method": "poppler pdftotext (independent third-party extractor, never PlumePdf)",
+    "generatedAt": "2026-08-18",
+    "notes": "pdftotext bug1606566.pdf -"
+  },
+  "pageCount": 1,
+  "mediaBoxPoints": { "width": 200, "height": 50 },
+  "extractPermission": null,
+  "encryptMetadataFalse": false,
+  "knownFailure": { "expected": false },
+  "pages": [
+    {
+      "page": 1,
+      "expectedText": "Bug 1606566",
+      "firstWord": "Bug",
+      "lastWord": "1606566",
+      "readingOrder": "not-asserted"
+    }
+  ]
+}

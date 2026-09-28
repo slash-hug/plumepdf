@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <!-- Benchmarks are exempt from the library's doc requirements. -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" Version="0.14.0" />
+    <!--
+      AGPL ISOLATION WALL (the clean-room policy in AGENTS.md; docs/architecture.md):
+      this is THE ONE designated project, in THE ONE designated
+      solution (bench.sln), where competitor PDF packages are referenced.
+      itext7 is AGPL-3.0-only; its SOURCE is never read, only its
+      published binary NuGet package is called, from this project exclusively.
+      UglyToad.PdfPig is Apache-2.0 (the clean-room policy in AGENTS.md already allows
+      reading its source for porting, but this project only calls its binary API too, for
+      a fair like-for-like comparison methodology). Neither package, nor this
+      project, may ever be referenced from PlumePdf.sln (see
+      scripts/check-provenance.sh's package-graph check).
+    -->
+    <PackageReference Include="itext7" Version="9.7.0" />
+    <!--
+      pdfSweep is iText's redaction add-on (the redact scenario in
+      ComplianceComparisons.cs) — redaction is not in the itext7 core packages.
+      Same vendor, same AGPL-3.0-only license family, same isolation wall as
+      itext7 above: binary API only, this project only, never
+      PlumePdf.sln.
+    -->
+    <!--
+      NU1701: the pdfSweep NuGet ships net461 binaries only (no netstandard/netcore
+      target exists for it as of 5.0.7); it consumes only iText + BCL surface that
+      .NET 8 provides, and the Redact benchmark below is its runtime proof.
+    -->
+    <PackageReference Include="itext.pdfsweep" Version="5.0.7" NoWarn="NU1701" />
+    <PackageReference Include="UglyToad.PdfPig" Version="1.7.0-custom-5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/PlumePdf/PlumePdf.csproj" />
+  </ItemGroup>
+
+</Project>

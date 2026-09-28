@@ -1,0 +1,25 @@
+{
+  "id": "encrypted-extract-permission-attachment",
+  "category": "encrypted-extract-permission",
+  "description": "AESV3 (/R 6, /V 5) encrypted document, empty user password, /P -4 (all standard permission bits granted, including bit 5 'extract for any purpose' and bit 10 'extract for accessibility'). Extraction against this document should proceed normally with no permission-related diagnostic, since the extraction-permission bit is set.",
+  "source": { "kind": "corpus", "corpus": "pdfjs-subset-0adc2e7c6652", "relativePath": "encrypted-attachment.pdf" },
+  "oracle": {
+    "method": "poppler pdftotext (which auto-tries the empty password; independent third-party extractor, never PlumePdf); `qpdf --show-encryption` for the /P value and permission-bit summary.",
+    "generatedAt": "2026-08-18",
+    "notes": "qpdf --show-encryption reports: R = 6, P = -4, User password = (empty), 'extract for accessibility: allowed', 'extract for any purpose: allowed', file encryption method: AESv3."
+  },
+  "pageCount": 1,
+  "mediaBoxPoints": { "width": 612, "height": 792 },
+  "extractPermission": true,
+  "encryptMetadataFalse": false,
+  "knownFailure": { "expected": false },
+  "pages": [
+    {
+      "page": 1,
+      "expectedText": "Example",
+      "firstWord": "Example",
+      "lastWord": "Example",
+      "readingOrder": "not-asserted"
+    }
+  ]
+}

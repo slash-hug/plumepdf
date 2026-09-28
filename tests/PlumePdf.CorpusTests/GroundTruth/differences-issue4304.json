@@ -1,0 +1,25 @@
+{
+  "id": "differences-issue4304",
+  "category": "differences-encoding",
+  "description": "Simple Type1 font whose /Encoding dictionary carries a /Differences array remapping code points to named glyphs including accented Latin letters (egrave, eacute, odieresis, udieresis) — see the font dictionary's raw /Differences array. The rendered text on this particular page happens to be plain ASCII (it targets a pdf.js word-spacing bug, 'Words that should have spaces between them'), so this fixture's ground-truth value primarily protects against word-assembly space-collapsing regressions, while its /Differences-bearing font dictionary still exercises EncodingResolver's /Differences-array code path structurally.",
+  "source": { "kind": "corpus", "corpus": "pdfjs-subset-0adc2e7c6652", "relativePath": "issue4304.pdf" },
+  "oracle": {
+    "method": "poppler pdftotext (independent third-party extractor, never PlumePdf); /Differences array confirmed via `strings issue4304.pdf | grep Differences`.",
+    "generatedAt": "2026-08-18",
+    "notes": "Raw /Differences array: [ 32 /.notdef 39 /quotesingle 145 /quoteleft /quoteright 150 /endash 232 /egrave /eacute 246 /odieresis 252 /udieresis ]."
+  },
+  "pageCount": 1,
+  "mediaBoxPoints": { "width": 200, "height": 50 },
+  "extractPermission": null,
+  "encryptMetadataFalse": false,
+  "knownFailure": { "expected": false },
+  "pages": [
+    {
+      "page": 1,
+      "expectedText": "Words that should have spaces between them.",
+      "firstWord": "Words",
+      "lastWord": "them.",
+      "readingOrder": "not-asserted"
+    }
+  ]
+}

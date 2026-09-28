@@ -1,0 +1,264 @@
+PlumePDF
+Copyright the PlumePDF contributors.
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This NOTICE file is provided per Apache License 2.0 §4(d) to satisfy the attribution
+requirements of third-party data this product incorporates.
+
+------------------------------------------------------------------------------
+
+Standard-14 font metrics and encoding tables
+
+PlumePDF's built-in Standard-14 font support (`src/PlumePdf/Fonts/Standard14/`) is
+source-generated at development time from Adobe's Core14 AFM (Adobe Font Metrics) files —
+the width, bounding-box, and kerning data for the 14 base fonts every PDF viewer must support
+without embedding (Helvetica, Times, Courier, Symbol, ZapfDingbats, and their bold/italic/
+bold-italic variants). PDFsharp and PdfPig bundle the same files as precedent.
+
+  Source: Adobe Systems Incorporated Core 14 AFM files, distributed under Adobe's own
+  AFM (Adobe Font Metrics) license, which permits redistribution and use.
+
+  https://github.com/adobe-type-tools/afdko (font metrics reference) and Adobe's own
+  Core 14 font metrics distribution.
+
+No AFM file text or ISO 32000 spec prose is committed to this repository — only the resulting
+numeric tables (widths, bounding boxes) are compiled into
+`src/PlumePdf/Fonts/Standard14/Standard14Metrics.g.cs`. See `docs/spec-sources.md` for the full
+provenance note, including the on-the-record rationale for why transcribing ISO 32000-1 Annex D's
+encoding tables (data, not prose) does not implicate the clean-room policy (AGENTS.md).
+
+Adobe is not affiliated with and does not endorse PlumePDF.
+
+------------------------------------------------------------------------------
+
+PdfPig — word assembly and reading-order heuristics
+
+PlumePDF's Phase 3 extraction word/line assembly (`src/PlumePdf/Documents/WordAssembler.cs`,
+`src/PlumePdf/Documents/ReadingOrderer.cs`) adapts the published shape of two algorithms from
+PdfPig's document-layout-analysis module: a nearest-neighbour gap/overlap clustering approach
+for grouping letters into words (PdfPig's `NearestNeighbourWordExtractor`), and a
+content-order-with-geometric-line-grouping baseline for ordering words into reading order
+(PdfPig's `ContentOrderTextExtractor`). Per the clean-room policy (AGENTS.md), this is a
+reimplementation from the algorithms' published shape and behavior against PlumePDF's own
+`Letter`/`GraphicsStateStack` types — PdfPig's source was not copied; see the provenance
+comment at the top of each file for exactly which algorithm's shape it follows.
+
+  Source: PdfPig (UglyToad/PdfPig), licensed under the Apache License, Version 2.0.
+  https://github.com/UglyToad/PdfPig
+
+PdfPig's maintainers are not affiliated with and do not endorse PlumePDF.
+
+------------------------------------------------------------------------------
+
+Compact-ICC-Profiles — bundled sRGB output-intent profile
+
+PlumePDF's PDF/A output-intent support (`src/PlumePdf/Documents/PdfA/OutputIntentBuilder.cs`)
+embeds one small, ready-to-use ICC destination profile as a compiled-in package asset
+(`src/PlumePdf/Assets/sRGB-v2-micro.icc`, 456 bytes) so a caller can produce a PDF/A-1B or
+PDF/A-2B document's mandatory `/OutputIntents` entry without supplying their own profile.
+
+  Source: sRGB-v2-micro.icc from Clinton Ingram's Compact-ICC-Profiles, dedicated to the
+  public domain under CC0 1.0 Universal (CC0-1.0) — no attribution is legally required; this
+  entry is recorded voluntarily for provenance.
+  https://github.com/saucecontrol/Compact-ICC-Profiles
+
+The Compact-ICC-Profiles project and its author are not affiliated with and do not endorse
+PlumePDF.
+
+------------------------------------------------------------------------------
+
+Unicode Character Database — complex-script shaping property tables
+
+PlumePDF's complex-script shaping support (`src/PlumePdf/Fonts/Shaping/UnicodeShapingData.g.cs`)
+is source-generated at development time from the Unicode Character Database (UCD): the Script,
+Joining_Type, Joining_Group, Indic_Syllabic_Category, Indic_Positional_Category, Bidi_Class,
+Bidi_Mirroring, Canonical_Combining_Class, and Grapheme_Cluster_Break property data files, pinned
+to one Unicode version (`scripts/generate-unicode-data.csx`'s `UNICODE_VERSION`).
+
+  Source: the Unicode Character Database, Copyright (c) Unicode, Inc. Distributed under the
+  Unicode License (https://www.unicode.org/license.txt), which permits use, copying,
+  modification, and redistribution with this attribution notice.
+
+  https://www.unicode.org/Public/ — UCD data files
+  https://www.unicode.org/reports/ — Unicode Standard Annexes (UAX #9, #14, #24, #29) and
+  Unicode Technical Reports (UTR #53), consulted for the algorithms the generated data feeds.
+
+No UCD file text is committed to this repository — the source files are fetched by the
+generator script at run time (gitignored, never vendored) and only the resulting
+range-compressed numeric/enum tables are compiled into
+`src/PlumePdf/Fonts/Shaping/UnicodeShapingData.g.cs`. See `docs/spec-sources.md` for the full
+provenance note, including the OpenType specification and Microsoft per-script shaping
+documentation citations the shaping engine itself relies on.
+
+The same UCD distribution provides `BidiTest.txt`/`BidiCharacterTest.txt` — the UAX #9
+bidirectional-algorithm conformance suites `tests/PlumePdf.CorpusTests/BidiConformanceTests.cs`
+runs `BidiAlgorithm` against. Same license, same
+"fetched at run time, gitignored, never vendored" treatment — `scripts/fetch-corpora.sh` fetches
+both files directly from `https://www.unicode.org/Public/16.0.0/ucd/`, checksum-verified.
+
+Unicode, Inc. is not affiliated with and does not endorse PlumePDF.
+
+------------------------------------------------------------------------------
+
+HarfBuzz — shaping-oracle test corpus (curated input text)
+
+PlumePDF's hermetic shaping-oracle test lane (`tests/PlumePdf.CorpusTests/ShapingOracleTests.cs`) curates several real-word Arabic and Devanagari
+test strings in the spirit of — and, for a few entries, with the exact codepoint sequences of —
+HarfBuzz's own MIT-licensed `test/shape/data/in-house/tests/` corpus (e.g.
+`arabic-fallback-shaping.tests`, `indic-syllable.tests`). No HarfBuzz file text or per-test font
+is vendored: HarfBuzz's own fixture files pin specific per-test fonts whose glyph IDs/names are
+meaningless against PlumePDF's own pinned Noto fixture fonts, so only the input
+*codepoints* are drawn from that public corpus — the expected glyph ID/advance/offset data
+checked into the test file is PlumePDF's own, captured once against its own fonts via the
+`hb-shape` CLI (the same tool `HbShapeInteropTests` runs live as the ARMED external oracle half).
+
+  Source: HarfBuzz (harfbuzz/harfbuzz), licensed under the MIT License.
+  https://github.com/harfbuzz/harfbuzz/tree/main/test/shape/data/in-house/tests
+
+The HarfBuzz project and its contributors are not affiliated with and do not endorse PlumePDF.
+
+------------------------------------------------------------------------------
+
+pdf.js — CCITT, JBIG2, and JPEG codec port shape
+
+PlumePDF's Phase 7 raster codecs (`src/PlumePdf/Filters/CcittFaxEngine.cs`,
+`src/PlumePdf/Filters/Jbig2/`, `src/PlumePdf/Filters/Jpeg/`) are clean-room ports of the
+published algorithm shape of Mozilla pdf.js's `ccitt.js`, `jbig2.js`, and `jpg.js`, pinned to
+release tag `v5.6.205` — the last tag carrying these as plain, readable JavaScript source
+before pdf.js's own WASM rewrite moved them to a compiled, unreadable-in-repo form. Per the clean-room policy (AGENTS.md), this is a reimplementation from the algorithms' published shape and
+behavior against PlumePDF's own types (`CcittFaxEngine`, `Jbig2Decoder`, `JpegDecoder`, none
+of which share a type/method shape with pdf.js's JavaScript) — pdf.js's source was read and
+its algorithm structure followed, not copied; see the provenance comment at the top of each
+port's implementation file for exactly which upstream file and function it follows.
+
+  Source: pdf.js (mozilla/pdf.js), tag v5.6.205, licensed under the Apache License, Version 2.0.
+  https://github.com/mozilla/pdf.js/tree/v5.6.205/src/core
+
+Mozilla and the pdf.js contributors are not affiliated with and do not endorse PlumePDF.
+
+------------------------------------------------------------------------------
+
+Apache PDFBox (via PdfPig) — CCITT decoder port shape, second precedent
+
+PlumePDF's CCITT decoder (`src/PlumePdf/Filters/CcittFaxEngine.cs`) additionally follows the
+published shape of PdfPig's own port of Apache PDFBox's `CCITTFaxDecoderStream` — a second,
+independent precedent alongside the pdf.js `ccitt.js` port above. Per the clean-room policy (AGENTS.md), this is a
+reimplementation from the algorithm's published shape and behavior, not copied source; both
+PdfPig and the Apache PDFBox project it itself ports from are licensed Apache License 2.0.
+
+  Source: PdfPig (UglyToad/PdfPig)'s port of Apache PDFBox's CCITTFaxDecoderStream, both
+  licensed under the Apache License, Version 2.0.
+  https://github.com/UglyToad/PdfPig
+  https://pdfbox.apache.org/
+
+Neither the PdfPig maintainers nor the Apache PDFBox project are affiliated with and do not
+endorse PlumePDF.
+
+------------------------------------------------------------------------------
+
+stb_image_write.h — JPEG encoder reference shape
+
+PlumePDF's baseline JPEG encoder (`src/PlumePdf/Filters/Jpeg/JpegEncoder.cs`,
+`src/PlumePdf/Filters/Jpeg/JpegFdct.cs`) follows the published algorithm shape of Sean
+Barrett's `stb_image_write.h` single-header JPEG writer (the IJG-derived quantization scaling,
+Huffman table construction, and FDCT structure) — reimplemented against PlumePDF's own types
+per the clean-room policy (AGENTS.md), not copied source.
+
+  Source: stb_image_write.h (nothings/stb), dual-licensed public domain / MIT License — no
+  attribution is legally required under either license option; this entry is recorded
+  voluntarily for provenance, per this file's existing Compact-ICC-Profiles precedent.
+  https://github.com/nothings/stb/blob/master/stb_image_write.h
+
+Sean Barrett and the stb contributors are not affiliated with and do not endorse PlumePDF.
+
+------------------------------------------------------------------------------
+
+PDFium — AGG23 rasterizer port shape, CMYK-to-sRGB table, and shading/blend-mode formulas
+
+PlumePDF's Phase 8 raster core (`src/PlumePdf/Raster/Agg/ScanlineRasterizer.cs`,
+`OutlineRasterizer.cs`, `CurveFlattener.cs`, `StrokeGenerator.cs`) is a field-by-field clean-room
+port of PDFium's vendored AGG 2.3 (`third_party/agg23/agg_rasterizer_scanline_aa.h`,
+`agg_rasterizer_cells_aa.h`, `agg_curves.h`, `agg_vcgen_stroke.h`) — AGG 2.3 specifically, since
+2.5+ relicensed under the GPL and is off-limits under the clean-room policy. `src/PlumePdf/Raster/Color/DeviceCmyk.cs`'s
+9×9×9×9 CMYK→sRGB lookup table is likewise a field-by-field port of PDFium's
+`core/fxge/dib/cfx_cmyk_to_srgb.cpp`, and `Raster/Shading/AxialShading.cs`/`RadialShading.cs`
+follow the projection formula in PDFium's `core/fpdfapi/render/cpdf_rendershading.cpp`. Per the clean-room policy (AGENTS.md), every one of these is a reimplementation from the algorithm's
+published shape and behavior against PlumePDF's own types — PDFium's source was read and its
+algorithm structure followed, not copied; see the provenance comment at the top of each port's
+implementation file for exactly which upstream file and function it follows.
+
+  Source: PDFium (chromium/pdfium), BSD-style license; original code copyright 2014 Foxit
+  Software Inc. / The PDFium Authors.
+  https://github.com/chromium/pdfium
+
+Foxit Software Inc., The PDFium Authors, and the Chromium project are not affiliated with and
+do not endorse PlumePDF.
+
+------------------------------------------------------------------------------
+
+PDFium — Foxit Symbol and Foxit Dingbats substitute faces
+
+PlumePDF renders text set in a NON-embedded Standard-14 `Symbol` or `ZapfDingbats` font (the
+AcroForm checkbox/radio "on" marks every form viewer draws with `/ZaDb … Tf (4) Tj`, among other
+things) with PDFium's own two symbol faces, compiled into this package as FieldRVA blobs
+(`src/PlumePdf/Fonts/Substitute/FoxitSymbol.g.cs`, `FoxitDingbats.g.cs`, indexed by
+`SubstituteCffBlobs.g.cs`) exactly like the Liberation faces above. The bytes are the unmodified bare-CFF font programs PDFium ships as
+`core/fxge/fontdata/chromefontdata/FoxitSymbol.cpp` and `FoxitDingbats.cpp` at commit
+272ef3633b0f05896edfdc702d0328ed924e984e (16,729 and 29,513 bytes; SHA-256
+47967d055530e7357088a08403115425643ec2cdfd6201ba8af0fbd7116c1539 and
+845c752392b6c914fb989c75a08b7792b88f542d2499042ef2889f8c814a16ed), extracted and hash-verified
+by `scripts/fetch-foxit-fonts.sh`. Mozilla's pdf.js (Apache-2.0) redistributes the same two files.
+
+  Source: PDFium (chromium/pdfium) — "Copyright 2014 The PDFium Authors. Original code
+  copyright 2014 Foxit Software Inc." PDFium's LICENSE file is the BSD-3-Clause text below
+  followed by the Apache-2.0 text; this is PlumePDF's first verbatim binary redistribution of
+  BSD-3-Clause third-party data (the two compiled-in blobs above), so clause 2's condition — the
+  copyright notice, this list of conditions, and the disclaimer reproduced in the materials
+  provided with the distribution — is discharged in full below, not by a link alone.
+  Redistributed unmodified; no endorsement is claimed.
+  https://pdfium.googlesource.com/pdfium/+/272ef3633b0f05896edfdc702d0328ed924e984e/LICENSE
+
+  Copyright 2014 The PDFium Authors
+
+  Redistribution and use in source and binary forms, with or without modification, are permitted
+  provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright notice, this list of
+      conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright notice, this list of
+      conditions and the following disclaimer in the documentation and/or other materials
+      provided with the distribution.
+    * Neither the name of Google Inc. nor the names of its contributors may be used to endorse or
+      promote products derived from this software without specific prior written permission.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR
+  IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
+  AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+  CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+  CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+  OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+  POSSIBILITY OF SUCH DAMAGE.
+
+Foxit Software Inc., The PDFium Authors, and the Chromium project are not affiliated with and
+do not endorse PlumePDF.
+
+------------------------------------------------------------------------------
+
+Liberation Fonts — bundled substitute-font faces
+
+PlumePDF's Phase 8 rasterizer falls back to a bundled substitute font when a page's text uses a
+non-embedded font (`src/PlumePdf/Fonts/Substitute/`, `tools/FontAssetGen`): twelve faces across the Liberation Sans, Liberation Serif, and Liberation
+Mono families (regular/bold/italic/bold-italic each), metric-compatible with Arial/Times New
+Roman/Courier New respectively, compiled directly into this package as FieldRVA blobs (`.g.cs`
+files, one per face) rather than a separate downloaded/reflection-loaded asset — the same
+NativeAOT-safety rationale as `Standard14Metrics.g.cs`.
+
+  Source: Liberation Fonts, Copyright © 2007-2016 Red Hat, Inc. Licensed under the SIL Open
+  Font License, Version 1.1 (OFL-1.1) — permits bundling, embedding, and redistribution
+  (including as compiled-in binary data) with attribution.
+  https://github.com/liberationfonts/liberation-fonts
+
+Red Hat, Inc. is not affiliated with and does not endorse PlumePDF.

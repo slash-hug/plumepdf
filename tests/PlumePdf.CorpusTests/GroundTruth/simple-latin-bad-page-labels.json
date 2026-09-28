@@ -1,0 +1,25 @@
+{
+  "id": "simple-latin-bad-page-labels",
+  "category": "simple-latin",
+  "description": "Single sentence, Times-Roman/WinAnsi — a malformed /PageLabels tree (per its filename) is a page-tree/labels concern, orthogonal to text extraction; included as a diversity pick (different base font, different pdf.js bug class) rather than for the label bug itself.",
+  "source": { "kind": "corpus", "corpus": "pdfjs-subset-0adc2e7c6652", "relativePath": "bad-PageLabels.pdf" },
+  "oracle": {
+    "method": "poppler pdftotext (independent third-party extractor, never PlumePdf)",
+    "generatedAt": "2026-08-18",
+    "notes": "pdftotext bad-PageLabels.pdf -"
+  },
+  "pageCount": 1,
+  "mediaBoxPoints": { "width": 200, "height": 50 },
+  "extractPermission": null,
+  "encryptMetadataFalse": false,
+  "knownFailure": { "expected": false },
+  "pages": [
+    {
+      "page": 1,
+      "expectedText": "PDF document with bad Page Labels.",
+      "firstWord": "PDF",
+      "lastWord": "Labels.",
+      "readingOrder": "not-asserted"
+    }
+  ]
+}

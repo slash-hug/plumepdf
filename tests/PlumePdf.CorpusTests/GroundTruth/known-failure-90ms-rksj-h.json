@@ -1,0 +1,29 @@
+{
+  "id": "known-failure-90ms-rksj-h",
+  "category": "known-failure-cjk-predefined-cmap",
+  "description": "Non-Identity predefined CMaps (here, the CID TrueType font 'HeiseiMin-W3' under the Shift-JIS-based predefined CMap '90ms-RKSJ-H') are a documented, diagnostic-only known gap in Phase 3 — Identity-H/V are the only predefined CMaps built in. The page mixes a plain-ASCII line ('Hello ASCII', Helvetica/WinAnsi, fully decodable) with a Japanese line ('日本語テスト', 90ms-RKSJ-H-encoded, NOT decodable in Phase 3). This fixture's assertion is intentionally narrower than the other fixtures: (a) extraction must complete without throwing (PdfOptions.Strict off), (b) the result's Diagnostics must contain a code in the knownFailure.diagnosticCodePrefix range, (c) expectedText's ASCII line is a SUBSTRING check against the page result, not a full-page equality check (the CJK run's exact fallback representation, e.g. omitted vs. U+FFFD-per-code, is an implementation choice deliberately left open).",
+  "source": { "kind": "corpus", "corpus": "pdfjs-subset-0adc2e7c6652", "relativePath": "90ms_rksj_h_sample.pdf" },
+  "oracle": {
+    "method": "poppler pdftotext (independent third-party extractor, never PlumePdf); pdffonts confirms the two fonts and 90ms-RKSJ-H encoding.",
+    "generatedAt": "2026-08-18",
+    "notes": "pdffonts shows: 'Helvetica  Type 1  WinAnsi' and 'HeiseiMin-W3  CID TrueType  90ms-RKSJ-H'."
+  },
+  "pageCount": 1,
+  "mediaBoxPoints": { "width": 612, "height": 792 },
+  "extractPermission": null,
+  "encryptMetadataFalse": false,
+  "knownFailure": {
+    "expected": true,
+    "diagnosticCodePrefix": "PLUME8",
+    "reason": "90ms-RKSJ-H is a non-Identity predefined CMap; Phase 3 ships Identity-H/V only and records a PLUME8xxx diagnostic for any other predefined CMap name, falling back for that font's runs rather than throwing (PdfOptions.Strict off)."
+  },
+  "pages": [
+    {
+      "page": 1,
+      "expectedText": "Hello ASCII",
+      "firstWord": "Hello",
+      "lastWord": "ASCII",
+      "readingOrder": "not-asserted"
+    }
+  ]
+}

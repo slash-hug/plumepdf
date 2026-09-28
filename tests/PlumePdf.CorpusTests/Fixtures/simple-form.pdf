@@ -1,0 +1,59 @@
+%PDF-1.7
+%????
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R /AcroForm 3 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Fields [7 0 R 8 0 R] /DA (/Helv 11 Tf 0 g) /DR << /Font << /Helv 6 0 R >> >> >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /Helv 6 0 R >> >> /Contents 5 0 R /Annots [7 0 R 8 0 R] >>
+endobj
+5 0 obj
+<<  /Length 44 >>
+stream
+BT /Helv 14 Tf 72 740 Td (Sample form) Tj ET
+endstream
+endobj
+6 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+7 0 obj
+<< /Type /Annot /Subtype /Widget /FT /Tx /T (FullName) /Rect [72 690 420 714] /MK << /BC [0] /BG [0.95] >> /V () >>
+endobj
+8 0 obj
+<< /Type /Annot /Subtype /Widget /FT /Btn /T (Subscribe) /Rect [72 650 90 668] /AP << /N << /Yes 9 0 R /Off 10 0 R >> >> /AS /Off /V /Off >>
+endobj
+9 0 obj
+<< /Type /XObject /Subtype /Form /BBox [0 0 18 18] /Length 14 >>
+stream
+0 0 18 18 re S
+endstream
+endobj
+10 0 obj
+<< /Type /XObject /Subtype /Form /BBox [0 0 18 18] /Length 0 >>
+stream
+
+endstream
+endobj
+xref
+0 11
+0000000000 65535 f 
+0000000015 00000 n 
+0000000080 00000 n 
+0000000137 00000 n 
+0000000236 00000 n 
+0000000386 00000 n 
+0000000481 00000 n 
+0000000551 00000 n 
+0000000682 00000 n 
+0000000838 00000 n 
+0000000950 00000 n 
+trailer
+<< /Size 11 /Root 1 0 R /ID [<00112233445566778899aabbccddeeff> <00112233445566778899aabbccddeeff>] >>
+startxref
+1048
+%%EOF

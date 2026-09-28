@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      Analyzers must target netstandard2.0 so they load in any Roslyn host (Visual Studio,
+      VS Code/OmniSharp, `dotnet build` on any SDK) regardless of what TFM the consuming
+      project targets — this overrides Directory.Build.props's repo-wide net8.0 default.
+      Packaged into the main PlumePdf nupkg under analyzers/dotnet/cs/ (never published to
+      NuGet.org on its own): one runtime assembly + one build-time-only
+      analyzer assembly, one package.
+    -->
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <EnableDefaultItems>true</EnableDefaultItems>
+
+    <!--
+      This project doesn't ship its own XML-doc'd public API (it's a build-time-only Roslyn
+      component packaged as a file, not a referenceable library), so it doesn't opt into
+      GenerateDocumentationFile/CS1591 enforcement the way src/PlumePdf/PlumePdf.csproj does.
+
+      RS1036/RS2008 come from Microsoft.CodeAnalysis.Analyzers' own meta-analyzers (brought in
+      transitively by Microsoft.CodeAnalysis.CSharp), which want a formal analyzer-release
+      shipped/unshipped tracking file pair and the "extended analyzer rules" opt-in. This is a
+      single-rule, in-repo build-time analyzer (not published standalone to NuGet.org), so that
+      release-tracking ceremony is intentionally skipped rather than added.
+    -->
+    <NoWarn>$(NoWarn);RS1036;RS2008</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>

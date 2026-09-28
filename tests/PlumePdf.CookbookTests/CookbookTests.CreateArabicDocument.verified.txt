@@ -1,0 +1,4 @@
+﻿Pages: 1
+Diagnostics: 0
+Emits per-glyph GPOS mark placement (a Ts operator is in the content stream): True
+Renders under a tighter shaping budget too: True

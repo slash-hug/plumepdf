@@ -1,0 +1,4 @@
+﻿Whole-document text: Bill to: Acme Corp
+Page 1 text: Bill to: Acme Corp
+Page 1 words: 4
+First letter: 'B' at (40.0, 793.1)

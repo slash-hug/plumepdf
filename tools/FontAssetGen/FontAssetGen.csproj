@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>PlumePdf.Tools.FontAssetGen</RootNamespace>
+    <!-- Standalone build-time tool, not part of PlumePdf.sln (mirrors bench.sln's isolation:
+         this project never ships and never becomes a runtime PackageReference of the main
+         library). Invoke directly with dotnet run, passing input-dir/output-dir arguments. -->
+    <IsPackable>false</IsPackable>
+    <NoWarn>CA1050</NoWarn>
+  </PropertyGroup>
+
+</Project>

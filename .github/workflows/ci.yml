@@ -1,0 +1,515 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          # The library targets net8.0 only; the 10.0.x SDK alone can build a net8.0
+          # TFM via roll-forward but never actually *runs* tests on a net8.0
+          # runtime. Pinning 8.0.x too makes the test lane deterministic.
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - name: Format check
+        run: dotnet format PlumePdf.sln --verify-no-changes
+      # Cookbook snippets and expected-output blocks are embedded from test
+      # source / Verify snapshots by MarkdownSnippets — drift fails the build.
+      # Whole-tree diff, not just docs/: mdsnippets rewrites every .md it manages
+      # (README, .github/ included), so scoping the diff to docs/ would let
+      # drift elsewhere land silently.
+      - name: Cookbook docs drift check
+        run: |
+          dotnet tool restore
+          dotnet mdsnippets
+          git diff --exit-code
+      - name: Build (warnings as errors)
+        run: dotnet build PlumePdf.sln -c Release
+      - name: Test
+        run: dotnet test PlumePdf.sln -c Release --no-build
+
+  # The save-to-currently-open-path contract (Save's temp-file-then-atomic-replace,
+  # SaveIncremental's independent append handle) has Windows-specific file-sharing failure
+  # modes plain ubuntu-latest coverage can't catch (MemoryMappedByteSource's FileShare
+  # widening exists specifically for this). Scoped to the contract's own test class rather
+  # than the whole suite to keep this job fast - full coverage still runs on Linux above.
+  windows-open-save-contract:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - name: Build
+        run: dotnet build PlumePdf.sln -c Release
+      - name: Open/Save contract tests
+        run: dotnet test PlumePdf.sln -c Release --no-build --filter FullyQualifiedName~PlumePdf.Tests.OpenSaveContractTests
+
+  provenance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # check-ssim-threshold.sh below needs full history (git merge-base against
+          # origin/main, git log over the merge-base..HEAD range) — the default shallow
+          # (fetch-depth: 1) checkout leaves origin/main unresolvable, which would make the
+          # gate silently no-op ("nothing to diff against") on every real PR instead of
+          # actually checking anything.
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      # Mechanical enforcement of the clean-room policy (AGENTS.md) and
+      # the AGPL isolation wall — competitor PDF packages must never reach
+      # PlumePdf.sln, and no competitor-source/spec-text markers may land in
+      # src/ or docs/.
+      - name: Check provenance (AGPL isolation + clean-room markers)
+        run: ./scripts/check-provenance.sh
+      # AGENTS.md: every PLUME#### code minted in src/ needs a
+      # docs/errors/PLUME####.md page (and a listing in the index), in the
+      # same PR or the next — mechanical so it can't silently drift again.
+      - name: Check error-code docs coverage
+        run: ./scripts/check-error-docs.sh
+      # The tuned-threshold gate — a diff that LOWERS
+      # tests/PlumePdf.CorpusTests/thresholds/ssim.json's "floor" (or a per-test floor) must
+      # carry an "SSIM-LOOSEN:" justification token in a commit message, or this fails;
+      # tightening a floor (or a diff that doesn't touch one) always passes. Placed in this
+      # lightweight job (not the heavier `corpus` job) since the check itself needs only
+      # git + jq, not corpora or the pdfium oracle — the pdfium-armed SSIM comparison itself
+      # runs in the `corpus` job.
+      - name: Check SSIM threshold governance (no unjustified loosening)
+        run: ./scripts/check-ssim-threshold.sh
+      # The same "tuned-threshold, unjustified-loosening
+      # fails" shape as check-ssim-threshold.sh above, for
+      # tests/PlumePdf.CorpusTests/Fixtures/jpx/jpx-tolerance.json's bit-exact/Tolerance-A
+      # thresholds — a "TOL-LOOSEN:" commit token is required to lower them. Needs only
+      # git + jq like its neighbour, not the OpenJPEG oracle installed in the `corpus` job
+      # below, so it lives in this lightweight job too.
+      - name: Check JPX tolerance governance (no unjustified loosening)
+        run: ./scripts/check-jpx-tolerance.sh
+      # Status prose ("waits on PR" sentences) is the one doc class no code<->doc gate covers;
+      # this fails when a live doc still describes shipped work as waiting on a PR.
+      - name: Check documentation status drift
+        run: ./scripts/check-doc-drift.sh
+
+  corpus:
+    runs-on: ubuntu-latest
+    # Raised 30->45 to make room for the veraPDF install below
+    # (a ~33 MB IzPack installer run under a JVM) on top of the existing qpdf/pdfsig lane.
+    # Raised 45->55 for the hb-shape pinned-source build below
+    # (a from-scratch meson/ninja compile of HarfBuzz's shaping core + util/hb-shape.cc —
+    # measured locally at well under a minute stripped to this feature set, budgeted
+    # generously here for a cold ubuntu-latest runner with no compiler cache).
+    # Raised 55->65 for libjpeg-turbo-progs/netpbm/
+    # libtiff-tools below plus scripts/generate-codec-fixtures.sh's run — measured locally
+    # (Homebrew equivalents on macOS): the three apt installs together take low single-digit
+    # seconds (they are small, prebuilt Debian packages, not a from-source build like
+    # HarfBuzz above), and generate-codec-fixtures.sh itself completes in well under a
+    # second. 10 minutes of headroom budgeted generously for a cold ubuntu-latest apt mirror.
+    # Raised 65->70 for scripts/install-pdfium-oracle.sh below — a ~3.5 MB pinned release
+    # download, a single-file `cc` compile of the shim, and one self-test render, measured
+    # locally (this exact script, this exact pin) at ~1.3 seconds end to end. 5 minutes of
+    # headroom budgeted generously for a cold ubuntu-latest network + apt mirror, well above
+    # the libjpeg-turbo/netpbm/libtiff precedent's own 10-minute-for-single-digit-seconds ratio.
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      # veraPDF: the CLI is Java-based and needs a JRE
+      # VeraPdfInteropTests never touches directly - it only shells out to the `verapdf`
+      # binary installed below. Pinned Temurin *major version* (setup-java resolves the
+      # latest 21.x build at run time — a distribution pin, not a version/SHA pin like
+      # the veraPDF artifact below).
+      - name: Set up JRE for veraPDF
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      # Conformance-corpus targets are a release gate (docs/spec.md).
+      # Fetches into gitignored corpora/ first so the corpus project runs for
+      # real instead of self-skipping.
+      - name: Fetch corpora
+        run: ./scripts/fetch-corpora.sh
+      # QpdfInteropTests: qpdf --check externally validates PlumePDF-written
+      # output (the tests self-skip when qpdf is absent, so install it here).
+      # PdfsigInteropTests: poppler-utils' pdfsig is the only
+      # independent oracle for the Phase 5 signing surface — CmsSignatureReader
+      # validating CmsSignatureBuilder's own output proves internal consistency,
+      # never conformance to anyone else's reading of the CMS/PDF signature spec.
+      # libnss3-tools ships certutil, which pdfsig's NSS trust-database backend
+      # expects to be present even for the certificate-trust-agnostic checks these
+      # tests make (signature validity, /ByteRange coverage) — without it pdfsig
+      # still runs but logs a "bad database" warning to stderr.
+      - name: Install qpdf and poppler-utils
+        run: sudo apt-get update && sudo apt-get install -y -o Acquire::Retries=3 qpdf poppler-utils libnss3-tools
+      # The raster-codec CI oracles — djpeg/cjpeg (libjpeg-turbo-progs), pngtopam (netpbm), and the libtiff CLI
+      # suite (libtiff-tools: tiffcp, ppm2tiff, tiffinfo, …); this step and the two below
+      # (fixture generation, the PLUMEPDF_REQUIRE_* sentinels on the test step) arm every codec
+      # oracle lane. Versions are
+      # logged (not pinned to a specific apt version — these are genuinely rolling,
+      # CI-runner-image-scoped executed oracles under the clean-room policy, never a porting
+      # source; only a *porting* source needs an immutable-tag pin, as pdf.js@v5.6.205 has).
+      - name: Install raster codec oracles (djpeg/cjpeg, pngtopam, libtiff)
+        run: |
+          set -euo pipefail
+          sudo apt-get update && sudo apt-get install -y -o Acquire::Retries=3 libjpeg-turbo-progs netpbm libtiff-tools
+          echo "--- installed versions ---"
+          djpeg -version 2>&1 || true
+          pngtopam -version 2>&1 || true
+          tiffcp -h 2>&1 | head -1 || true
+          dpkg -s libjpeg-turbo-progs | grep -E '^(Package|Version)'
+          dpkg -s netpbm | grep -E '^(Package|Version)'
+          dpkg -s libtiff-tools | grep -E '^(Package|Version)'
+      # Fixtures generated by the tools just installed are consumed WITHIN this same
+      # job/run only (DjpegInteropTests/PngtopamInteropTests/LibtiffInteropTests read
+      # PLUMEPDF_CODEC_FIXTURES_DIR below) — never committed, never hashed as a golden.
+      - name: Generate codec fixtures
+        run: |
+          set -euo pipefail
+          mkdir -p "${{ runner.temp }}/codec-fixtures"
+          ./scripts/generate-codec-fixtures.sh "${{ runner.temp }}/codec-fixtures"
+          echo "PLUMEPDF_CODEC_FIXTURES_DIR=${{ runner.temp }}/codec-fixtures" >> "$GITHUB_ENV"
+      # veraPDF is the CI-gating PDF/A *oracle* (the clean-room policy permits running
+      # restricted binaries; only its GPLv3/MPLv2
+      # validation profiles/source are off-limits, see scripts/check-provenance.sh). The
+      # fetch pins a *versioned* release artifact (software.verapdf.org/releases/<major.minor>/
+      # verapdf-greenfield-<version>-installer.zip — URL verified to resolve 2026-08-19) plus
+      # its SHA-256, so upstream releasing a new version can never silently change what this
+      # step installs: bumping veraPDF is a deliberate, reviewed edit of VERAPDF_VERSION and
+      # the hash together. VERAPDF_VERSION is the single source of truth — the download URL
+      # and the installer-jar path below both derive from it, so they cannot drift apart.
+      #
+      # The installer is IzPack (GUI-oriented); docker-install.xml below is vendored
+      # verbatim from veraPDF's own repo (github.com/veraPDF/veraPDF-apps, integration
+      # branch, MPL/GPL-dual-licensed installer *configuration*, not validation logic —
+      # running/configuring their installer is the clean-room policy's permitted "run the binary" case,
+      # not the off-limits "derive rules from their source" case) — it is veraPDF's own
+      # documented answer to "install the CLI headlessly," selecting only the CLI pack.
+      #
+      # This step is deliberately NOT best-effort: veraPDF is CI-GATING, so an
+      # install failure must fail the corpus job loudly (that failure IS the maintainer
+      # escalation) rather than letting VeraPdfInteropTests' hermetic self-skip read as green
+      # with the PDF/A exit gate unenforced. The test step below additionally exports
+      # PLUMEPDF_REQUIRE_VERAPDF=1 so "tool expected but not armed" fails the tests too.
+      - name: Install veraPDF CLI
+        run: |
+          set -euo pipefail
+          VERAPDF_EXPECTED_SHA256="6cc6341cb1af644044054b81f00a6590a7918abb18f762243de115258bcad838"
+          VERAPDF_VERSION="1.30.2"
+          # veraPDF's own docker-install.xml (below) installs to /opt/verapdf, which assumes
+          # a root-privileged Docker container — the actions/runner user on ubuntu-latest
+          # cannot write there, so this pins a runner-writable install path instead.
+          VERAPDF_INSTALL_DIR="${HOME}/verapdf"
+
+          curl -sSfL "https://software.verapdf.org/releases/${VERAPDF_VERSION%.*}/verapdf-greenfield-${VERAPDF_VERSION}-installer.zip" -o verapdf-installer.zip --retry 3 --max-time 120
+          echo "${VERAPDF_EXPECTED_SHA256}  verapdf-installer.zip" | sha256sum -c -
+          unzip -q verapdf-installer.zip
+          cat > docker-install.xml <<XML
+          <?xml version="1.0" encoding="UTF-8" standalone="no"?>
+          <AutomatedInstallation langpack="eng">
+              <com.izforge.izpack.panels.htmlhello.HTMLHelloPanel id="welcome"/>
+              <com.izforge.izpack.panels.target.TargetPanel id="install_dir">
+                  <installpath>${VERAPDF_INSTALL_DIR}</installpath>
+              </com.izforge.izpack.panels.target.TargetPanel>
+              <com.izforge.izpack.panels.packs.PacksPanel id="sdk_pack_select">
+                  <pack index="0" name="veraPDF GUI" selected="false"/>
+                  <pack index="1" name="veraPDF CLI" selected="true"/>
+                  <pack index="2" name="veraPDF Documentation" selected="false"/>
+                  <pack index="3" name="veraPDF Sample Plugins" selected="false"/>
+              </com.izforge.izpack.panels.packs.PacksPanel>
+              <com.izforge.izpack.panels.install.InstallPanel id="install"/>
+              <com.izforge.izpack.panels.finish.FinishPanel id="finish"/>
+          </AutomatedInstallation>
+          XML
+          java -jar "verapdf-greenfield-${VERAPDF_VERSION}/verapdf-izpack-installer-${VERAPDF_VERSION}.jar" docker-install.xml
+          # Success predicate: the SAME check VeraPdfInteropTests' probe makes (output
+          # contains "veraPDF") — so "installed" here can never mean something the tests
+          # would still probe as absent.
+          VERSION_OUTPUT="$("${VERAPDF_INSTALL_DIR}/verapdf" --version 2>&1)"
+          echo "${VERSION_OUTPUT}"
+          grep -qF "veraPDF" <<< "${VERSION_OUTPUT}"
+          echo "${VERAPDF_INSTALL_DIR}" >> "$GITHUB_PATH"
+      # hb-shape is the ARMED external shaping
+      # oracle HbShapeInteropTests compares live output against. HarfBuzz ships no prebuilt
+      # Linux CLI release asset (only source tarballs and win32/win64 zips — checked against
+      # its GitHub releases directly), so a pinned-source build is the correct answer (prebuilt artifact preferred;
+      # otherwise measure a source build once and record it) —
+      # measured locally (Apple clang, stripped to this same feature set) at well under a
+      # minute; apt is deliberately NOT used for harfbuzz itself (the exact rolling-pin
+      # failure mode this lane was once bitten by — an apt package
+      # version silently drifting out from under a CI lane on a runner-image bump). The
+      # packages installed via apt below are generic build tooling (meson/ninja/glib
+      # headers), not the pinned artifact under test, the same distinction the JRE
+      # (setup-java) and qpdf/poppler-utils installs above already draw.
+      - name: Install build tools for hb-shape (pinned-source build)
+        run: sudo apt-get update && sudo apt-get install -y -o Acquire::Retries=3 meson ninja-build libglib2.0-dev pkg-config
+      # HARFBUZZ_EXPECTED_SHA256 pins the exact release tarball
+      # (github.com/harfbuzz/harfbuzz/releases/download/<version>/harfbuzz-<version>.tar.xz —
+      # verified to resolve and hash-checked 2026-08-20) so a version bump is a deliberate,
+      # reviewed edit of HARFBUZZ_VERSION and the hash together, mirroring the veraPDF
+      # install's pinning shape. The build disables every optional shaper/backend hb-shape
+      # doesn't need for plain OpenType-funcs shaping (freetype/cairo/icu/graphite/subset/
+      # tests/introspection/docs/benchmark) — glib stays enabled because util/meson.build
+      # gates the hb-shape target itself behind HAVE_GLIB; everything else only widens the
+      # build surface and the time this step costs. Not best-effort: like veraPDF, an
+      # install failure fails the corpus job loudly rather than letting
+      # HbShapeInteropTests' self-skip read as green with the shaping oracle unarmed.
+      - name: Install hb-shape (HarfBuzz) CLI
+        run: |
+          set -euo pipefail
+          HARFBUZZ_VERSION="14.3.1"
+          HARFBUZZ_EXPECTED_SHA256="9dae9538aae2ffdf70cec31f2c27bf68e2aaeeae3112688467697d5faf6194f7"
+          HARFBUZZ_INSTALL_DIR="${HOME}/harfbuzz-hb-shape"
+
+          curl -sSfL "https://github.com/harfbuzz/harfbuzz/releases/download/${HARFBUZZ_VERSION}/harfbuzz-${HARFBUZZ_VERSION}.tar.xz" -o harfbuzz.tar.xz --retry 3 --max-time 120
+          echo "${HARFBUZZ_EXPECTED_SHA256}  harfbuzz.tar.xz" | sha256sum -c -
+          tar xf harfbuzz.tar.xz
+          cd "harfbuzz-${HARFBUZZ_VERSION}"
+          # default_library=static: the step copies ONLY the hb-shape binary out of the
+          # build tree, so it must not depend on a libharfbuzz.so that stays behind in
+          # build/src — a dynamically-linked copy fails at the --version check below with
+          # the loader's exit 127 (exactly what an early CI run hit; locally
+          # the build tree still existed at probe time, masking it).
+          meson setup build \
+            -Ddefault_library=static \
+            -Dglib=enabled \
+            -Dfreetype=disabled \
+            -Dcairo=disabled \
+            -Dicu=disabled \
+            -Dgraphite=disabled \
+            -Dgraphite2=disabled \
+            -Dgobject=disabled \
+            -Dtests=disabled \
+            -Dintrospection=disabled \
+            -Ddocs=disabled \
+            -Dbenchmark=disabled \
+            -Dsubset=disabled \
+            -Dutilities=enabled
+          ninja -C build util/hb-shape
+          mkdir -p "${HARFBUZZ_INSTALL_DIR}"
+          cp build/util/hb-shape "${HARFBUZZ_INSTALL_DIR}/hb-shape"
+          # Success predicate: the SAME check HbShapeInteropTests' probe makes (output
+          # contains "HarfBuzz") — so "installed" here can never mean something the tests
+          # would still probe as absent.
+          VERSION_OUTPUT="$("${HARFBUZZ_INSTALL_DIR}/hb-shape" --version 2>&1)"
+          echo "${VERSION_OUTPUT}"
+          grep -qF "HarfBuzz" <<< "${VERSION_OUTPUT}"
+          echo "${HARFBUZZ_INSTALL_DIR}" >> "$GITHUB_PATH"
+      # pdfium_shim is the live external half of the SSIM-vs-PDFium raster oracle
+      # (tests/PlumePdf.CorpusTests/PdfiumOracle.cs/RasterOracleTests.cs is the managed
+      # comparison half). bblanchon/pdfium-binaries ships shared libraries only — no static
+      # archive — so unlike hb-shape above this is a DELIBERATE, DOCUMENTED deviation from
+      # that lesson's literal "statically linked" wording: the underlying intent (the oracle
+      # binary must not exit-127 because its shared lib was left in an ephemeral build tree)
+      # is satisfied instead by installing libpdfium.so to a stable, non-ephemeral path
+      # (/usr/local/lib + ldconfig, not this job's $RUNNER_TEMP or the extraction tmpdir) —
+      # see scripts/install-pdfium-oracle.sh's own header comment for the full
+      # rationale. The script downloads a pinned chromium/8009 release + verifies its
+      # published per-asset SHA-256, compiles scripts/pdfium-oracle/pdfium_shim.c (a
+      # PlumePdf-authored variant of bblanchon's own MIT-licensed example.c shim, adapted
+      # per the clean-room policy's permissive-porting allowance — see that file's header comment) against
+      # the pinned headers, and runs a real self-test render (library init through PNG bytes
+      # on disk) as its own success predicate — the identical check
+      # PdfiumOracle.ProbeShim() makes, so "installed" here can never mean something the
+      # test suite's probe would still find absent/broken. Not best-effort: like veraPDF/
+      # hb-shape above, an install failure fails the corpus job loudly rather than letting
+      # RasterOracleTests' self-skip read as green with the raster oracle gate unarmed. The
+      # script installs pdfium_shim to PdfiumOracle.ShimPath's documented default
+      # (~/pdfium-oracle/pdfium_shim), so no PLUMEPDF_PDFIUM_SHIM override or PATH entry is
+      # needed for the test step below to find it.
+      - name: Install pdfium oracle
+        run: ./scripts/install-pdfium-oracle.sh
+      # The per-sample OpenJPEG oracle
+      # (scripts/install-jpx-oracle.sh's own header comment has the full rationale — a
+      # pinned uclouvain/openjpeg v2.5.4 release, verified by per-asset SHA-256, with an
+      # end-to-end round-trip self-test as its success predicate). JpxOracleTests is
+      # hermetic (committed references) and runs in every lane; JpxFixtureFreshnessTests
+      # re-decodes every fixture with THIS binary and is armed below by
+      # PLUMEPDF_REQUIRE_OPJ=1. Mandatory (no continue-on-error, matching the
+      # pdfium/veraPDF/hb-shape precedent above): an install failure here must fail this
+      # job loudly, never let the freshness test self-skip green.
+      - name: Install OpenJPEG oracle
+        run: ./scripts/install-jpx-oracle.sh
+      - name: Build
+        run: dotnet build PlumePdf.sln -c Release
+      # The FULL solution runs here, not just the corpus project: this is the only lane
+      # with fetched corpora (fonts included) and the external oracles installed, so the
+      # font-gated unit tests and CookbookTests (incl. CreatePdfA's Verify snapshot) only
+      # ever execute armed in this job — a ~PlumePdf.CorpusTests filter left them
+      # permanently self-skipping across every CI lane. PLUMEPDF_REQUIRE_VERAPDF=1/
+      # PLUMEPDF_REQUIRE_HBSHAPE=1 turn the veraPDF/hb-shape self-skip sentinels into
+      # failures: in the lane that installed the tools, "probe says absent" is a broken
+      # lane, never a green one (the oracles are CI-gating).
+      - name: Full test suite (corpora fetched, external oracles armed)
+        env:
+          PLUMEPDF_REQUIRE_VERAPDF: "1"
+          PLUMEPDF_REQUIRE_HBSHAPE: "1"
+          # Turns RasterOracleTests'
+          # pdfium_shim-absent self-skip into a failure in this lane, the same "armed"
+          # pattern as every oracle sentinel above — this is the lane that just installed
+          # and self-tested it, so "probe says absent" here means the raster oracle gate silently
+          # stopped enforcing anything, never a legitimately unarmed dev/hermetic machine.
+          PLUMEPDF_REQUIRE_PDFIUM: "1"
+          # Same "armed" pattern as PLUMEPDF_REQUIRE_PDFIUM
+          # above, for the OpenJPEG oracle just installed. JpxFixtureFreshnessTests
+          # (PR E, live) fails outright here when the probe finds no opj_decompress,
+          # instead of the self-skip it takes on an unarmed dev machine.
+          PLUMEPDF_REQUIRE_OPJ: "1"
+          # Turns each raster-codec oracle's absent-tool self-skip into a
+          # failure in this lane, the same "armed" pattern as
+          # veraPDF/hb-shape above. Self-skipping vacuously green here would mean
+          # the oracle-parity gate never actually ran.
+          PLUMEPDF_REQUIRE_DJPEG: "1"
+          PLUMEPDF_REQUIRE_PNGTOPAM: "1"
+          PLUMEPDF_REQUIRE_LIBTIFF: "1"
+        run: dotnet test PlumePdf.sln -c Release --no-build
+
+  # SignedCms.ComputeSignature (used by FakeTimestampAuthority/test
+  # doubles, and by anything downstream that builds a CMS via the BCL rather than
+  # CmsSignatureBuilder's own hand-rolled DER) routes through the OS's native crypto
+  # backend on macOS, which has been observed to emit indefinite-length BER/CER
+  # instead of definite-length DER — exactly the divergence DerNormalizer exists to
+  # fix. Running the signing test suite here is the only lane that actually exercises
+  # DerNormalizer against the platform that produces the defect it guards against;
+  # ubuntu-latest's glibc-backed OpenSSL never reproduces it.
+  macos-signature-encoding:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - name: Build
+        run: dotnet build PlumePdf.sln -c Release
+      - name: Signing tests
+        run: dotnet test PlumePdf.sln -c Release --no-build --filter FullyQualifiedName~PlumePdf.Tests.Signing
+
+  aot-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      # A library's own build can't see downstream trimmer/AOT
+      # reachability. tests/PlumePdf.AotSmoke is a tiny consumer app, kept
+      # outside PlumePdf.sln, published with PublishAot=true to prove the
+      # public surface survives NativeAOT.
+      # The font arg exercises FontSubsetter/FontObjectBuilder — the largest Phase 2
+      # subsystem — under NativeAOT, not just the Phase 1 read path.
+      - name: Fetch corpora (fonts)
+        run: ./scripts/fetch-corpora.sh
+      # PublishAot lives in the smoke csproj, NOT as a CLI global property: a global
+      # -p:PublishAot=true poisons every project in the graph, including the
+      # netstandard2.0 analyzer (NETSDK1207).
+      - name: Publish AOT smoke app
+        run: dotnet publish tests/PlumePdf.AotSmoke -c Release
+      - name: Run AOT smoke app
+        run: ./tests/PlumePdf.AotSmoke/bin/Release/net8.0/linux-x64/publish/PlumePdf.AotSmoke tests/PlumePdf.CorpusTests/Fixtures/classic-xref.pdf corpora/fonts/NotoSans-Regular.ttf
+
+  benchmarks-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      # Build-only gate: proves the harness (separate solution — the AGPL wall)
+      # always compiles. Benchmark RUNS are manual/per-phase, not per-commit.
+      - name: Build benchmarks solution
+        run: dotnet build benchmarks/bench.sln -c Release
+
+  # The raster perf-baseline gate. Two things happen here, both from
+  # scripts/check-raster-perf-baseline.sh — see that script's own header comment for the full
+  # two-check design:
+  #   1. Governance (always): a diff that RAISES (loosens) any stored baselineMs/
+  #      toleranceFraction in benchmarks/perf-baselines/raster-baselines.json must carry a
+  #      "PERF-LOOSEN:" commit-message token, mirroring the provenance job's SSIM-LOOSEN check
+  #      exactly — needs full history (fetch-depth: 0) for the same reason that job does.
+  #   2. Measured-vs-stored: a real, but deliberately FAST (`--job short`, ~3 iterations, no
+  #      pilot-heavy default job) `dotnet run` of RasterizeBenchmarks feeds its JSON export back
+  #      into the same script, which fails if any benchmark exceeds its baseline + tolerance band.
+  #      This is deliberately NOT the full statistical BenchmarkDotNet suite kept
+  #      manual for every other suite in this project (a full run's iteration/pilot
+  #      overhead doesn't belong in a per-commit gate on a shared runner) — `--job short` was
+  #      measured locally (this exact suite, this exact flag) at well under a minute end to end,
+  #      cheap enough to run every commit, with the stored tolerance band's deliberately generous
+  #      headroom (to tolerate BenchmarkDotNet runner variance) absorbing the extra noise a
+  #      3-iteration short job carries relative to a full statistical run.
+  #   `--buildTimeout 900` (seconds) is load-bearing: BenchmarkDotNet builds its auto-generated
+  #   boilerplate project out-of-process, and on the 2-core hosted runner that build overran the
+  #   default 00:02:00 ("// Build Error: ... The configured timeout 00:02:00 was reached!"), so every
+  #   benchmark reported NA and check-raster-perf-baseline.sh only WARNed "no measured result" — the
+  #   gate ran green while measuring nothing. Do not "fix" this
+  #   with --inProcess: the stored baselines were measured out-of-process.
+  raster-perf-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Same reason as the provenance job's own fetch-depth: 0 above: the governance check
+          # needs origin/main resolvable for its merge-base diff, or it silently no-ops.
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - name: Check raster perf-baseline governance (no unjustified loosening)
+        run: ./scripts/check-raster-perf-baseline.sh
+      - name: Build benchmarks solution
+        run: dotnet build benchmarks/bench.sln -c Release
+      - name: Run RasterizeBenchmarks (fast job) and export JSON
+        run: dotnet run -c Release --no-build --project benchmarks/PlumePdf.Benchmarks -- --filter '*RasterizeBenchmarks*' --job short --exporters json --buildTimeout 900
+      - name: Check measured results against the stored baseline
+        run: ./scripts/check-raster-perf-baseline.sh BenchmarkDotNet.Artifacts/results/PlumePdf.Benchmarks.RasterizeBenchmarks-report-full.json
+
+  # The parallel-vs-serial
+  # pixel-identity concurrency proof (tests/PlumePdf.CorpusTests/ConcurrencyStressTests.cs).
+  # Every fixture this filter touches is an always-committed hand-crafted PDF (no
+  # fetch-corpora.sh prerequisite — see that file's own remarks), so this job needs nothing
+  # beyond a plain build; split into its own job (rather than folded into build-test) so a
+  # transient scheduler/CPU-contention flake on this specific lane is visible on its own,
+  # not blended into the much larger unit-test job's pass/fail signal.
+  raster-concurrency-stress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - name: Build
+        run: dotnet build PlumePdf.sln -c Release
+      - name: Concurrency stress tests
+        run: dotnet test PlumePdf.sln -c Release --no-build --filter FullyQualifiedName~PlumePdf.CorpusTests.ConcurrencyStressTests

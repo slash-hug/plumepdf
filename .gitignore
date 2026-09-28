@@ -1,0 +1,19 @@
+.scratch/
+bin/
+obj/
+.vs/
+*.user
+.env*
+.claude/worktrees/
+corpora/
+specs/
+BenchmarkDotNet.Artifacts/
+
+# Python bytecode (fixture generators)
+__pycache__/
+*.pyc
+
+# Local-only working material (maintainer workflows) — never published
+/plans/
+/tasks/
+/.claude/workflow-config.json

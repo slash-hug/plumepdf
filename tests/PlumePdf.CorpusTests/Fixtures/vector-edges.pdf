@@ -1,0 +1,51 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length 450 >>
+stream
+q 0 0 0 RG
+1 w 60 700 m 220 560 l S
+3 w 280 700 m 440 560 l S
+6 w 500 700 m 560 560 l S
+Q
+q 0.4 0.4 0.4 rg
+90.000 350.000 m
+90.000 399.706 130.294 440.000 180.000 440.000 c
+229.706 440.000 270.000 399.706 270.000 350.000 c
+270.000 300.294 229.706 260.000 180.000 260.000 c
+130.294 260.000 90.000 300.294 90.000 350.000 c
+h
+f
+Q
+q 330 260 m 560 260 l 330 430 l h W n
+0 0 0 rg 300 230 300 230 re f
+Q
+BT /F1 28 Tf 60 100 Td (PlumePDF vector-edges) Tj ET
+
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000121 00000 n 
+0000000247 00000 n 
+0000000317 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R /ID [<2d74d83c74b8b318c4c32f0d2e94357e> <2d74d83c74b8b318c4c32f0d2e94357e>] >>
+startxref
+818
+%%EOF

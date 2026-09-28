@@ -1,0 +1,1 @@
+﻿267x133, antiAlias=False

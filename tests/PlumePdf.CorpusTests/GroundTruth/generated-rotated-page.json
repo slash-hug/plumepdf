@@ -1,0 +1,25 @@
+{
+  "id": "generated-rotated-page",
+  "category": "rotated-text",
+  "description": "Self-authored (not sourced from any corpus, not written by PlumePdf's own writer) page with a raw (unrotated) MediaBox of 200x400 points and a page-level /Rotate 90 entry (ISO 32000-1 7.7.3.3: displayed clockwise-rotated by 90 degrees, so the visual page is 400x200 landscape). The content stream itself contains ordinary, non-rotated horizontal text in the page's raw coordinate space — this fixture is about /Rotate NORMALIZATION (extracted positions are in post-/Rotate page space), not about text painted at an arbitrary text-matrix rotation angle. Deliberately does not assert letter origins: correctly re-deriving the exact sign/offset convention of the raw-to-visual coordinate transform by hand (independent of PlumePdf's own implementation) risks encoding the same mistake this test exists to catch, so only text CONTENT is asserted — proving the reader neither crashes nor drops/garbles text under /Rotate is this fixture's value.",
+  "source": { "kind": "generated", "generatorId": "RotatedPageDocument" },
+  "oracle": {
+    "method": "hand-derived: content stream is `BT /F1 16 Tf 20 350 Td (Rotated page sample) Tj ET`, unambiguous regardless of /Rotate handling since text content itself is not rotation-dependent.",
+    "generatedAt": "2026-08-18",
+    "notes": "See 'description' for why letter-level positions are intentionally out of scope for this fixture."
+  },
+  "pageCount": 1,
+  "mediaBoxPoints": { "width": 200, "height": 400 },
+  "extractPermission": null,
+  "encryptMetadataFalse": false,
+  "knownFailure": { "expected": false },
+  "pages": [
+    {
+      "page": 1,
+      "expectedText": "Rotated page sample",
+      "firstWord": "Rotated",
+      "lastWord": "sample",
+      "readingOrder": "not-asserted"
+    }
+  ]
+}

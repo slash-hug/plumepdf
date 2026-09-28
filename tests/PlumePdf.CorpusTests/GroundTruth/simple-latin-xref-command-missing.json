@@ -1,0 +1,25 @@
+{
+  "id": "simple-latin-xref-command-missing",
+  "category": "simple-latin",
+  "description": "Damaged-xref reduced test-case (the 'xref' keyword itself is missing, forcing brute-force recovery per the Phase 1 recovery ladder) paired with trivial text — proves extraction works unchanged on a document that only opened via recovery, not just the classic-xref fast path.",
+  "source": { "kind": "corpus", "corpus": "pdfjs-subset-0adc2e7c6652", "relativePath": "xref_command_missing.pdf" },
+  "oracle": {
+    "method": "poppler pdftotext (independent third-party extractor, never PlumePdf)",
+    "generatedAt": "2026-08-18",
+    "notes": "pdftotext xref_command_missing.pdf -"
+  },
+  "pageCount": 1,
+  "mediaBoxPoints": { "width": 200, "height": 50 },
+  "extractPermission": null,
+  "encryptMetadataFalse": false,
+  "knownFailure": { "expected": false },
+  "pages": [
+    {
+      "page": 1,
+      "expectedText": "Reduced test-case",
+      "firstWord": "Reduced",
+      "lastWord": "test-case",
+      "readingOrder": "not-asserted"
+    }
+  ]
+}

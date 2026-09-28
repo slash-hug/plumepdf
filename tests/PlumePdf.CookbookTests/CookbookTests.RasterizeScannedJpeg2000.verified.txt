@@ -1,0 +1,4 @@
+﻿Diagnostics: 0
+Ink pixels: True
+PLUME7744 recorded: True
+Image region blank: True

@@ -1,0 +1,2 @@
+﻿Tagged: True, language: en-US
+Structure: Document → H1, P, Figure

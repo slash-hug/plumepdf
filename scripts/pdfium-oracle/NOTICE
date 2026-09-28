@@ -1,0 +1,62 @@
+pdfium-oracle — third-party provenance
+
+This directory (`scripts/pdfium-oracle/`) is CI/dev tooling, not shipped library code: it
+builds `pdfium_shim`, the external oracle binary `tests/PlumePdf.CorpusTests/PdfiumOracle.cs`
+shells out to for SSIM-vs-PDFium parity comparisons. It is never packaged into the PlumePdf
+NuGet package. This NOTICE records the provenance of the PDFium call sequences `pdfium_shim.c`
+adapts, per the clean-room policy in AGENTS.md's permissive-porting allowance (PDFium is a
+named permitted source) — see `pdfium_shim.c`'s own header comment for the fuller narrative;
+this file is the standalone attribution record Phase 9 calls out separately.
+
+------------------------------------------------------------------------------
+
+Base load/render sequence (Phase 8)
+
+The `--self-test`/`--render` load/render call sequence (`FPDF_InitLibrary` ->
+`FPDF_LoadDocument`/`FPDF_LoadMemDocument` -> `FPDF_LoadPage` -> `FPDFBitmap_Create` ->
+`FPDF_RenderPageBitmap` -> `FPDFBitmap_GetBuffer`) follows bblanchon/pdfium-binaries' own
+reference shim, `example/example.c` (MIT-licensed repo wrapper around BSD-3-Clause PDFium
+itself — see `licenses/pdfium.txt` in the release archive this shim compiles against).
+`pdfium_shim.c` replaces that reference's fixed "input output" PPM dump with the PNG-writing,
+argv-driven CLI contract `PdfiumOracle.cs` documents and probes; the PNG encoder itself is an
+independent from-scratch implementation of the open PNG/zlib/DEFLATE specifications, not
+derived from any PDFium or third-party source.
+
+  Source: bblanchon/pdfium-binaries, `example/example.c`, MIT License (repo wrapper) around
+  PDFium (BSD-3-Clause; original code copyright 2014 Foxit Software Inc. / The PDFium
+  Authors).
+  https://github.com/bblanchon/pdfium-binaries/blob/chromium/8009/example/example.c
+
+------------------------------------------------------------------------------
+
+Form-fill call sequence (Phase 9)
+
+The `--render-forms` mode's `FPDF_FORMFILLINFO` callback struct and its
+`FPDFDOC_InitFormFillEnvironment` -> `FORM_DoDocumentJSAction` -> `FORM_DoDocumentOpenAction`
+-> `FORM_OnAfterLoadPage` -> `FPDF_FFLDraw` -> `FORM_OnBeforeClosePage` ->
+`FPDFDOC_ExitFormFillEnvironment` call sequence is written directly against PDFium's own public
+header `public/fpdf_formfill.h` (BSD-3-Clause, bundled in the pinned bblanchon/pdfium-binaries
+release `install-pdfium-oracle.sh` downloads) — specifically that header's own per-callback
+"Interface Version"/"Implementation Required"/parameter doc comments, which name the exact
+call order and the minimal required-callback set (`FFI_Invalidate`, `FFI_SetCursor`,
+`FFI_SetTimer`, `FFI_KillTimer`, `FFI_GetLocalTime`, `FFI_GetPage`, `FFI_GetRotation`,
+`FFI_ExecuteNamedAction` for a non-XFA, non-V8 build) this shim implements as minimal,
+non-interactive no-op/stub functions in `pdfium_shim.c`. No PDFium `.cc`/implementation source
+was read or copied — only the public, BSD-3-Clause header's own documented public API and its
+doc-comment call-sequence guidance, the same "permitted reference" tier `example.c` above
+already establishes for this directory. The exact minimal required-callback set and the
+widget field dictionary's `/T` (partial field name) requirement — undocumented in the header's
+prose, but load-bearing: a standalone top-level widget lacking `/T` is silently never
+associated with a `CPDF_FormField` by this exact pinned build, so `FPDF_FFLDraw` has nothing
+to synthesize an appearance for — were confirmed empirically against the pinned
+`chromium/8009` release before landing, and are recorded in `pdfium_shim.c`'s own
+`run_self_test_form_fixture` doc comment.
+
+  Source: PDFium (chromium/pdfium), `public/fpdf_formfill.h`, BSD-3-Clause; original code
+  copyright 2014 Foxit Software Inc. / The PDFium Authors.
+  https://github.com/chromium/pdfium
+
+------------------------------------------------------------------------------
+
+Foxit Software Inc., The PDFium Authors, the Chromium project, and bblanchon/pdfium-binaries
+are not affiliated with and do not endorse PlumePDF.

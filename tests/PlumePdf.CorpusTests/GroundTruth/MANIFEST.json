@@ -1,0 +1,27 @@
+{
+  "task": "Ground-truth authoring",
+  "status": "authored before the extraction surface merged — schema-validates today (GroundTruthSchemaTests in ../ExtractionCorpusTests.cs); the extraction-assertion gate itself requires page.ExtractText() to exist first",
+  "curatedFileCount": 16,
+  "categoriesCovered": {
+    "simple-latin": ["simple-latin-helloworld-bad", "simple-latin-xref-command-missing", "simple-latin-file-url-link", "simple-latin-issue4575", "simple-latin-bad-page-labels", "simple-latin-bug1606566", "simple-latin-bug850854", "simple-latin-bug878026", "simple-latin-issue1293r", "generated-courier-bbox"],
+    "differences-encoding": ["differences-issue4304"],
+    "truetype-embedded-identity-h": ["truetype-identity-h-header-footer-basicapi"],
+    "header-footer": ["truetype-identity-h-header-footer-basicapi (secondary/incidental coverage — see that fixture's description)"],
+    "two-column": ["generated-two-column"],
+    "rotated-text": ["generated-rotated-page"],
+    "encrypted-extract-permission": ["encrypted-extract-permission-attachment"],
+    "known-failure-cjk-predefined-cmap": ["known-failure-90ms-rksj-h"]
+  },
+  "knownGaps": [
+    {
+      "category": "encrypt-metadata-false",
+      "status": "not yet authored",
+      "reason": "No corpus PDF found with /EncryptMetadata false during this ground-truth authoring pass's corpora sweep (pdfjs-subset-0adc2e7c6652 and a keyword scan; the full veraPDF-corpus-master's ~2700 files were not exhaustively scanned within this pass's budget). Hand-rolling a fresh encrypted fixture (RC4/AES key derivation + /EncryptMetadata false) from raw bytes, matching the tests/PlumePdf.CorpusTests/Fixtures/generate_fixtures.py pattern, is out of scope for the GroundTruth/*.json-only file ownership this pass was scoped to (Fixtures/*.pdf is a different owned-files set). A separate '/EncryptMetadata fix' pass already adds a regression fixture/test for this exact configuration in tests/PlumePdf.Tests/ — recommend either reusing that fixture here once it exists, or widening the veraPDF-corpus-master scan, as a fast-follow."
+    }
+  ],
+  "provenanceNote": "Every real-corpus fixture's expected values were derived from poppler (pdftotext/pdfinfo/pdffonts) and, for the encrypted fixture, qpdf --show-encryption — all independent, third-party, non-PlumePdf tools, so the ground truth does not circularly depend on the code it will gate. The three 'generated' fixtures are self-authored, hand-rolled PDF byte sequences (ISO 32000-1 grammar directly, an approach the clean-room policy in AGENTS.md allows) built by static methods on the internal GeneratedFixtures class in ../ExtractionCorpusTests.cs — never PlumePdf's own writer — with expected values computed by hand arithmetic from the known content-stream operators, for the same independence reason.",
+  "corporaUsed": {
+    "pdfjs-subset-0adc2e7c6652": "fetched by scripts/fetch-corpora.sh (the pinned mozilla/pdf.js test/pdfs subset, Apache-2.0)"
+  },
+  "expansionTarget": "This ground-truth authoring pass targeted a ~20-30 file range; this pass shipped 16 (13 real-corpus-or-generated PDFs across 8 of 9 named categories, plus 3 additional simple-latin diversity picks). Recommended next-pass expansion: sample veraPDF-corpus-master (fetched, ~2700 files, mostly synthetic ISO/PDF-A conformance cases) for a genuine /EncryptMetadata false document and any naturally-occurring multi-column real-world sample, once a maintainer or an agent with a PDF-rendering viewer is available to eyeball candidates rather than relying solely on grep/pdftotext triage."
+}

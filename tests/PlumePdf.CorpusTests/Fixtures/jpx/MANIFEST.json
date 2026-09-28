@@ -1,0 +1,2289 @@
+{
+  "description": "JPX fixture matrix manifest. Every 'assert' block is machine-checked both here (at generation time) and by 'scripts/generate-jpx-fixtures.sh --check' (structurally, from the committed bytes, no OpenJPEG invocation). 'sha256' (the fixture file) and 'referencesSha256' (one per committed reference) are also verified by --check, byte-for-byte, so a structurally-plausible but corrupted committed file (e.g. a PGX with an intact header and garbage sample data) is still caught even though it would pass every 'assert' key and the plain existence check on its own.",
+  "fixtures": [
+    {
+      "file": "baseline-53.j2k",
+      "description": "5/3 (reversible) wavelet, single tile, default (huge) precincts, 1 layer, lossless. Doubles as the '1 layer' fixture.",
+      "hand_built": false,
+      "command": "opj_compress -i src_gray_64x48.pgm -r 1 -o baseline-53.j2k",
+      "references": [
+        "baseline-53.ref_0.pgx"
+      ],
+      "toleranceClass": "bit-exact",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": false,
+            "location": null
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          8
+        ],
+        "componentsSigned": [
+          false
+        ],
+        "componentsXRsiz": [
+          1
+        ],
+        "componentsYRsiz": [
+          1
+        ],
+        "cblkStyle": 0,
+        "transform": "5-3",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 0,
+        "numLayers": 1,
+        "progressionOrder": 0,
+        "mct": 0
+      },
+      "sha256": "dc8b292db3295578e3c52dcdf10ec5f97aadefd347c5c6a5afe0b3cd55165688",
+      "referencesSha256": {
+        "baseline-53.ref_0.pgx": "81126cc9e65a90455c7418cc1d623f3f504e72e852a763dee59db0ce3100c929"
+      }
+    },
+    {
+      "file": "baseline-53-jp2.jp2",
+      "description": "Same encode as baseline-53.j2k, JP2-wrapped -- the 'raw .j2k and .jp2' pair.",
+      "hand_built": false,
+      "command": "opj_compress -i src_gray_64x48.pgm -r 1 -o baseline-53.jp2",
+      "references": [
+        "baseline-53-jp2.ref_0.pgx"
+      ],
+      "toleranceClass": "bit-exact",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": false,
+            "location": null
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          8
+        ],
+        "componentsSigned": [
+          false
+        ],
+        "componentsXRsiz": [
+          1
+        ],
+        "componentsYRsiz": [
+          1
+        ],
+        "cblkStyle": 0,
+        "transform": "5-3",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 0,
+        "numLayers": 1,
+        "progressionOrder": 0,
+        "mct": 0
+      },
+      "sha256": "9b19a7b15bde799f0d79f07b075c02394b2504c4a1b85f86c078e60de7553787",
+      "referencesSha256": {
+        "baseline-53-jp2.ref_0.pgx": "81126cc9e65a90455c7418cc1d623f3f504e72e852a763dee59db0ce3100c929"
+      }
+    },
+    {
+      "file": "wavelet-97.jp2",
+      "description": "9/7 (irreversible) wavelet at a fixed quality target. Sqcd style asserted; measured 2 (scalar EXPOUNDED -- an explicit (mantissa,exponent) pair per subband, verified via opj_dump) for opj_compress's default 9/7 output both with and without an explicit -q, not style 1 ('scalar derived', a single reference value with the rest formula-derived) -- a correction to this generator's own first assumption, not a recipe change.",
+      "hand_built": false,
+      "command": "opj_compress -i src_gray_64x48.pgm -I -q 40 -o wavelet-97.jp2",
+      "references": [
+        "wavelet-97.ref_0.pgx"
+      ],
+      "toleranceClass": "tolerance-a",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": false,
+            "location": null
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          8
+        ],
+        "componentsSigned": [
+          false
+        ],
+        "componentsXRsiz": [
+          1
+        ],
+        "componentsYRsiz": [
+          1
+        ],
+        "cblkStyle": 0,
+        "transform": "9-7",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 2,
+        "numLayers": 1,
+        "progressionOrder": 0,
+        "mct": 0
+      },
+      "sha256": "ac2e4c994c807336428ba31d98828d00e22766b3a9f220a532b1469dd6f9fd75",
+      "referencesSha256": {
+        "wavelet-97.ref_0.pgx": "8bfaa0c0e4f6c1f4f9d0f5572883cee92ab577beec276eac28c1acf947d43956"
+      }
+    },
+    {
+      "file": "wavelet-97-ict.jp2",
+      "description": "9/7 (irreversible) wavelet with the irreversible colour transform (ICT): a 3-component RGB source under -I. The production path of a motivating W-9 scan; the only fixture combining 9/7 with mct=1 (wavelet-97 has one component; every other mct=1 fixture is 5/3, i.e. RCT). Both steps are irreversible, hence tolerance-a.",
+      "hand_built": false,
+      "command": "opj_compress -i src_rgb_64x48.ppm -I -r 1 -o wavelet-97-ict.jp2",
+      "references": [
+        "wavelet-97-ict.ref_0.pgx",
+        "wavelet-97-ict.ref_1.pgx",
+        "wavelet-97-ict.ref_2.pgx"
+      ],
+      "toleranceClass": "tolerance-a",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": false,
+            "location": null
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          8,
+          8,
+          8
+        ],
+        "componentsSigned": [
+          false,
+          false,
+          false
+        ],
+        "componentsXRsiz": [
+          1,
+          1,
+          1
+        ],
+        "componentsYRsiz": [
+          1,
+          1,
+          1
+        ],
+        "cblkStyle": 0,
+        "transform": "9-7",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 2,
+        "numLayers": 1,
+        "progressionOrder": 0,
+        "mct": 1
+      },
+      "sha256": "422854905d91cc9dd782c61a08618413947c9707da95aac25cbd73f302d23c1d",
+      "referencesSha256": {
+        "wavelet-97-ict.ref_0.pgx": "749ad7ec05dea7d1ed110c4db52712976eee0c8d7d85dd45537638cf1feb53bc",
+        "wavelet-97-ict.ref_1.pgx": "2921e9212cf73e8d7534c943483558d21d5682f3e7284e9366c1fd30e6db055c",
+        "wavelet-97-ict.ref_2.pgx": "dab2b110cc7a17c03c1e7dd8c2f243e5d8954a738782540406d95cd8ea6ec09a"
+      }
+    },
+    {
+      "file": "scan-97-ict-640x480.jp2",
+      "description": "640x480 scan-like RGB page (near-white paper, dark text-like strokes, ruled boxes, sensor noise -- this generator's write_scan_ppm) encoded 9/7 + ICT at -r 20, the shape and ratio of a motivating W-9 scan. The matrix's second large fixture; the rate keeps it small.",
+      "hand_built": false,
+      "command": "opj_compress -i src_scan_640x480.ppm -I -r 20 -o scan-97-ict-640x480.jp2",
+      "references": [
+        "scan-97-ict-640x480.ref_0.pgx",
+        "scan-97-ict-640x480.ref_1.pgx",
+        "scan-97-ict-640x480.ref_2.pgx"
+      ],
+      "toleranceClass": "tolerance-a",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": false,
+            "location": null
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          8,
+          8,
+          8
+        ],
+        "componentsSigned": [
+          false,
+          false,
+          false
+        ],
+        "componentsXRsiz": [
+          1,
+          1,
+          1
+        ],
+        "componentsYRsiz": [
+          1,
+          1,
+          1
+        ],
+        "cblkStyle": 0,
+        "transform": "9-7",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 2,
+        "numLayers": 1,
+        "progressionOrder": 0,
+        "mct": 1
+      },
+      "sha256": "1d6f20c98e87cf2b6b42ebe44c7b7110f426968e85a3981519ce6aad4d45e795",
+      "referencesSha256": {
+        "scan-97-ict-640x480.ref_0.pgx": "a332f566c188ea81bd977b455ce77017fdb9a4b5bc35a1f367ba213e0d7d3628",
+        "scan-97-ict-640x480.ref_1.pgx": "14165313caaba10dd1b65e4d7768d304a8961bde440fb2898fa428e166dfd4e0",
+        "scan-97-ict-640x480.ref_2.pgx": "081f2fc29a9dade20233c502283f0390480edc08aa0e71adb047fa088195f446"
+      }
+    },
+    {
+      "file": "tiles-3x2-partial.j2k",
+      "description": "97x61 (odd-sized) RGB, 33x31 tiles -> 3x2 grid with partial edge tiles on both axes; RPCL progression (also satisfies the 'five progressions' RPCL case). -n 3 (3 resolution levels): opj_compress's default of 6 fails ('Number of resolutions is too high') against a 33x31 tile.",
+      "hand_built": false,
+      "command": "opj_compress -i src_rgb_97x61.ppm -t 33,31 -p RPCL -n 3 -r 1 -o tiles-3x2-partial.j2k",
+      "references": [
+        "tiles-3x2-partial.ref_0.pgx",
+        "tiles-3x2-partial.ref_1.pgx",
+        "tiles-3x2-partial.ref_2.pgx"
+      ],
+      "toleranceClass": "bit-exact",
+      "assert": {
+        "sotCount": 6,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": false,
+            "location": null
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          8,
+          8,
+          8
+        ],
+        "componentsSigned": [
+          false,
+          false,
+          false
+        ],
+        "componentsXRsiz": [
+          1,
+          1,
+          1
+        ],
+        "componentsYRsiz": [
+          1,
+          1,
+          1
+        ],
+        "cblkStyle": 0,
+        "transform": "5-3",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 0,
+        "numLayers": 1,
+        "progressionOrder": 2,
+        "mct": 1,
+        "tileGrid": {
+          "tw": 3,
+          "th": 2
+        }
+      },
+      "sha256": "8420336c9be0ac3bd22b4b50abb9be815dfc02ed2f9368e89c514071c9c35e93",
+      "referencesSha256": {
+        "tiles-3x2-partial.ref_0.pgx": "b9b09d32cb7daf95e8e77b0b5313f24430de23f5dbe1ad71361c055becba710a",
+        "tiles-3x2-partial.ref_1.pgx": "1d1b692859a7a04ea6bfd3993fc16bbdaeee574f7ad2af80e6b28c5f556bd5db",
+        "tiles-3x2-partial.ref_2.pgx": "88e376efd5fe126f761a0a706188311ee22afd198c7401a4c58963d20fc0c066"
+      }
+    },
+    {
+      "file": "precincts-explicit.jp2",
+      "description": "Explicit precinct sizes, extrapolated by opj_compress across all 6 resolution levels (measured; the short 3-entry list does not map 1:1 onto PPx=7 == log2(128)). Measured PPx=PPy=2 at r=0 -- the B.7 code-block clamp is load-bearing here (xcb'=min(xcb,PPx)=min(6,2)=2 at r=0).",
+      "hand_built": false,
+      "command": "opj_compress -i src_gray_64x48.pgm -c [128,128],[64,64],[32,32] -r 1 -o precincts-explicit.jp2",
+      "references": [
+        "precincts-explicit.ref_0.pgx"
+      ],
+      "toleranceClass": "bit-exact",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": false,
+            "location": null
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          8
+        ],
+        "componentsSigned": [
+          false
+        ],
+        "componentsXRsiz": [
+          1
+        ],
+        "componentsYRsiz": [
+          1
+        ],
+        "cblkStyle": 0,
+        "transform": "5-3",
+        "ppxAtR0": 2,
+        "ppyAtR0": 2,
+        "precinctSizes": [
+          [
+            2,
+            2
+          ],
+          [
+            3,
+            3
+          ],
+          [
+            4,
+            4
+          ],
+          [
+            5,
+            5
+          ],
+          [
+            6,
+            6
+          ],
+          [
+            7,
+            7
+          ]
+        ],
+        "sqcdStyle": 0,
+        "numLayers": 1,
+        "progressionOrder": 0,
+        "mct": 0
+      },
+      "sha256": "a6802efad13e1cd8c2e7eb8fc8a054f7d58d6811000d8d9e005b67103658119a",
+      "referencesSha256": {
+        "precincts-explicit.ref_0.pgx": "81126cc9e65a90455c7418cc1d623f3f504e72e852a763dee59db0ce3100c929"
+      }
+    },
+    {
+      "file": "prog-lrcp.jp2",
+      "description": "LRCP progression order (Sec B.12), single default tile.",
+      "hand_built": false,
+      "command": "opj_compress -i src_gray_64x48.pgm -p LRCP -r 1 -o prog-lrcp.jp2",
+      "references": [
+        "prog-lrcp.ref_0.pgx"
+      ],
+      "toleranceClass": "bit-exact",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": false,
+            "location": null
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          8
+        ],
+        "componentsSigned": [
+          false
+        ],
+        "componentsXRsiz": [
+          1
+        ],
+        "componentsYRsiz": [
+          1
+        ],
+        "cblkStyle": 0,
+        "transform": "5-3",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 0,
+        "numLayers": 1,
+        "progressionOrder": 0,
+        "mct": 0
+      },
+      "sha256": "9b19a7b15bde799f0d79f07b075c02394b2504c4a1b85f86c078e60de7553787",
+      "referencesSha256": {
+        "prog-lrcp.ref_0.pgx": "81126cc9e65a90455c7418cc1d623f3f504e72e852a763dee59db0ce3100c929"
+      }
+    },
+    {
+      "file": "prog-rlcp.jp2",
+      "description": "RLCP progression order (Sec B.12), single default tile.",
+      "hand_built": false,
+      "command": "opj_compress -i src_gray_64x48.pgm -p RLCP -r 1 -o prog-rlcp.jp2",
+      "references": [
+        "prog-rlcp.ref_0.pgx"
+      ],
+      "toleranceClass": "bit-exact",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": false,
+            "location": null
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          8
+        ],
+        "componentsSigned": [
+          false
+        ],
+        "componentsXRsiz": [
+          1
+        ],
+        "componentsYRsiz": [
+          1
+        ],
+        "cblkStyle": 0,
+        "transform": "5-3",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 0,
+        "numLayers": 1,
+        "progressionOrder": 1,
+        "mct": 0
+      },
+      "sha256": "2dff9137bb740d43aa56135841d956537e2c863db1c841278fe2baeec0dce3d3",
+      "referencesSha256": {
+        "prog-rlcp.ref_0.pgx": "81126cc9e65a90455c7418cc1d623f3f504e72e852a763dee59db0ce3100c929"
+      }
+    },
+    {
+      "file": "prog-pcrl.jp2",
+      "description": "PCRL progression order (Sec B.12), single default tile.",
+      "hand_built": false,
+      "command": "opj_compress -i src_gray_64x48.pgm -p PCRL -r 1 -o prog-pcrl.jp2",
+      "references": [
+        "prog-pcrl.ref_0.pgx"
+      ],
+      "toleranceClass": "bit-exact",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": false,
+            "location": null
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          8
+        ],
+        "componentsSigned": [
+          false
+        ],
+        "componentsXRsiz": [
+          1
+        ],
+        "componentsYRsiz": [
+          1
+        ],
+        "cblkStyle": 0,
+        "transform": "5-3",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 0,
+        "numLayers": 1,
+        "progressionOrder": 3,
+        "mct": 0
+      },
+      "sha256": "72944afc48a677fad695639f0de68282a13fa19588a06c91c68b74fc37a289d8",
+      "referencesSha256": {
+        "prog-pcrl.ref_0.pgx": "81126cc9e65a90455c7418cc1d623f3f504e72e852a763dee59db0ce3100c929"
+      }
+    },
+    {
+      "file": "prog-cprl.jp2",
+      "description": "CPRL progression order (Sec B.12), single default tile.",
+      "hand_built": false,
+      "command": "opj_compress -i src_gray_64x48.pgm -p CPRL -r 1 -o prog-cprl.jp2",
+      "references": [
+        "prog-cprl.ref_0.pgx"
+      ],
+      "toleranceClass": "bit-exact",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": false,
+            "location": null
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          8
+        ],
+        "componentsSigned": [
+          false
+        ],
+        "componentsXRsiz": [
+          1
+        ],
+        "componentsYRsiz": [
+          1
+        ],
+        "cblkStyle": 0,
+        "transform": "5-3",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 0,
+        "numLayers": 1,
+        "progressionOrder": 4,
+        "mct": 0
+      },
+      "sha256": "66106c2037407b0ef2dc1abf7814746646d5274bcaa9f388a4e2b50c663ae529",
+      "referencesSha256": {
+        "prog-cprl.ref_0.pgx": "81126cc9e65a90455c7418cc1d623f3f504e72e852a763dee59db0ce3100c929"
+      }
+    },
+    {
+      "file": "poc-640x480.j2k",
+      "description": "POC (progression changes) on a 640x480 RGB, 2x2-tiled stream. CE=3 in both entries requires an actual 3-component image (a grayscale source silently gets CE clamped to 1, verified). -r 30 keeps this, the matrix's one large fixture, small; the rate-limited single layer is genuinely lossy, hence tolerance-a despite the 5/3 wavelet. T1 is 1-based (T1 == tile index 0); the POC segment lands in tile 0's FIRST tile-part header, which is asserted directly.",
+      "hand_built": false,
+      "command": "opj_compress -i src_rgb_640x480.ppm -t 320,240 -POC T1=0,0,1,5,3,CPRL/T1=5,0,1,6,3,CPRL -r 30 -o poc-640x480.j2k",
+      "references": [
+        "poc-640x480.ref_0.pgx",
+        "poc-640x480.ref_1.pgx",
+        "poc-640x480.ref_2.pgx"
+      ],
+      "toleranceClass": "tolerance-a",
+      "assert": {
+        "sotCount": 5,
+        "markers": {
+          "POC": true,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": false,
+            "location": null
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          8,
+          8,
+          8
+        ],
+        "componentsSigned": [
+          false,
+          false,
+          false
+        ],
+        "componentsXRsiz": [
+          1,
+          1,
+          1
+        ],
+        "componentsYRsiz": [
+          1,
+          1,
+          1
+        ],
+        "cblkStyle": 0,
+        "transform": "5-3",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 0,
+        "numLayers": 1,
+        "progressionOrder": 0,
+        "mct": 1,
+        "pocEntryCountInTile0Tp0": 2
+      },
+      "sha256": "1a30bd3ff93b9f33e64c09f9c15906406652b8976759eab4e7e5d469c4618909",
+      "referencesSha256": {
+        "poc-640x480.ref_0.pgx": "e43b5d267e23aa57cd913da270f211ddc1f7e256238d467cc403834a24094a42",
+        "poc-640x480.ref_1.pgx": "04b7a421d7168d876c026e5e4eebca98731e3ef9658917cd05c59bab64cb526c",
+        "poc-640x480.ref_2.pgx": "169f54c4ad83e5623f7b43956455348db34c79ad7e30cfa0b3e0910093e042b4"
+      }
+    },
+    {
+      "file": "cblksty-m1.j2k",
+      "description": "cblksty=0x01 (opj_compress -M 1), single-tile 64x48 gray, default (huge) precincts and 64x64 code-blocks so every subband has exactly one code-block (verified via markers.assert_single_codeblock_finest_subband, not assumed). -PLT added (deviation from the literal -M-only recipe): PLT's packet-length list lets the generator skip straight to the finest resolution's packet and read only its first code-block's number-of-new-passes field, instead of a full multi-packet Tier-2 decode with cblksty-dependent segmentation (which, for the 'selective bypass' bit alone, has non-trivial per-bit-plane grouping past pass 10). Measured >=11 passes on every cblksty value (this LCG source's blue/noise channel spans the full 0-255 range).",
+      "hand_built": false,
+      "command": "opj_compress -i src_gray_64x48.pgm -M 1 -PLT -r 1 -o cblksty-m1.j2k",
+      "references": [
+        "cblksty-m1.ref_0.pgx"
+      ],
+      "toleranceClass": "bit-exact",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": true,
+            "location": "tile"
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          8
+        ],
+        "componentsSigned": [
+          false
+        ],
+        "componentsXRsiz": [
+          1
+        ],
+        "componentsYRsiz": [
+          1
+        ],
+        "cblkStyle": 1,
+        "transform": "5-3",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 0,
+        "numLayers": 1,
+        "progressionOrder": 0,
+        "mct": 0,
+        "finestResolutionCodeBlockPasses": 22
+      },
+      "sha256": "e0c34d4a5a21b1cd72ed226898b1f4bde08367f92f083aec2521348e197d9cd1",
+      "referencesSha256": {
+        "cblksty-m1.ref_0.pgx": "81126cc9e65a90455c7418cc1d623f3f504e72e852a763dee59db0ce3100c929"
+      }
+    },
+    {
+      "file": "cblksty-m2.j2k",
+      "description": "cblksty=0x02 (opj_compress -M 2), single-tile 64x48 gray, default (huge) precincts and 64x64 code-blocks so every subband has exactly one code-block (verified via markers.assert_single_codeblock_finest_subband, not assumed). -PLT added (deviation from the literal -M-only recipe): PLT's packet-length list lets the generator skip straight to the finest resolution's packet and read only its first code-block's number-of-new-passes field, instead of a full multi-packet Tier-2 decode with cblksty-dependent segmentation (which, for the 'selective bypass' bit alone, has non-trivial per-bit-plane grouping past pass 10). Measured >=11 passes on every cblksty value (this LCG source's blue/noise channel spans the full 0-255 range).",
+      "hand_built": false,
+      "command": "opj_compress -i src_gray_64x48.pgm -M 2 -PLT -r 1 -o cblksty-m2.j2k",
+      "references": [
+        "cblksty-m2.ref_0.pgx"
+      ],
+      "toleranceClass": "bit-exact",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": true,
+            "location": "tile"
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          8
+        ],
+        "componentsSigned": [
+          false
+        ],
+        "componentsXRsiz": [
+          1
+        ],
+        "componentsYRsiz": [
+          1
+        ],
+        "cblkStyle": 2,
+        "transform": "5-3",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 0,
+        "numLayers": 1,
+        "progressionOrder": 0,
+        "mct": 0,
+        "finestResolutionCodeBlockPasses": 22
+      },
+      "sha256": "31eaf1e0b64fd74e19492c1574b67447e3f019a5989241b3c43a82c9c1660f65",
+      "referencesSha256": {
+        "cblksty-m2.ref_0.pgx": "81126cc9e65a90455c7418cc1d623f3f504e72e852a763dee59db0ce3100c929"
+      }
+    },
+    {
+      "file": "cblksty-m4.j2k",
+      "description": "cblksty=0x04 (opj_compress -M 4), single-tile 64x48 gray, default (huge) precincts and 64x64 code-blocks so every subband has exactly one code-block (verified via markers.assert_single_codeblock_finest_subband, not assumed). -PLT added (deviation from the literal -M-only recipe): PLT's packet-length list lets the generator skip straight to the finest resolution's packet and read only its first code-block's number-of-new-passes field, instead of a full multi-packet Tier-2 decode with cblksty-dependent segmentation (which, for the 'selective bypass' bit alone, has non-trivial per-bit-plane grouping past pass 10). Measured >=11 passes on every cblksty value (this LCG source's blue/noise channel spans the full 0-255 range).",
+      "hand_built": false,
+      "command": "opj_compress -i src_gray_64x48.pgm -M 4 -PLT -r 1 -o cblksty-m4.j2k",
+      "references": [
+        "cblksty-m4.ref_0.pgx"
+      ],
+      "toleranceClass": "bit-exact",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": true,
+            "location": "tile"
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          8
+        ],
+        "componentsSigned": [
+          false
+        ],
+        "componentsXRsiz": [
+          1
+        ],
+        "componentsYRsiz": [
+          1
+        ],
+        "cblkStyle": 4,
+        "transform": "5-3",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 0,
+        "numLayers": 1,
+        "progressionOrder": 0,
+        "mct": 0,
+        "finestResolutionCodeBlockPasses": 22
+      },
+      "sha256": "3feff62deed9c49ab70445f6743f7c843f6716cc71399efebfab3723844aab68",
+      "referencesSha256": {
+        "cblksty-m4.ref_0.pgx": "81126cc9e65a90455c7418cc1d623f3f504e72e852a763dee59db0ce3100c929"
+      }
+    },
+    {
+      "file": "cblksty-m8.j2k",
+      "description": "cblksty=0x08 (opj_compress -M 8), single-tile 64x48 gray, default (huge) precincts and 64x64 code-blocks so every subband has exactly one code-block (verified via markers.assert_single_codeblock_finest_subband, not assumed). -PLT added (deviation from the literal -M-only recipe): PLT's packet-length list lets the generator skip straight to the finest resolution's packet and read only its first code-block's number-of-new-passes field, instead of a full multi-packet Tier-2 decode with cblksty-dependent segmentation (which, for the 'selective bypass' bit alone, has non-trivial per-bit-plane grouping past pass 10). Measured >=11 passes on every cblksty value (this LCG source's blue/noise channel spans the full 0-255 range).",
+      "hand_built": false,
+      "command": "opj_compress -i src_gray_64x48.pgm -M 8 -PLT -r 1 -o cblksty-m8.j2k",
+      "references": [
+        "cblksty-m8.ref_0.pgx"
+      ],
+      "toleranceClass": "bit-exact",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": true,
+            "location": "tile"
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          8
+        ],
+        "componentsSigned": [
+          false
+        ],
+        "componentsXRsiz": [
+          1
+        ],
+        "componentsYRsiz": [
+          1
+        ],
+        "cblkStyle": 8,
+        "transform": "5-3",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 0,
+        "numLayers": 1,
+        "progressionOrder": 0,
+        "mct": 0,
+        "finestResolutionCodeBlockPasses": 22
+      },
+      "sha256": "fba8d5b0e04f0dbf18f67b1a16e2d903c7fd8f26a06039bcc440056bf7826679",
+      "referencesSha256": {
+        "cblksty-m8.ref_0.pgx": "81126cc9e65a90455c7418cc1d623f3f504e72e852a763dee59db0ce3100c929"
+      }
+    },
+    {
+      "file": "cblksty-m16.j2k",
+      "description": "cblksty=0x10 (opj_compress -M 16), single-tile 64x48 gray, default (huge) precincts and 64x64 code-blocks so every subband has exactly one code-block (verified via markers.assert_single_codeblock_finest_subband, not assumed). -PLT added (deviation from the literal -M-only recipe): PLT's packet-length list lets the generator skip straight to the finest resolution's packet and read only its first code-block's number-of-new-passes field, instead of a full multi-packet Tier-2 decode with cblksty-dependent segmentation (which, for the 'selective bypass' bit alone, has non-trivial per-bit-plane grouping past pass 10). Measured >=11 passes on every cblksty value (this LCG source's blue/noise channel spans the full 0-255 range).",
+      "hand_built": false,
+      "command": "opj_compress -i src_gray_64x48.pgm -M 16 -PLT -r 1 -o cblksty-m16.j2k",
+      "references": [
+        "cblksty-m16.ref_0.pgx"
+      ],
+      "toleranceClass": "bit-exact",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": true,
+            "location": "tile"
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          8
+        ],
+        "componentsSigned": [
+          false
+        ],
+        "componentsXRsiz": [
+          1
+        ],
+        "componentsYRsiz": [
+          1
+        ],
+        "cblkStyle": 16,
+        "transform": "5-3",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 0,
+        "numLayers": 1,
+        "progressionOrder": 0,
+        "mct": 0,
+        "finestResolutionCodeBlockPasses": 22
+      },
+      "sha256": "f4c9677f1270293702c8cc4d55df999d503267d779e1c20b5ea6a70a9d983d15",
+      "referencesSha256": {
+        "cblksty-m16.ref_0.pgx": "81126cc9e65a90455c7418cc1d623f3f504e72e852a763dee59db0ce3100c929"
+      }
+    },
+    {
+      "file": "cblksty-m32.j2k",
+      "description": "cblksty=0x20 (opj_compress -M 32), single-tile 64x48 gray, default (huge) precincts and 64x64 code-blocks so every subband has exactly one code-block (verified via markers.assert_single_codeblock_finest_subband, not assumed). -PLT added (deviation from the literal -M-only recipe): PLT's packet-length list lets the generator skip straight to the finest resolution's packet and read only its first code-block's number-of-new-passes field, instead of a full multi-packet Tier-2 decode with cblksty-dependent segmentation (which, for the 'selective bypass' bit alone, has non-trivial per-bit-plane grouping past pass 10). Measured >=11 passes on every cblksty value (this LCG source's blue/noise channel spans the full 0-255 range).",
+      "hand_built": false,
+      "command": "opj_compress -i src_gray_64x48.pgm -M 32 -PLT -r 1 -o cblksty-m32.j2k",
+      "references": [
+        "cblksty-m32.ref_0.pgx"
+      ],
+      "toleranceClass": "bit-exact",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": true,
+            "location": "tile"
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          8
+        ],
+        "componentsSigned": [
+          false
+        ],
+        "componentsXRsiz": [
+          1
+        ],
+        "componentsYRsiz": [
+          1
+        ],
+        "cblkStyle": 32,
+        "transform": "5-3",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 0,
+        "numLayers": 1,
+        "progressionOrder": 0,
+        "mct": 0,
+        "finestResolutionCodeBlockPasses": 22
+      },
+      "sha256": "3b89f6cd54301b74eb1fc10294eea8a67a6349cca3d828ada0e0784f9ff2281c",
+      "referencesSha256": {
+        "cblksty-m32.ref_0.pgx": "81126cc9e65a90455c7418cc1d623f3f504e72e852a763dee59db0ce3100c929"
+      }
+    },
+    {
+      "file": "cblksty-m63.j2k",
+      "description": "cblksty=0x3f (opj_compress -M 63), single-tile 64x48 gray, default (huge) precincts and 64x64 code-blocks so every subband has exactly one code-block (verified via markers.assert_single_codeblock_finest_subband, not assumed). -PLT added (deviation from the literal -M-only recipe): PLT's packet-length list lets the generator skip straight to the finest resolution's packet and read only its first code-block's number-of-new-passes field, instead of a full multi-packet Tier-2 decode with cblksty-dependent segmentation (which, for the 'selective bypass' bit alone, has non-trivial per-bit-plane grouping past pass 10). Measured >=11 passes on every cblksty value (this LCG source's blue/noise channel spans the full 0-255 range).",
+      "hand_built": false,
+      "command": "opj_compress -i src_gray_64x48.pgm -M 63 -PLT -r 1 -o cblksty-m63.j2k",
+      "references": [
+        "cblksty-m63.ref_0.pgx"
+      ],
+      "toleranceClass": "bit-exact",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": true,
+            "location": "tile"
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          8
+        ],
+        "componentsSigned": [
+          false
+        ],
+        "componentsXRsiz": [
+          1
+        ],
+        "componentsYRsiz": [
+          1
+        ],
+        "cblkStyle": 63,
+        "transform": "5-3",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 0,
+        "numLayers": 1,
+        "progressionOrder": 0,
+        "mct": 0,
+        "finestResolutionCodeBlockPasses": 22
+      },
+      "sha256": "de1bf2a63685c06fe21b674515d9094ec52abb0c914e5bfeac5a512d1b1a0f2c",
+      "referencesSha256": {
+        "cblksty-m63.ref_0.pgx": "81126cc9e65a90455c7418cc1d623f3f504e72e852a763dee59db0ce3100c929"
+      }
+    },
+    {
+      "file": "layers-3.jp2",
+      "description": "3 quality layers, final layer lossless (-r ...,1) -- all layers decoded, no colour step, 5/3 wavelet: bit-exact per the tolerance policy.",
+      "hand_built": false,
+      "command": "opj_compress -i src_gray_64x48.pgm -r 20,10,1 -o layers-3.jp2",
+      "references": [
+        "layers-3.ref_0.pgx"
+      ],
+      "toleranceClass": "bit-exact",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": false,
+            "location": null
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          8
+        ],
+        "componentsSigned": [
+          false
+        ],
+        "componentsXRsiz": [
+          1
+        ],
+        "componentsYRsiz": [
+          1
+        ],
+        "cblkStyle": 0,
+        "transform": "5-3",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 0,
+        "numLayers": 3,
+        "progressionOrder": 0,
+        "mct": 0
+      },
+      "sha256": "322326bbe113aaa8144fe95738c770a1f4a5e9c4bfbdeddadd2a3d83635eda4c",
+      "referencesSha256": {
+        "layers-3.ref_0.pgx": "81126cc9e65a90455c7418cc1d623f3f504e72e852a763dee59db0ce3100c929"
+      }
+    },
+    {
+      "file": "layers-10.jp2",
+      "description": "10 quality layers, final layer lossless -- all layers decoded is bit-exact; JpxOracleTests additionally decodes layers 1..k for the self-consistency monotonic-error fact, not asserted by this generator.",
+      "hand_built": false,
+      "command": "opj_compress -i src_gray_64x48.pgm -r 100,80,60,40,30,20,15,10,5,1 -o layers-10.jp2",
+      "references": [
+        "layers-10.ref_0.pgx"
+      ],
+      "toleranceClass": "bit-exact",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": false,
+            "location": null
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          8
+        ],
+        "componentsSigned": [
+          false
+        ],
+        "componentsXRsiz": [
+          1
+        ],
+        "componentsYRsiz": [
+          1
+        ],
+        "cblkStyle": 0,
+        "transform": "5-3",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 0,
+        "numLayers": 10,
+        "progressionOrder": 0,
+        "mct": 0
+      },
+      "sha256": "fb37655f6bdbe75c030ee4ad704226a1c8c6d4ae575eb790592a66eec1bf5c26",
+      "referencesSha256": {
+        "layers-10.ref_0.pgx": "81126cc9e65a90455c7418cc1d623f3f504e72e852a763dee59db0ce3100c929"
+      }
+    },
+    {
+      "file": "subsample-uniform-2x2.jp2",
+      "description": "Uniform 2x2 subsampling via -s on a PPM source. Reference-grid size becomes 127x95 (Xsiz=(w-1)*XRsiz+1, measured). opj_decompress force-attempts an sYCC conversion for any 3-component image with comps[0].dx==comps[0].dy && comps[1].dx!=1, and for the UNIFORM case bails with 'CAN NOT CONVERT' on stderr (exit 0), writing unconverted planes -- not a decode failure.",
+      "hand_built": false,
+      "command": "opj_compress -i src_rgb_64x48.ppm -s 2,2 -o subsample-uniform-2x2.jp2",
+      "references": [
+        "subsample-uniform-2x2.ref_0.pgx",
+        "subsample-uniform-2x2.ref_1.pgx",
+        "subsample-uniform-2x2.ref_2.pgx"
+      ],
+      "toleranceClass": "tolerance-a",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": false,
+            "location": null
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          8,
+          8,
+          8
+        ],
+        "componentsSigned": [
+          false,
+          false,
+          false
+        ],
+        "componentsXRsiz": [
+          2,
+          2,
+          2
+        ],
+        "componentsYRsiz": [
+          2,
+          2,
+          2
+        ],
+        "cblkStyle": 0,
+        "transform": "5-3",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 0,
+        "numLayers": 1,
+        "progressionOrder": 0,
+        "mct": 1
+      },
+      "sha256": "fa61580b9b2951af1451b2b3d93a2a6f9427b2f6d72028d0dfd15f17f2ab670b",
+      "referencesSha256": {
+        "subsample-uniform-2x2.ref_0.pgx": "93c62a7fd49b26c35c64b387891bbf88010a1bb578adb3d8b972903f32236bc5",
+        "subsample-uniform-2x2.ref_1.pgx": "a2502b39272c6747dd1b7a315d5b88ee9730d068effbc22f6497c0efa1ca4b11",
+        "subsample-uniform-2x2.ref_2.pgx": "a22917d64cdab5962b4dd7e81872e47102efcae68a47f82dfafcbf8384798090"
+      }
+    },
+    {
+      "file": "subsample-mixed-420.jp2",
+      "description": "Mixed 4:2:0-style subsampling via raw -F. opj_compress writes colr EnumCS 18 (sYCC) automatically for this shape (measured) -- PlumePDF's EnumCS-18 rule and the oracle's own forced conversion agree (max measured |delta| 2).",
+      "hand_built": false,
+      "command": "opj_compress -i src_mixed420.raw -F 64,48,3,8,u@1x1:2x2:2x2 -o subsample-mixed-420.jp2",
+      "references": [
+        "subsample-mixed-420.ref_0.pgx",
+        "subsample-mixed-420.ref_1.pgx",
+        "subsample-mixed-420.ref_2.pgx"
+      ],
+      "toleranceClass": "tolerance-a",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": false,
+            "location": null
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          8,
+          8,
+          8
+        ],
+        "componentsSigned": [
+          false,
+          false,
+          false
+        ],
+        "componentsXRsiz": [
+          1,
+          2,
+          2
+        ],
+        "componentsYRsiz": [
+          1,
+          2,
+          2
+        ],
+        "cblkStyle": 0,
+        "transform": "5-3",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 0,
+        "numLayers": 1,
+        "progressionOrder": 0,
+        "mct": 0
+      },
+      "sha256": "55c3c77969b8fab128a2ca011a9ab4bb6fdfe26efa2bff54b27d1b2dedf5e789",
+      "referencesSha256": {
+        "subsample-mixed-420.ref_0.pgx": "eebff6a32aff5f0d5368cbe1f9e1e7f78d4afde7d47ecb13020102776241d958",
+        "subsample-mixed-420.ref_1.pgx": "10a4a340ebc7f79057e724d982f3c6ffbb4bfc6f03bb09eb4bdd42178f15fa68",
+        "subsample-mixed-420.ref_2.pgx": "a2dec851793207e478285fcb82bba2a84d23909e2a7200d8ed56946b59e14f69"
+      }
+    },
+    {
+      "file": "depth-12u.j2k",
+      "description": "12-bit unsigned via raw -F (honours the declared precision exactly, unlike the PGX route -- verified).",
+      "hand_built": false,
+      "command": "opj_compress -i src_depth-12u.raw -F 64,48,1,12,u -r 1 -o depth-12u.j2k",
+      "references": [
+        "depth-12u.ref_0.pgx"
+      ],
+      "toleranceClass": "bit-exact",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": false,
+            "location": null
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          12
+        ],
+        "componentsSigned": [
+          false
+        ],
+        "componentsXRsiz": [
+          1
+        ],
+        "componentsYRsiz": [
+          1
+        ],
+        "cblkStyle": 0,
+        "transform": "5-3",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 0,
+        "numLayers": 1,
+        "progressionOrder": 0,
+        "mct": 0
+      },
+      "sha256": "f35f3cef7fc97a31504bbc31ac13247f2401008a9a4415a62c481e19cd74bc79",
+      "referencesSha256": {
+        "depth-12u.ref_0.pgx": "cdb26ddfb1eb63de8417e14df53063a9fac42bc77d6ff4ea345314a286d8f5c8"
+      }
+    },
+    {
+      "file": "depth-16u.j2k",
+      "description": "16-bit unsigned via raw -F (honours the declared precision exactly, unlike the PGX route -- verified).",
+      "hand_built": false,
+      "command": "opj_compress -i src_depth-16u.raw -F 64,48,1,16,u -r 1 -o depth-16u.j2k",
+      "references": [
+        "depth-16u.ref_0.pgx"
+      ],
+      "toleranceClass": "bit-exact",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": false,
+            "location": null
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          16
+        ],
+        "componentsSigned": [
+          false
+        ],
+        "componentsXRsiz": [
+          1
+        ],
+        "componentsYRsiz": [
+          1
+        ],
+        "cblkStyle": 0,
+        "transform": "5-3",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 0,
+        "numLayers": 1,
+        "progressionOrder": 0,
+        "mct": 0
+      },
+      "sha256": "b1bbd61c0a1d87c84468793553116a36c7a7b603f8e0ecf0a5ec4d90f581ad95",
+      "referencesSha256": {
+        "depth-16u.ref_0.pgx": "585cb64a9dfe348dd528c1e40f0264e2487f85d87985d0dd5f19aed8d28aada9"
+      }
+    },
+    {
+      "file": "depth-16s.j2k",
+      "description": "16-bit signed via raw -F (honours the declared precision exactly, unlike the PGX route -- verified).",
+      "hand_built": false,
+      "command": "opj_compress -i src_depth-16s.raw -F 64,48,1,16,s -r 1 -o depth-16s.j2k",
+      "references": [
+        "depth-16s.ref_0.pgx"
+      ],
+      "toleranceClass": "bit-exact",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": false,
+            "location": null
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          16
+        ],
+        "componentsSigned": [
+          true
+        ],
+        "componentsXRsiz": [
+          1
+        ],
+        "componentsYRsiz": [
+          1
+        ],
+        "cblkStyle": 0,
+        "transform": "5-3",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 0,
+        "numLayers": 1,
+        "progressionOrder": 0,
+        "mct": 0
+      },
+      "sha256": "c0237ac1dbddb40b251b46385e7963a9eeb448483f3a4d9405c0c0de12e01da8",
+      "referencesSha256": {
+        "depth-16s.ref_0.pgx": "2c7a9a3e173e1562e120f2ac235a14edb9a8e41abf953e4512427ae1d7714c19"
+      }
+    },
+    {
+      "file": "depth-16s-97.j2k",
+      "description": "16-bit signed via raw -F under the 9/7 (irreversible) wavelet -- the only signed fixture on the irreversible path (depth-16s is 5/3). Compared signed, tolerance-a.",
+      "hand_built": false,
+      "command": "opj_compress -i src_depth-16s-97.raw -F 64,48,1,16,s -I -r 1 -o depth-16s-97.j2k",
+      "references": [
+        "depth-16s-97.ref_0.pgx"
+      ],
+      "toleranceClass": "tolerance-a",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": false,
+            "location": null
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          16
+        ],
+        "componentsSigned": [
+          true
+        ],
+        "componentsXRsiz": [
+          1
+        ],
+        "componentsYRsiz": [
+          1
+        ],
+        "cblkStyle": 0,
+        "transform": "9-7",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 2,
+        "numLayers": 1,
+        "progressionOrder": 0,
+        "mct": 0
+      },
+      "sha256": "4f1398bb10a6b6928a696aeb91d276224eab161a85cc27e0ef317b1372043e9f",
+      "referencesSha256": {
+        "depth-16s-97.ref_0.pgx": "b231e851c77a2d211807ebe09d0ca40118f9039d973cd0819f875aa9ff65eae1"
+      }
+    },
+    {
+      "file": "alpha-cdef.jp2",
+      "description": "RGBA PNG source -> JP2 with an auto-written cdef box (4 channel defs, alpha at component index 3 with Typ=1 'unassociated opacity', measured). mct=1 with the 5/3 wavelet selects RCT (exact, reversible) for components 0-2, not ICT, so this is bit-exact despite mct=1 (RCT is exact; only sYCC/ICT are not).",
+      "hand_built": false,
+      "command": "opj_compress -i src_alpha.png -r 1 -o alpha-cdef.jp2",
+      "references": [
+        "alpha-cdef.ref_0.pgx",
+        "alpha-cdef.ref_1.pgx",
+        "alpha-cdef.ref_2.pgx",
+        "alpha-cdef.ref_3.pgx"
+      ],
+      "toleranceClass": "bit-exact",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": false,
+            "location": null
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          8,
+          8,
+          8,
+          8
+        ],
+        "componentsSigned": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "componentsXRsiz": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "componentsYRsiz": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "cblkStyle": 0,
+        "transform": "5-3",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 0,
+        "numLayers": 1,
+        "progressionOrder": 0,
+        "mct": 1
+      },
+      "sha256": "5fd23ff48ccff81d347e917e0dbbc3dfdb2079a84845a9c15b5c2028d89c0498",
+      "referencesSha256": {
+        "alpha-cdef.ref_0.pgx": "00b7edbf09e2a81f84e728128b3639910bb8c9c3036fa8143a97eb03a9a83397",
+        "alpha-cdef.ref_1.pgx": "c9b85aabdc03bc35b2795b24bcfe4d165ce9f893ebb9b6b7addf0542563b9e3f",
+        "alpha-cdef.ref_2.pgx": "efa3e997176978929d664f9356d51d12bc2b26e6ec571cee0d4d92518528264e",
+        "alpha-cdef.ref_3.pgx": "36a7227cb3947dcd3e73c8587526668658fc5905e0756886e21c1c964cbf3697"
+      }
+    },
+    {
+      "file": "sop-eph.jp2",
+      "description": "SOP and EPH both enabled (Scod bits 1 and 2).",
+      "hand_built": false,
+      "command": "opj_compress -i src_gray_64x48.pgm -SOP -EPH -r 1 -o sop-eph.jp2",
+      "references": [
+        "sop-eph.ref_0.pgx"
+      ],
+      "toleranceClass": "bit-exact",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": false,
+            "location": null
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": true,
+          "EPH": true
+        },
+        "componentsPrecision": [
+          8
+        ],
+        "componentsSigned": [
+          false
+        ],
+        "componentsXRsiz": [
+          1
+        ],
+        "componentsYRsiz": [
+          1
+        ],
+        "cblkStyle": 0,
+        "transform": "5-3",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 0,
+        "numLayers": 1,
+        "progressionOrder": 0,
+        "mct": 0
+      },
+      "sha256": "5fb88ed430ddaf9d3bd2850b722f86e3f65ee99a85541498b75fdfdc4d9878a3",
+      "referencesSha256": {
+        "sop-eph.ref_0.pgx": "81126cc9e65a90455c7418cc1d623f3f504e72e852a763dee59db0ce3100c929"
+      }
+    },
+    {
+      "file": "plt-marker.jp2",
+      "description": "Standalone -PLT (packet lengths, tile-part header) -- distinct from the incidental -PLT usage on the cblksty-m* fixtures.",
+      "hand_built": false,
+      "command": "opj_compress -i src_gray_64x48.pgm -PLT -r 1 -o plt-marker.jp2",
+      "references": [
+        "plt-marker.ref_0.pgx"
+      ],
+      "toleranceClass": "bit-exact",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": true,
+            "location": "tile"
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          8
+        ],
+        "componentsSigned": [
+          false
+        ],
+        "componentsXRsiz": [
+          1
+        ],
+        "componentsYRsiz": [
+          1
+        ],
+        "cblkStyle": 0,
+        "transform": "5-3",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 0,
+        "numLayers": 1,
+        "progressionOrder": 0,
+        "mct": 0
+      },
+      "sha256": "b52aca682e620e3d68714cd1f201c433de024c3eb7903e8ef57a1b016724e077",
+      "referencesSha256": {
+        "plt-marker.ref_0.pgx": "81126cc9e65a90455c7418cc1d623f3f504e72e852a763dee59db0ce3100c929"
+      }
+    },
+    {
+      "file": "tlm-marker.jp2",
+      "description": "-TLM (tile-part lengths, main header).",
+      "hand_built": false,
+      "command": "opj_compress -i src_gray_64x48.pgm -TLM -r 1 -o tlm-marker.jp2",
+      "references": [
+        "tlm-marker.ref_0.pgx"
+      ],
+      "toleranceClass": "bit-exact",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": false,
+            "location": null
+          },
+          "TLM": {
+            "present": true,
+            "location": "main"
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          8
+        ],
+        "componentsSigned": [
+          false
+        ],
+        "componentsXRsiz": [
+          1
+        ],
+        "componentsYRsiz": [
+          1
+        ],
+        "cblkStyle": 0,
+        "transform": "5-3",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 0,
+        "numLayers": 1,
+        "progressionOrder": 0,
+        "mct": 0
+      },
+      "sha256": "7c63c4a531063d9ce88485f4c431a076076d696132c61998ad137c8554d7c70a",
+      "referencesSha256": {
+        "tlm-marker.ref_0.pgx": "81126cc9e65a90455c7418cc1d623f3f504e72e852a763dee59db0ce3100c929"
+      }
+    },
+    {
+      "file": "tileparts-tpr.jp2",
+      "description": "-TP R: a new tile-part at every resolution-level change -- 6 tile-parts for this single tile's 6 resolution levels (measured, SOT count asserted).",
+      "hand_built": false,
+      "command": "opj_compress -i src_gray_64x48.pgm -TP R -r 1 -o tileparts-tpr.jp2",
+      "references": [
+        "tileparts-tpr.ref_0.pgx"
+      ],
+      "toleranceClass": "bit-exact",
+      "assert": {
+        "sotCount": 6,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": false,
+            "location": null
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          8
+        ],
+        "componentsSigned": [
+          false
+        ],
+        "componentsXRsiz": [
+          1
+        ],
+        "componentsYRsiz": [
+          1
+        ],
+        "cblkStyle": 0,
+        "transform": "5-3",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 0,
+        "numLayers": 1,
+        "progressionOrder": 0,
+        "mct": 0
+      },
+      "sha256": "f3b9e66bbf8cf0419825f296e9cb5752d912369b75f0badca1351362ebdb8ddf",
+      "referencesSha256": {
+        "tileparts-tpr.ref_0.pgx": "81126cc9e65a90455c7418cc1d623f3f504e72e852a763dee59db0ce3100c929"
+      }
+    },
+    {
+      "file": "prog-rpcl-precincts-layers.jp2",
+      "description": "RPCL progression over an explicit 16x16 precinct grid (4x3 precincts at r=5, 2x2 at r=4, one below -- measured, the full per-resolution list is asserted) with 3 quality layers, final layer lossless. Exercises the B.12.1.3 position loops with a precinct index that actually varies and a layer loop nested inside it -- the packet sequence the single-precinct prog-* fixtures never produce.",
+      "hand_built": false,
+      "command": "opj_compress -i src_gray_64x48.pgm -p RPCL -c [16,16],[16,16],[16,16] -r 20,10,1 -o prog-rpcl-precincts-layers.jp2",
+      "references": [
+        "prog-rpcl-precincts-layers.ref_0.pgx"
+      ],
+      "toleranceClass": "bit-exact",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": false,
+            "location": null
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          8
+        ],
+        "componentsSigned": [
+          false
+        ],
+        "componentsXRsiz": [
+          1
+        ],
+        "componentsYRsiz": [
+          1
+        ],
+        "cblkStyle": 0,
+        "transform": "5-3",
+        "ppxAtR0": 1,
+        "ppyAtR0": 1,
+        "precinctSizes": [
+          [
+            1,
+            1
+          ],
+          [
+            2,
+            2
+          ],
+          [
+            3,
+            3
+          ],
+          [
+            4,
+            4
+          ],
+          [
+            4,
+            4
+          ],
+          [
+            4,
+            4
+          ]
+        ],
+        "sqcdStyle": 0,
+        "numLayers": 3,
+        "progressionOrder": 2,
+        "mct": 0
+      },
+      "sha256": "3ddc639e3c15163e82646beb048e9e3c3512bb5943f845b0b5219a1884c45c2f",
+      "referencesSha256": {
+        "prog-rpcl-precincts-layers.ref_0.pgx": "81126cc9e65a90455c7418cc1d623f3f504e72e852a763dee59db0ce3100c929"
+      }
+    },
+    {
+      "file": "prog-cprl-precincts-layers.jp2",
+      "description": "CPRL progression over an explicit 16x16 precinct grid (4x3 precincts at r=5, 2x2 at r=4, one below -- measured, the full per-resolution list is asserted) with 3 quality layers, final layer lossless. Exercises the B.12.1.3 position loops with a precinct index that actually varies and a layer loop nested inside it -- the packet sequence the single-precinct prog-* fixtures never produce.",
+      "hand_built": false,
+      "command": "opj_compress -i src_gray_64x48.pgm -p CPRL -c [16,16],[16,16],[16,16] -r 20,10,1 -o prog-cprl-precincts-layers.jp2",
+      "references": [
+        "prog-cprl-precincts-layers.ref_0.pgx"
+      ],
+      "toleranceClass": "bit-exact",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": false,
+            "location": null
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          8
+        ],
+        "componentsSigned": [
+          false
+        ],
+        "componentsXRsiz": [
+          1
+        ],
+        "componentsYRsiz": [
+          1
+        ],
+        "cblkStyle": 0,
+        "transform": "5-3",
+        "ppxAtR0": 1,
+        "ppyAtR0": 1,
+        "precinctSizes": [
+          [
+            1,
+            1
+          ],
+          [
+            2,
+            2
+          ],
+          [
+            3,
+            3
+          ],
+          [
+            4,
+            4
+          ],
+          [
+            4,
+            4
+          ],
+          [
+            4,
+            4
+          ]
+        ],
+        "sqcdStyle": 0,
+        "numLayers": 3,
+        "progressionOrder": 4,
+        "mct": 0
+      },
+      "sha256": "02fa8d635c377dc97255ed7202b7e749ac0ff6e0f1018e72f0d0efeb7563afc7",
+      "referencesSha256": {
+        "prog-cprl-precincts-layers.ref_0.pgx": "81126cc9e65a90455c7418cc1d623f3f504e72e852a763dee59db0ce3100c929"
+      }
+    },
+    {
+      "file": "rgn-refusal.j2k",
+      "description": "RGN (max-shift ROI, -ROI c=0,U=5) present in the main header -- refused (PLUME3703). No PGX reference (refusal fixture).",
+      "hand_built": false,
+      "command": "opj_compress -i src_gray_64x48.pgm -ROI c=0,U=5 -o rgn-refusal.j2k",
+      "references": [],
+      "toleranceClass": "refusal:PLUME3703",
+      "assert": {
+        "sotCount": 1,
+        "markers": {
+          "POC": false,
+          "RGN": true,
+          "PPM": false,
+          "PPT": false,
+          "PLT": {
+            "present": false,
+            "location": null
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "componentsPrecision": [
+          8
+        ],
+        "componentsSigned": [
+          false
+        ],
+        "componentsXRsiz": [
+          1
+        ],
+        "componentsYRsiz": [
+          1
+        ],
+        "cblkStyle": 0,
+        "transform": "5-3",
+        "ppxAtR0": 15,
+        "ppyAtR0": 15,
+        "precinctSizes": [],
+        "sqcdStyle": 0,
+        "numLayers": 1,
+        "progressionOrder": 0,
+        "mct": 0
+      },
+      "sha256": "b0a3ed857e1a77c7698343db2c5b853ef8a1ecc0bfb48c6f87a8ceb45abe66c5",
+      "referencesSha256": {}
+    },
+    {
+      "file": "truncated.j2k",
+      "description": "tiles-3x2-partial.j2k truncated via head -c to exactly the end of tile 0's tile-part (offset computed from that fixture's own SOT/Psot walk, not a fixed byte count) -- one complete tile, five missing, no EOC. opj_decompress requires -allow-partial to decode this at all (verified: without it, exit 1, 'Stream too short', no output; with it, exit 0, tile 1/6 decoded). Not oracle-compared (no honest tolerance for a heavily truncated decode); PLUME3701 and the complete-tiles-bit-exact self-consistency fact are asserted by JpxOracleTests in C#, not by this generator.",
+      "hand_built": false,
+      "command": "head -c 2318 tiles-3x2-partial.j2k > truncated.j2k",
+      "references": [],
+      "toleranceClass": "not-compared:PLUME3701",
+      "assert": {
+        "sotCount": 1,
+        "truncatedAfterTileIndex": 0,
+        "originalSotCount": 6
+      },
+      "sha256": "cbc34a0f0b73cc447e4c956517de477b799062aee8b9f95ebd547ba8ccefd27b",
+      "referencesSha256": {}
+    },
+    {
+      "file": "pclr-cmap.jp2",
+      "description": "1-component 8-bit codestream (5/3, lossless) hand-wrapped with a 256-entry RGB pclr + cmap (component 0 -> palette columns 0,1,2). opj_decompress expands the palette itself (verified: 3 output planes), so a normal 3-component PGX reference exists; the palette lookup is an exact integer mapping so this stays bit-exact.",
+      "hand_built": true,
+      "construction": "jp2_ihdr(48,64,1,7) + jp2_pclr(256 deterministic RGB entries) + jp2_cmap(3) + jp2_colr_enum(16), wrapping a normal lossless 1-component codestream.",
+      "references": [
+        "pclr-cmap.ref_0.pgx",
+        "pclr-cmap.ref_1.pgx",
+        "pclr-cmap.ref_2.pgx"
+      ],
+      "toleranceClass": "bit-exact",
+      "assert": {
+        "pclrEntryCount": 256,
+        "ihdrComponentCount": 1,
+        "hasResBox": false
+      },
+      "sha256": "ab220af37d84fd55dc41ce78f969ffd6279ada83cc94f56337f8ce056007fe19",
+      "referencesSha256": {
+        "pclr-cmap.ref_0.pgx": "81126cc9e65a90455c7418cc1d623f3f504e72e852a763dee59db0ce3100c929",
+        "pclr-cmap.ref_1.pgx": "43b519f4ea6e76660bc2f6e9a896f3fa1ce3dffd157a9f6810ea161d1c090c07",
+        "pclr-cmap.ref_2.pgx": "60cfb8611d9de33d290834b058defa8867d439a8bfc472d9a7684361caf31717"
+      }
+    },
+    {
+      "file": "sycc-enumcs18.jp2",
+      "description": "An RGB source pre-converted (by this generator, ITU-R BT.601 / JFIF full-range formula) to YCbCr, encoded with -mct 0 (core MCT disabled, so the codestream literally carries YCbCr numbers), then colr EnumCS patched 16 -> 18 (sYCC). opj_decompress applies its own sycc444_to_rgb on decode (measured: output pixel (0,1,193) vs source RGB (0,0,194) at (0,0) -- an integer approximation, not exact), so this is tolerance-a.",
+      "hand_built": true,
+      "construction": "opj_compress -i ycc.ppm -mct 0 -r 1 -o sycc-base.jp2, then the colr box's EnumCS field patched from 16 to 18 in place (no length change).",
+      "references": [
+        "sycc-enumcs18.ref_0.pgx",
+        "sycc-enumcs18.ref_1.pgx",
+        "sycc-enumcs18.ref_2.pgx"
+      ],
+      "toleranceClass": "tolerance-a",
+      "assert": {
+        "colorEnumCS": 18,
+        "mct": 0
+      },
+      "sha256": "4ff268bac2cc2488e6564ac239bd3bb272e79c90ca7c26bbefde0ad824d6cca9",
+      "referencesSha256": {
+        "sycc-enumcs18.ref_0.pgx": "18963f49fd68357b5107c177994a370b1b81d3d941975e904a0bbffe5a59edb4",
+        "sycc-enumcs18.ref_1.pgx": "8dcb5f4ff11442949d98d281cb3aa5aebb3597e875fa9bd39a3b9ff2c2cb7e23",
+        "sycc-enumcs18.ref_2.pgx": "52164c2c378ac0fbbb29a1a93157a04f352ba1517e7c913313d6be2f315e64f0"
+      }
+    },
+    {
+      "file": "premultiplied-alpha.jp2",
+      "description": "alpha-cdef.jp2 with its alpha channel's cdef Typ patched from 1 (unassociated opacity) to 2 (premultiplied opacity) -- pixel planes are byte-identical to alpha-cdef.jp2.",
+      "hand_built": true,
+      "construction": "alpha-cdef.jp2's cdef box, one channel-definition entry's Typ field patched 1 -> 2 in place.",
+      "references": [
+        "premultiplied-alpha.ref_0.pgx",
+        "premultiplied-alpha.ref_1.pgx",
+        "premultiplied-alpha.ref_2.pgx",
+        "premultiplied-alpha.ref_3.pgx"
+      ],
+      "toleranceClass": "bit-exact",
+      "assert": {
+        "cdef": [
+          {
+            "Cn": 0,
+            "Typ": 0,
+            "Asoc": 1
+          },
+          {
+            "Cn": 1,
+            "Typ": 0,
+            "Asoc": 2
+          },
+          {
+            "Cn": 2,
+            "Typ": 0,
+            "Asoc": 3
+          },
+          {
+            "Cn": 3,
+            "Typ": 2,
+            "Asoc": 0
+          }
+        ],
+        "ihdrComponentCount": 4
+      },
+      "sha256": "97af0cef877a95007e9426f965b5cf41c5fbbcfa14b02e6d3456d281cdf74974",
+      "referencesSha256": {
+        "premultiplied-alpha.ref_0.pgx": "00b7edbf09e2a81f84e728128b3639910bb8c9c3036fa8143a97eb03a9a83397",
+        "premultiplied-alpha.ref_1.pgx": "c9b85aabdc03bc35b2795b24bcfe4d165ce9f893ebb9b6b7addf0542563b9e3f",
+        "premultiplied-alpha.ref_2.pgx": "efa3e997176978929d664f9356d51d12bc2b26e6ec571cee0d4d92518528264e",
+        "premultiplied-alpha.ref_3.pgx": "36a7227cb3947dcd3e73c8587526668658fc5905e0756886e21c1c964cbf3697"
+      }
+    },
+    {
+      "file": "res-metadata.jp2",
+      "description": "baseline-53.jp2's codestream re-wrapped with a `res `/`resd` box pinning 300 dpi (11811 px/m). opj_compress never emits a `res ` box and opj_decompress's PNG output carries no pHYs / opj_dump prints no resolution, so this DPI has no oracle corroboration -- pinned entirely by construction. Metadata-only: no PGX reference.",
+      "hand_built": true,
+      "construction": "baseline-53.jp2's ihdr+colr boxes copied verbatim into a new jp2h that also carries a hand-built res/resd box (300 dpi); jp2c copied verbatim.",
+      "references": [],
+      "toleranceClass": "metadata-only",
+      "assert": {
+        "hasResBox": true,
+        "ihdrComponentCount": 1
+      },
+      "sha256": "a3f55700f9debc78fec96b96162856a3d1bad043a162ac27c6d952cb3b37e2de",
+      "referencesSha256": {}
+    },
+    {
+      "file": "two-colr.jp2",
+      "description": "Two colr boxes in one jp2h, EnumCS 16 then 18 (genuinely different, unlike the veraPDF t02-fail-a file whose two colr boxes are byte-identical and discriminate nothing) -- tests the first-recognised-wins rule. Metadata-only: no PGX reference (colr does not affect codestream decode; the point of this fixture is purely which box PlumePDF's JpxColourInfo picks).",
+      "hand_built": true,
+      "construction": "jp2_ihdr(48,64,3,7) + jp2_colr_enum(16) + jp2_colr_enum(18), wrapping a normal lossless 3-component RGB codestream.",
+      "references": [],
+      "toleranceClass": "metadata-only",
+      "assert": {
+        "colorEnumCS": [
+          16,
+          18
+        ],
+        "ihdrComponentCount": 3
+      },
+      "sha256": "3db192e1b89bc2fcf8e524b205eb88c58ae863a4bea688994555dd9b7c5a96ce",
+      "referencesSha256": {}
+    },
+    {
+      "file": "ppm-refusal.j2k",
+      "description": "A syntactically well-formed, empty PPM segment (Zppm=0, Nppm=0) spliced into an otherwise-normal main header, right after COD. opj_compress has no flag to request PPM, so this is hand-built. Refused (PLUME3704); no PGX reference.",
+      "hand_built": true,
+      "construction": "ppm-base.j2k with a hand-built PPM marker segment (FF60, Lppm=7, Zppm=0, Nppm=0) inserted immediately after the COD segment.",
+      "references": [],
+      "toleranceClass": "refusal:PLUME3704",
+      "assert": {
+        "markers": {
+          "POC": false,
+          "RGN": false,
+          "PPM": true,
+          "PPT": false,
+          "PLT": {
+            "present": false,
+            "location": null
+          },
+          "TLM": {
+            "present": false,
+            "location": null
+          },
+          "SOP": false,
+          "EPH": false
+        },
+        "sotCount": 1
+      },
+      "sha256": "28584c4c56e4c6353f74e3bf7fa119321c517fd38fb06c2fd58dc6e871b40a93",
+      "referencesSha256": {}
+    },
+    {
+      "file": "part2-refusal.j2k",
+      "description": "ppm-base.j2k (before PPM insertion) with SIZ's Rsiz field patched to 0x8000 (bit 15 set = Part 2 codestream). Refused (PLUME3702); no PGX reference.",
+      "hand_built": true,
+      "construction": "Rsiz (first 2 bytes of the SIZ segment payload) patched to 0x8000 in place.",
+      "references": [],
+      "toleranceClass": "refusal:PLUME3702",
+      "assert": {
+        "rsizBit15Set": true
+      },
+      "sha256": "37bbb9bfb504c51d359e804fa8c01f10158154d3bdde52abde68e2eb7a168f96",
+      "referencesSha256": {}
+    },
+    {
+      "file": "precision17-refusal.j2k",
+      "description": "ppm-base.j2k with component 0's Ssiz byte patched to 0x10 (precision-1=16 => 17-bit unsigned). Refused (PLUME3705); no PGX reference.",
+      "hand_built": true,
+      "construction": "Ssiz byte for component 0 (SIZ payload offset 36) patched to 0x10 in place.",
+      "references": [],
+      "toleranceClass": "refusal:PLUME3705",
+      "assert": {
+        "componentsPrecision": [
+          17
+        ],
+        "componentsSigned": [
+          false
+        ]
+      },
+      "sha256": "e93bb2006450b3de826928392005b0ff80dd0ee2d3b6ad64c370763fda57e928",
+      "referencesSha256": {}
+    },
+    {
+      "file": "cmyk-enumcs12.jp2",
+      "description": "A 4-component raw codestream (5/3, lossless, no MCT -- RCT/ICT only ever apply to the first 3 components) hand-wrapped with colr EnumCS 12 (CMYK).",
+      "hand_built": true,
+      "construction": "jp2_ihdr(48,64,4,7) + jp2_colr_enum(12), wrapping a normal lossless 4-component codestream (opj_compress's own default colr for a bare 4-component raw input is EnumCS 16, measured; patched to 12 by wrapping with our own colr instead).",
+      "references": [
+        "cmyk-enumcs12.ref_0.pgx",
+        "cmyk-enumcs12.ref_1.pgx",
+        "cmyk-enumcs12.ref_2.pgx",
+        "cmyk-enumcs12.ref_3.pgx"
+      ],
+      "referenceSource": "codestream",
+      "toleranceClass": "bit-exact",
+      "assert": {
+        "colorEnumCS": 12,
+        "ihdrComponentCount": 4
+      },
+      "sha256": "e59c5824554d159997467eed975c0c84b156b0605d747886e41a8f013cc772c5",
+      "referencesSha256": {
+        "cmyk-enumcs12.ref_0.pgx": "5e08bb32b9eaa023ca24bf5233ca2679af92e78c661bb8d99ff64cd064dffad2",
+        "cmyk-enumcs12.ref_1.pgx": "82f5c227eee183587662a35829aa967ef77ea7080a68187c6701708316a5fbda",
+        "cmyk-enumcs12.ref_2.pgx": "5582cd31646f4cd689d793e927395f9b32d0da4182b8c5c8dc81716df6771064",
+        "cmyk-enumcs12.ref_3.pgx": "d8e59046362cfde03b4240776184752f9bd80893ba367018820ed436c21f1c7b"
+      }
+    }
+  ]
+}

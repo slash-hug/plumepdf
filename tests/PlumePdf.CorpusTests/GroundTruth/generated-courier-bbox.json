@@ -1,0 +1,29 @@
+{
+  "id": "generated-courier-bbox",
+  "category": "simple-latin",
+  "description": "Self-authored (not sourced from any corpus, not written by PlumePdf's own writer) single-page, single-line, 2-glyph document using Courier (a fixed-pitch Standard-14 font, advance width exactly 0.6 * fontSize per glyph, no AFM lookup needed) so glyph origins are exactly hand-computable rather than approximated. Purpose: precisely exercise letter-origin bbox ground truth (D1's 'selected letter bboxes with tolerance') with a fixture where the expected answer is arithmetic, not an oracle-tool estimate.",
+  "source": { "kind": "generated", "generatorId": "CourierBboxDocument" },
+  "oracle": {
+    "method": "hand-derived: content stream is `BT /F1 24 Tf 20 50 Td (AB) Tj ET` on Courier; glyph origin X = Td-x + (glyph index * 0.6 * fontSize); glyph origin Y = Td-y (both letters share the baseline, no Tj-internal repositioning).",
+    "generatedAt": "2026-08-18",
+    "notes": "tolerancePoints is small (0.75pt) because origin X/Y are exact arithmetic here, not an approximation; letter BBOX HEIGHT (not asserted by this schema's 'origin' fields) is a v1 approximation from font size, which is why this fixture only asserts glyph origin, not a full bounding box."
+  },
+  "pageCount": 1,
+  "mediaBoxPoints": { "width": 200, "height": 100 },
+  "extractPermission": null,
+  "encryptMetadataFalse": false,
+  "knownFailure": { "expected": false },
+  "pages": [
+    {
+      "page": 1,
+      "expectedText": "AB",
+      "firstWord": "AB",
+      "lastWord": "AB",
+      "readingOrder": "not-asserted",
+      "letters": [
+        { "char": "A", "indexInPage": 0, "originXPoints": 20.0, "originYPoints": 50.0, "tolerancePoints": 0.75, "note": "Td origin, first glyph." },
+        { "char": "B", "indexInPage": 1, "originXPoints": 34.4, "originYPoints": 50.0, "tolerancePoints": 0.75, "note": "20 + 1 * 0.6 * 24 = 34.4 (Courier advance width is exactly 600/1000 em)." }
+      ]
+    }
+  ]
+}

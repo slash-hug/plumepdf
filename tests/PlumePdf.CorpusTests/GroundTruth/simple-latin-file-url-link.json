@@ -1,0 +1,25 @@
+{
+  "id": "simple-latin-file-url-link",
+  "category": "simple-latin",
+  "description": "Single unbroken token (a path, no internal spaces) — checks word/line assembly doesn't insert spurious spaces or break the token on punctuation like '/' and '.'.",
+  "source": { "kind": "corpus", "corpus": "pdfjs-subset-0adc2e7c6652", "relativePath": "file_url_link.pdf" },
+  "oracle": {
+    "method": "poppler pdftotext (independent third-party extractor, never PlumePdf)",
+    "generatedAt": "2026-08-18",
+    "notes": "pdftotext file_url_link.pdf -"
+  },
+  "pageCount": 1,
+  "mediaBoxPoints": { "width": 200, "height": 50 },
+  "extractPermission": null,
+  "encryptMetadataFalse": false,
+  "knownFailure": { "expected": false },
+  "pages": [
+    {
+      "page": 1,
+      "expectedText": "path/to/local/file.pdf",
+      "firstWord": "path/to/local/file.pdf",
+      "lastWord": "path/to/local/file.pdf",
+      "readingOrder": "not-asserted"
+    }
+  ]
+}

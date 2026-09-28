@@ -1,0 +1,8 @@
+# gitleaks configuration — `gitleaks detect` over the full clone must exit clean.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "The AotSmoke redaction sentinel: a deliberate fake secret composed into a PDF and proven unrecoverable after Pdf.Redact by the test itself (tests/PlumePdf.AotSmoke/Program.cs). Named to look like a secret on purpose; present in history by design."
+regexes = ['''AotRedactSecret9412''']

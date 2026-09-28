@@ -1,0 +1,6 @@
+﻿Optimized output uses object streams: True
+Linearization dictionary inside the first kilobyte: True
+Optimized reopens with pages: 3
+Linearized reopens with pages: 3
+SaveIncremental after a linearized save records PLUME5019: True
+Strict refusal code: PLUME5019

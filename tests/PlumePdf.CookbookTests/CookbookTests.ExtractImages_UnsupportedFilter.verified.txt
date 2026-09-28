@@ -1,0 +1,2 @@
+No registered filter: IsRawEncoded=True
+With a registered filter: IsRawEncoded=False, bytes=3

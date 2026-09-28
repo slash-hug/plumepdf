@@ -1,0 +1,25 @@
+{
+  "id": "simple-latin-bug878026",
+  "category": "simple-latin",
+  "description": "Trivial single-line document using Times-Roman with MacRoman (not WinAnsi) base encoding — a distinct simple-font base-encoding pick from the other simple-latin fixtures.",
+  "source": { "kind": "corpus", "corpus": "pdfjs-subset-0adc2e7c6652", "relativePath": "bug878026.pdf" },
+  "oracle": {
+    "method": "poppler pdftotext (independent third-party extractor, never PlumePdf)",
+    "generatedAt": "2026-08-18",
+    "notes": "pdftotext bug878026.pdf -; pdffonts confirms Times-Roman / MacRoman encoding."
+  },
+  "pageCount": 1,
+  "mediaBoxPoints": { "width": 200, "height": 50 },
+  "extractPermission": null,
+  "encryptMetadataFalse": false,
+  "knownFailure": { "expected": false },
+  "pages": [
+    {
+      "page": 1,
+      "expectedText": "Bug 878026",
+      "firstWord": "Bug",
+      "lastWord": "878026",
+      "readingOrder": "not-asserted"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema#",
+  "description": "Per-tolerance-class thresholds for JpxOracleTests' per-sample comparison against pinned OpenJPEG 2.5.4 PGX references. Exactly two classes, both a single global pair, no per-fixture entries. Every field is 'larger number = looser' so scripts/check-jpx-tolerance.sh can apply the same generic per-key governance as check-raster-perf-baseline.sh: maxAbsFraction (a hard per-sample ceiling), outlierFraction (the fraction of samples allowed to exceed tightAbsFraction), and tightAbsFraction (the per-sample bound the non-outlier samples must satisfy) -- all expressed as fractions of the component's own full-scale range at native precision.",
+  "classes": {
+    "bit-exact": {
+      "maxAbsFraction": 0.0,
+      "outlierFraction": 0.0,
+      "tightAbsFraction": 0.0
+    },
+    "tolerance-a": {
+      "maxAbsFraction": 0.01568627450980392,
+      "outlierFraction": 0.001,
+      "tightAbsFraction": 0.00784313725490196
+    }
+  }
+}

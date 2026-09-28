@@ -1,0 +1,1 @@
+﻿PLUME8023: PDF/A-2B requires every font to be embedded; 1 Standard-14 font(s) in use embed nothing by design: 'Helvetica' (first used by Text "Bill to: Acme Corp"). Supply a TrueType/OpenType file instead — e.g. Font = PdfFont.FromFile("fonts/NotoSans-Regular.ttf") on each Text — and PlumePDF embeds and subsets it automatically; no silent substitution is ever made.

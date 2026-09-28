@@ -1,0 +1,29 @@
+{
+  "id": "generated-two-column",
+  "category": "two-column",
+  "description": "Self-authored (not sourced from any corpus, not written by PlumePdf's own writer) two-column page. Critically, the CONTENT STREAM writes the right column's three lines before the left column's three lines — the opposite of the expected reading order — so this fixture only passes if the reading-order heuristic actually reasons about column geometry rather than falling back to raw content-stream/paint order. Expected reading order ('top-to-bottom-columns-left-to-right'): all of the left column, top to bottom, then all of the right column, top to bottom.",
+  "source": { "kind": "generated", "generatorId": "TwoColumnDocument" },
+  "oracle": {
+    "method": "hand-derived from the known content-stream operators (see generator): each column is 3 lines of 12pt Helvetica, left column text-origin x=20, right column x=210, first line y=150 then Td-relative (0,-20) per subsequent line.",
+    "generatedAt": "2026-08-18",
+    "notes": "indexInPage for the two anchor letters below is computed from the exact character length of the left column's text (\"Left column line one.\" = 21 chars, \"Left column line two.\" = 21 chars, \"Left column line three.\" = 23 chars; total 65), confirming the right column's first letter is expected to sort AFTER the entire left column, not interleaved by y-coordinate."
+  },
+  "pageCount": 1,
+  "mediaBoxPoints": { "width": 400, "height": 200 },
+  "extractPermission": null,
+  "encryptMetadataFalse": false,
+  "knownFailure": { "expected": false },
+  "pages": [
+    {
+      "page": 1,
+      "expectedText": "Left column line one.\nLeft column line two.\nLeft column line three.\nRight column line one.\nRight column line two.\nRight column line three.",
+      "firstWord": "Left",
+      "lastWord": "three.",
+      "readingOrder": "top-to-bottom-columns-left-to-right",
+      "letters": [
+        { "char": "L", "indexInPage": 0, "originXPoints": 20.0, "originYPoints": 150.0, "tolerancePoints": 1.0, "note": "First letter overall: start of left column, line 1." },
+        { "char": "R", "indexInPage": 65, "originXPoints": 210.0, "originYPoints": 150.0, "tolerancePoints": 1.0, "note": "First letter of the right column's first line — must sort after all 65 left-column letters despite being painted first in the content stream." }
+      ]
+    }
+  ]
+}

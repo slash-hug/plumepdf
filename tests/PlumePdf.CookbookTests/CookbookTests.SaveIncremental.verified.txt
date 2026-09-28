@@ -1,0 +1,2 @@
+﻿Output begins with the original revision: True
+Pages after incremental update: 2
