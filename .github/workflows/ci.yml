@@ -389,6 +389,9 @@ jobs:
           PLUMEPDF_REQUIRE_DJPEG: "1"
           PLUMEPDF_REQUIRE_PNGTOPAM: "1"
           PLUMEPDF_REQUIRE_LIBTIFF: "1"
+          # The qpdf --check gates (QpdfOracle): qpdf is installed above, so an
+          # absent-tool self-skip here fails instead of passing vacuously.
+          PLUMEPDF_REQUIRE_QPDF: "1"
         run: dotnet test PlumePdf.sln -c Release --no-build
 
   # SignedCms.ComputeSignature (used by FakeTimestampAuthority/test
