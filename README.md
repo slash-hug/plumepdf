@@ -1,6 +1,18 @@
-# PlumePDF
+<p align="center">
+  <img src="brand/plumepdf-icon.svg" width="128" height="128" alt="PlumePDF logo — a teal quill feather with an amber nib">
+</p>
 
-**A fully-featured, high-performance, agent-forward PDF library for .NET — Apache 2.0, no strings.**
+<h1 align="center">PlumePDF</h1>
+
+<p align="center">
+  <strong>A fully-featured, high-performance, agent-forward PDF library for .NET — Apache 2.0, no strings.</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/slash-hug/plumepdf/actions/workflows/ci.yml"><img src="https://github.com/slash-hug/plumepdf/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="https://www.nuget.org/packages/PlumePdf"><img src="https://img.shields.io/nuget/vpre/PlumePdf?label=nuget" alt="NuGet"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License: Apache-2.0"></a>
+</p>
 
 Existing options force a choice: pay for a commercial SDK, accept AGPL (iText7), or live with partial coverage from permissive libraries. PlumePDF closes that gap — the "trust tier" (signatures, redaction, PDF/A, forms) included, under a license you can actually use at work.
 
