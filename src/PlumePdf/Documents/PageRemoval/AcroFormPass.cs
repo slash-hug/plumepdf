@@ -7,8 +7,8 @@ namespace PlumePdf.Documents.PageRemoval;
 /// removed from its parent or from /AcroForm /Fields, value included, recursively upward; radio
 /// and checkbox /Opt entries stay aligned with /Kids and a /V naming a removed widget's
 /// appearance state becomes /Off; /CO drops removed fields; /XFA is dropped when anything was
-/// removed; removed fields (and their indirect /V and /RV) are excluded, and /Perms /DocMDP is
-/// dropped when its signature was.
+/// removed; removed fields (and their indirect /V and /RV) are excluded; a /Perms entry is dropped
+/// when its signature was, and /SigFlags when no signature field survives.
 /// </summary>
 /// <remarks>
 /// Every change is a copy: a changed field becomes a replacement value for its own object
@@ -26,7 +26,7 @@ internal static class AcroFormPass
         if (context.Catalog is not { } catalog || !catalog.TryGetValue(PdfName.AcroForm, out var acroFormValue)
             || FormObjects.Resolve(context.Objects, acroFormValue) is not PdfDictionary acroForm)
         {
-            DropDocMdp(context);
+            DropExcludedPermissions(context);
             return;
         }
 
@@ -68,6 +68,13 @@ internal static class AcroFormPass
             context.Counts.XfaForms = 1;
         }
 
+        // /SigFlags says the form has signatures; once the last one is gone it would be wrong.
+        if (acroForm.ContainsKey(SigFlagsName) && !walk.KeptSignature && RemovedASignature(context))
+        {
+            form ??= FormObjects.Copy(acroForm);
+            form.Remove(SigFlagsName);
+        }
+
         if (form is not null)
         {
             if (acroFormValue is PdfReference acroFormReference)
@@ -82,23 +89,34 @@ internal static class AcroFormPass
             }
         }
 
-        DropDocMdp(context);
+        DropExcludedPermissions(context);
     }
 
-    // /Perms /DocMDP names the certifying signature dictionary; once that is excluded the entry
+    // /Perms entries (/DocMDP, /UR3) name signature dictionaries; once one is excluded its entry
     // would be written as null, so it is dropped (and an emptied /Perms with it).
-    private static void DropDocMdp(SaveCleanupContext context)
+    private static void DropExcludedPermissions(SaveCleanupContext context)
     {
         if (context.Catalog is not { } catalog || !catalog.TryGetValue(PdfName.Perms, out var permsValue)
-            || FormObjects.Resolve(context.Objects, permsValue) is not PdfDictionary perms
-            || !perms.TryGetValue(PdfName.DocMDP, out var docMdp) || docMdp is not PdfReference docMdpReference
-            || !context.Excluded.Contains(docMdpReference.Target.Number))
+            || FormObjects.Resolve(context.Objects, permsValue) is not PdfDictionary perms)
+        {
+            return;
+        }
+
+        var excludedKeys = perms
+            .Where(entry => entry.Value is PdfReference reference && context.Excluded.Contains(reference.Target.Number))
+            .Select(static entry => entry.Key)
+            .ToList();
+        if (excludedKeys.Count == 0)
         {
             return;
         }
 
         var permsCopy = FormObjects.Copy(perms);
-        permsCopy.Remove(PdfName.DocMDP);
+        foreach (var key in excludedKeys)
+        {
+            permsCopy.Remove(key);
+        }
+
         var catalogCopy = FormObjects.Copy(catalog);
         if (permsCopy.Count == 0)
         {
@@ -120,6 +138,17 @@ internal static class AcroFormPass
 
         context.Catalog = catalogCopy;
     }
+
+    private static readonly PdfName SigFlagsName = PdfName.Get("SigFlags");
+
+    // A /Fields entry worth counting as a field: named, typed, a parent of kids, or a widget.
+    private static bool LooksLikeField(PdfDictionary node) =>
+        node.ContainsKey(PdfName.T) || node.ContainsKey(PdfName.FT) || node.ContainsKey(PdfName.Kids)
+        || (node.TryGetValue(PdfName.Subtype, out var subtype) && ReferenceEquals(subtype, PdfName.Get("Widget")));
+
+    private static bool RemovedASignature(SaveCleanupContext context) =>
+        context.RemovedFields.Any(number => context.Objects[new IndirectReference(number, 0)] is PdfDictionary field
+            && field.TryGetValue(PdfName.FT, out var type) && ReferenceEquals(type, PdfName.Sig));
 
     // /XFA is one stream or an array of (name, stream) pairs; every indirect part is dropped.
     private static void ExcludeXfa(SaveCleanupContext context, PdfObject xfa)
@@ -154,6 +183,9 @@ internal static class AcroFormPass
 
         public bool FieldsRemoved { get; private set; }
 
+        /// <summary>Whether a signature field survives the rewrite.</summary>
+        public bool KeptSignature { get; private set; }
+
         // Rewrites one /Fields or /Kids array: excluded entries leave it (as do dangling ones),
         // kept fields are rewritten (as replacements) and a field whose every kid went is removed
         // too. Returns the kept entries, whether any entry left, and whether any left because it
@@ -183,7 +215,7 @@ internal static class AcroFormPass
                 {
                     dropped++;
                     removed++;
-                    if (node is not null && (topLevel || node.ContainsKey(PdfName.T)))
+                    if (node is not null && (topLevel ? LooksLikeField(node) : node.ContainsKey(PdfName.T)))
                     {
                         CountRemovedSubtree(number, node, depth);
                     }
@@ -356,7 +388,14 @@ internal static class AcroFormPass
             }
         }
 
-        private void RecordKeptValues(PdfDictionary node) => _keptValues.UnionWith(ValueReferences(node));
+        private void RecordKeptValues(PdfDictionary node)
+        {
+            _keptValues.UnionWith(ValueReferences(node));
+            if (node.TryGetValue(PdfName.FT, out var type) && ReferenceEquals(type, PdfName.Sig))
+            {
+                KeptSignature = true;
+            }
+        }
 
         // The removed set's rule for the fields this pass removed: an indirect /V or /RV goes
         // with its field unless a surviving field shares it.

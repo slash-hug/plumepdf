@@ -71,7 +71,7 @@ public sealed class PageCollection : IReadOnlyList<PdfPage>
     /// <see cref="PdfDocument.Save"/> also tidies what pointed at a removed page, in the saved file:
     /// bookmarks to a removed page are deleted (their children move up); links on kept pages, the
     /// open action and named destinations that target one are removed; kept fields lose the widgets
-    /// that were on removed pages (radio options stay aligned, and a value only a removed widget
+    /// that were on removed pages (radio options stay aligned with their widgets, and a value only a removed widget
     /// carried becomes <c>/Off</c>), and the form's XFA data is dropped when a field is removed; a
     /// tagged-PDF structure element whose every content item was on a removed page is pruned, as is
     /// one left with no content, while the structure tree itself stays. Emptied bookmark and

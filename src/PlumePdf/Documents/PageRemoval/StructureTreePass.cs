@@ -146,9 +146,9 @@ internal static class StructureTreePass
         rootCopy.Set(ParentTreeName, new PdfReference(NumberTreeBuilder.Build(kept, context.Allocate)));
 
         if (root.TryGetValue(ParentTreeNextKeyName, out var next) && next is PdfNumber nextNumber && nextNumber.TryToInt32(out var nextKey)
-            && kept.Count > 0 && kept.Max(static e => e.Key) >= nextKey)
+            && kept.Count > 0 && kept.Max(static e => e.Key) is var highest && highest >= nextKey && highest < int.MaxValue)
         {
-            rootCopy.Set(ParentTreeNextKeyName, PdfNumber.Get(kept.Max(static e => e.Key) + 1));
+            rootCopy.Set(ParentTreeNextKeyName, PdfNumber.Get(highest + 1));
         }
     }
 

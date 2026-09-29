@@ -38,9 +38,11 @@ After `RemoveAt`, `Save` also rewrites (in the saved file only) whatever pointed
 - **Bookmarks** whose destination is a removed page are deleted; their child bookmarks move up to
   take their place.
 - **Form fields** whose widgets were all on removed pages are removed, values included. A field with
-  widgets on both kept and removed pages keeps the kept widgets; radio-button options stay aligned,
+  widgets on both kept and removed pages keeps the kept widgets; radio-button options stay aligned with
+  their widgets,
   and a selected option that only existed on a removed page becomes `/Off`. The form's XFA data is
-  dropped when any field is removed.
+  dropped when any field is removed, and so are signature permissions and the form's signature flag
+  once their signatures are gone.
 - **Links** on kept pages, the **open action** and **named destinations** that target a removed page
   are removed.
 - **Tagged PDF:** a structure element whose every content item (marked content, annotation or object

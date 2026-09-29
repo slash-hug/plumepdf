@@ -50,8 +50,14 @@ internal static class OutlinePass
 
         var reader = new Reader(context, DestinationResolver.ForOriginalNames(context), protectedNumbers, rootReference.Target.Number);
         var items = reader.ReadChain(root, depth: 0);
-        if (items is null || !reader.AnyDeleted)
+        if (items is null)
         {
+            return;
+        }
+
+        if (!reader.AnyDeleted)
+        {
+            TidyReferences(context, items);
             return;
         }
 
@@ -88,6 +94,92 @@ internal static class OutlinePass
 
         Rewrite(context, rootReference.Target, root, parent: null, previous: null, next: null, kept, visible);
         Link(context, rootReference.Target, kept);
+        TidyReferences(context, kept);
+    }
+
+    private static readonly PdfName SeName = PdfName.Get("SE");
+    private static readonly PdfName ActionName = PdfName.Get("A");
+    private static readonly PdfName ActionTypeName = PdfName.Get("S");
+    private static readonly PdfName FieldsName = PdfName.Get("Fields");
+    private static readonly PdfName[] FormActions = [PdfName.Get("SubmitForm"), PdfName.Get("ResetForm")];
+
+    // A surviving bookmark can still name something the clean-up left out: a structure element
+    // (/SE) pruned from the structure tree, or form fields a submit/reset action lists. Those
+    // entries are dropped rather than written as null.
+    private static void TidyReferences(SaveCleanupContext context, List<Item> items)
+    {
+        foreach (var item in items)
+        {
+            if (item.Deleted)
+            {
+                continue;
+            }
+
+            var node = context.Replacements.TryGetValue(item.Reference.Number, out var replaced) && replaced is PdfDictionary replacedNode
+                ? replacedNode
+                : item.Dictionary;
+            PdfDictionary? copy = null;
+
+            if (node.TryGetValue(SeName, out var se) && se is PdfReference seReference && context.Excluded.Contains(seReference.Target.Number))
+            {
+                copy = CopyOf(node);
+                copy.Remove(SeName);
+            }
+
+            if (node.TryGetValue(ActionName, out var action))
+            {
+                if (action is PdfReference actionReference)
+                {
+                    if (!context.Excluded.Contains(actionReference.Target.Number)
+                        && TidyFormAction(context, context.Objects[actionReference.Target]) is { } tidiedIndirect)
+                    {
+                        context.Replacements[actionReference.Target.Number] = tidiedIndirect;
+                    }
+                }
+                else if (TidyFormAction(context, action) is { } tidied)
+                {
+                    copy ??= CopyOf(node);
+                    copy.Set(ActionName, tidied);
+                }
+            }
+
+            if (copy is not null)
+            {
+                context.Replacements[item.Reference.Number] = copy;
+            }
+
+            TidyReferences(context, item.Kept);
+        }
+    }
+
+    // A copy of a submit- or reset-form action without the excluded fields it lists, or null when
+    // it lists none (or is not such an action). An action left listing no field is kept with an
+    // empty /Fields only when it had the exclude flag clear; that edge is left to the reader.
+    private static PdfDictionary? TidyFormAction(SaveCleanupContext context, PdfObject action)
+    {
+        if (action is not PdfDictionary dictionary || !dictionary.TryGetValue(ActionTypeName, out var type)
+            || !FormActions.Any(name => ReferenceEquals(name, type))
+            || !dictionary.TryGetValue(FieldsName, out var fields)
+            || DestinationResolver.Resolve(context.Objects, fields) is not PdfArray fieldArray
+            || !fieldArray.Any(entry => entry is PdfReference reference && context.Excluded.Contains(reference.Target.Number)))
+        {
+            return null;
+        }
+
+        var copy = CopyOf(dictionary);
+        copy.Set(FieldsName, new PdfArray(fieldArray.Where(entry => entry is not PdfReference reference || !context.Excluded.Contains(reference.Target.Number))));
+        return copy;
+    }
+
+    private static PdfDictionary CopyOf(PdfDictionary node)
+    {
+        var copy = new PdfDictionary();
+        foreach (var (key, value) in node)
+        {
+            copy.Set(key, value);
+        }
+
+        return copy;
     }
 
     // The surviving items in place of `items`: a deleted item is replaced by its own survivors.
