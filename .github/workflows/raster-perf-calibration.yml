@@ -1,24 +1,14 @@
-name: Raster perf calibration (image-XObject re-baseline)
+name: Raster perf calibration
 
-# RasterizeImageHeavyPage measures a page whose six images don't paint until
-# Documents.ImageXObjectResolver is wired up — the largest legitimate throughput shift
-# benchmarks/perf-baselines/raster-baselines.json will ever see for that benchmark. Updating
-# that benchmark's baselineMs and flipping its "calibrated" flag to true requires a PROPER
-# multi-run BenchmarkDotNet statistical calibration on the linux-CI runner platform — not
-# another single-CI-observation number (the existing baseline file flagged the method as
-# provisional) and never a locally-fabricated one.
-#
-# This is the calibration MECHANISM, not a per-commit gate: a full statistical BenchmarkDotNet
-# run stays manual/on-demand for every benchmark suite in this repo (the existing
-# raster-perf-gate job's own `--job short` fast run stays exactly as it is, unchanged, as the
-# per-commit regression gate). Trigger this manually from the Actions tab (or
-# `gh workflow run raster-perf-calibration.yml`) once the image-XObject resolver work has merged
-# to main, wait for the run summary/uploaded artifact, then hand-copy the measured
-# PlumePdf.Benchmarks.RasterizeBenchmarks.RasterizeImageHeavyPage mean into
-# benchmarks/perf-baselines/raster-baselines.json in a follow-up commit that carries the
-# "PERF-LOOSEN:" token with this run's numbers as the measured justification
-# (scripts/check-raster-perf-baseline.sh's own governance check requires that token whenever a
-# baselineMs value is raised).
+# The calibration MECHANISM for benchmarks/perf-baselines/raster-baselines.json, not a
+# per-commit gate: a full, multi-run statistical BenchmarkDotNet run of RasterizeBenchmarks on the
+# linux CI runner platform (ci.yml's raster-perf-gate job keeps its `--job short` fast run as the
+# per-commit regression gate). Trigger it from the Actions tab (or
+# `gh workflow run raster-perf-calibration.yml`) after any deliberate performance change, then
+# set each benchmark's baselineMs to the printed mean and size its toleranceFraction so the limit
+# clears the slowest recent per-commit raster-perf-gate reading (see the file's calibrationNote).
+# Raising a baselineMs or toleranceFraction needs a "PERF-LOOSEN:" token in a commit message
+# (scripts/check-raster-perf-baseline.sh); lowering one never does.
 on:
   workflow_dispatch: {}
 
