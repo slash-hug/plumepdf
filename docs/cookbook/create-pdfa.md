@@ -52,7 +52,7 @@ using (var document = manuscript.Render(options))
 using var reopened = PdfDocument.Open("output/invoice-a2b.pdf");
 var result = PdfAValidator.Validate(reopened);
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L746-L781' title='Snippet source file'>snippet source</a> | <a href='#snippet-create-pdfa' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L775-L810' title='Snippet source file'>snippet source</a> | <a href='#snippet-create-pdfa' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Expected output (backing test `CookbookTests.CreatePdfA`):
@@ -98,7 +98,7 @@ catch (PlumePdfException ex)
     report.AppendLine($"{ex.Code}: {ex.Message}");
 }
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L795-L811' title='Snippet source file'>snippet source</a> | <a href='#snippet-create-pdfa-standard14-refusal' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L824-L840' title='Snippet source file'>snippet source</a> | <a href='#snippet-create-pdfa-standard14-refusal' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Expected output (backing test `CookbookTests.CreatePdfA_Standard14Refusal`):

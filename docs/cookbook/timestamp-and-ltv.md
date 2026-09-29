@@ -27,7 +27,7 @@ var catalog = withLtv.Objects.Trailer[PdfName.Root] is PdfReference rootRef ? wi
 report.AppendLine($"HasTimestamp: {result.HasTimestamp}");
 report.AppendLine($"Has /DSS (LTV material embedded): {catalog?.ContainsKey(PdfName.DSS) == true}");
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L977-L999' title='Snippet source file'>snippet source</a> | <a href='#snippet-timestamp-and-ltv' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L1006-L1028' title='Snippet source file'>snippet source</a> | <a href='#snippet-timestamp-and-ltv' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Expected output (backing test `CookbookTests.TimestampAndLtv`):

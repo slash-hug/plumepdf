@@ -16,7 +16,7 @@ private static X509Certificate2 LoadPfx(byte[] pfx) =>
     new(pfx, (string?)null, X509KeyStorageFlags.Exportable);
 #endif
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L1004-L1013' title='Snippet source file'>snippet source</a> | <a href='#snippet-load-pfx' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L1033-L1042' title='Snippet source file'>snippet source</a> | <a href='#snippet-load-pfx' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 <!-- snippet: sign-document -->
@@ -35,7 +35,7 @@ report.AppendLine($"Signatures: {signed.Signatures.Count}");
 report.AppendLine($"Field name: {signed.Signatures[0].FieldName}");
 report.AppendLine($"Reason: {signed.Signatures[0].Reason}");
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L914-L927' title='Snippet source file'>snippet source</a> | <a href='#snippet-sign-document' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L943-L956' title='Snippet source file'>snippet source</a> | <a href='#snippet-sign-document' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Expected output (backing test `CookbookTests.SignDocument`):

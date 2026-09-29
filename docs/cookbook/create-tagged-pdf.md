@@ -48,7 +48,7 @@ if (structure.Root is PdfStructureElement root)
     report.AppendLine($"Structure: {root.Role} → {string.Join(", ", root.Children.OfType<PdfStructureElement>().Select(static c => c.Role))}");
 }
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L307-L340' title='Snippet source file'>snippet source</a> | <a href='#snippet-create-tagged-pdf' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L336-L369' title='Snippet source file'>snippet source</a> | <a href='#snippet-create-tagged-pdf' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Expected output (backing test `CookbookTests.CreateTaggedPdf`):

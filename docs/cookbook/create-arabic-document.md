@@ -65,7 +65,7 @@ using (var document = manuscript.Render())
     document.Save("output/arabic-welcome.pdf");
 }
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L397-L436' title='Snippet source file'>snippet source</a> | <a href='#snippet-create-arabic-document' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L426-L465' title='Snippet source file'>snippet source</a> | <a href='#snippet-create-arabic-document' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Mixing Arabic with digits on one line (`"الإجمالي: 500 دولار"` — "Total: 500 dollars") is the
@@ -121,7 +121,7 @@ against a font you do not fully trust and want a tighter guard, and expect a cod
 var tightBudget = PdfOptions.Default with { MaxShapingLookupApplications = 10_000 };
 using var tightlyBudgeted = manuscript.Render(tightBudget);
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L448-L455' title='Snippet source file'>snippet source</a> | <a href='#snippet-shaping-budget-cap' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L477-L484' title='Snippet source file'>snippet source</a> | <a href='#snippet-shaping-budget-cap' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 ## The AcroForm form-fill limitation

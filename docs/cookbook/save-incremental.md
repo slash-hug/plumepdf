@@ -13,7 +13,7 @@ document.Pages.RemoveAt(0);
 // Prefer it over Save unless you want a rewritten, garbage-collected file.
 document.SaveIncremental("output/incremental.pdf");
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L113-L121' title='Snippet source file'>snippet source</a> | <a href='#snippet-save-incremental' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L142-L150' title='Snippet source file'>snippet source</a> | <a href='#snippet-save-incremental' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 **Caveat:** the `RemoveAt(0)` call above only takes page 1 out of `document.Pages` in memory. Because

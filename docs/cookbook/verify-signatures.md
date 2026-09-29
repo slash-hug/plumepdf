@@ -12,7 +12,7 @@ report.AppendLine($"CryptographicStatus: {result.CryptographicStatus}");
 report.AppendLine($"CoversWholeDocument: {result.CoversWholeDocument}");
 report.AppendLine($"IsValid: {result.IsValid}");
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L950-L957' title='Snippet source file'>snippet source</a> | <a href='#snippet-verify-signatures' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L979-L986' title='Snippet source file'>snippet source</a> | <a href='#snippet-verify-signatures' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Expected output (backing test `CookbookTests.VerifySignature`):

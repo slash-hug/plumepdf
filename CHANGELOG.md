@@ -19,6 +19,15 @@ only by diffing output. Entries land in the same change as the behavior they des
   - **`SaveIncremental` keeps a removed page's bytes, by design.** It appends to the original file, which is how a page is dropped from a signed PDF without invalidating the signature. Use `Save` when the page must not survive, or `Pdf.Redact` for content that must be unrecoverable.
   - **Known limitations:** destinations that name a page by integer index, and `/PageLabels` ranges, are not renumbered after a removal.
 
+  - **The saved file is also tidied**, so nothing in it points at a removed page:
+    - bookmarks to a removed page are deleted, and their children move up;
+    - kept form fields lose the widgets that were on removed pages; radio `/Opt` entries stay aligned, and a `/V` or `/DV` naming a state only removed widgets had becomes `/Off`;
+    - the form's `/XFA` is dropped when a field is removed, and `/Perms /DocMDP` goes when its signature went;
+    - links on kept pages, the open action and named destinations that target a removed page are removed;
+    - tagged-PDF structure elements whose every content item was on a removed page are pruned, as is one left with no content; `/ParentTree` and `/IDTree` are rebuilt, and an emptied structure tree stays (empty) so the document stays tagged;
+    - an emptied outline and emptied named-destination containers are dropped;
+    - `PLUME5021` (new, Info) records in `doc.Diagnostics` what each such `Save` left out, once per save.
+
   Issue #16.
 
 ## [1.0.0] — Unreleased (initial public release)

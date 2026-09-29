@@ -19,7 +19,7 @@ report.AppendLine($"Producer: {info.Producer ?? "(none)"}");
 report.AppendLine($"XMP present: {xmpBytes is not null}");
 report.AppendLine($"Permissions: {source.Permissions}");
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L613-L623' title='Snippet source file'>snippet source</a> | <a href='#snippet-read-metadata' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L642-L652' title='Snippet source file'>snippet source</a> | <a href='#snippet-read-metadata' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Expected output (from the backing test `CookbookTests.ReadMetadata`):

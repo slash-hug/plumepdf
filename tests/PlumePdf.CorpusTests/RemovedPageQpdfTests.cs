@@ -5,23 +5,22 @@ namespace PlumePdf.CorpusTests;
 
 /// <summary>
 /// The independent structural check for <c>doc.Pages.RemoveAt</c> followed by a full-rewrite
-/// save: <c>qpdf --check</c> must accept the output of every non-form removed-page fixture,
+/// save: <c>qpdf --check</c> must accept the output of every removed-page fixture,
 /// both removal sets, in all three layouts. The non-flat page tree with inherited
 /// <c>/Resources</c> and <c>/MediaBox</c> (shape N) is a hard gate in every layout, with and
 /// without a removal: the original <c>/Pages</c> nodes are dropped on save, so the inherited
 /// attributes must already live on the kept pages.
 /// </summary>
 /// <remarks>
-/// Form shapes are left out: a field whose only widget was on a removed page can leave
-/// <c>/Fields [null]</c>, which qpdf reports as a warning (exit 3) even though nothing is
-/// leaked.
+/// Every shape, form shapes included: the save-time clean-up leaves no <c>/Fields</c>,
+/// <c>/Kids</c>, <c>/Annots</c> or structure <c>/K</c> entry pointing at what was left out.
 /// </remarks>
 public class RemovedPageQpdfTests
 {
-    public static TheoryData<string, string, SaveLayout> NonFormMatrix()
+    public static TheoryData<string, string, SaveLayout> ShapeMatrix()
     {
         var data = new TheoryData<string, string, SaveLayout>();
-        foreach (var shape in RemovedPageFixtures.NonFormShapes)
+        foreach (var shape in RemovedPageFixtures.AllShapes)
         {
             foreach (var removal in RemovedPageFixtures.Removals)
             {
@@ -50,7 +49,7 @@ public class RemovedPageQpdfTests
     }
 
     [Theory]
-    [MemberData(nameof(NonFormMatrix))]
+    [MemberData(nameof(ShapeMatrix))]
     public void SaveAfterRemoval_PassesQpdfCheck(string shape, string removal, SaveLayout layout)
     {
         if (!QpdfOracle.AvailableOrFailIfRequired())

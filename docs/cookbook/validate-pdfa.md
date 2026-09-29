@@ -37,7 +37,7 @@ foreach (var notChecked in result.NotCheckedRules)
     report.AppendLine($"NOT CHECKED [{notChecked.RuleId}]");
 }
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L832-L850' title='Snippet source file'>snippet source</a> | <a href='#snippet-validate-pdfa' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L861-L879' title='Snippet source file'>snippet source</a> | <a href='#snippet-validate-pdfa' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Expected output for a conformant candidate (backing test `CookbookTests.ValidatePdfA` — the

@@ -15,7 +15,7 @@ using var filled = PdfDocument.Open("output/form-to-fill.pdf");
 report.AppendLine($"FullName = {filled.Form.Fields["FullName"].Value}");
 report.AppendLine($"Subscribe = {filled.Form.Fields["Subscribe"].Value}");
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L861-L871' title='Snippet source file'>snippet source</a> | <a href='#snippet-fill-form' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L890-L900' title='Snippet source file'>snippet source</a> | <a href='#snippet-fill-form' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Expected output (backing test `CookbookTests.FillForm`):

@@ -41,7 +41,7 @@ report.AppendLine($"{result.MatchCount} match(es); {result.TextOperatorsRemoved}
 
 document.Save("output/contract-redacted.pdf"); // Save only — SaveIncremental refuses (PLUME5016).
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L271-L289' title='Snippet source file'>snippet source</a> | <a href='#snippet-redact' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L300-L318' title='Snippet source file'>snippet source</a> | <a href='#snippet-redact' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 `Pdf.Redact("contract.pdf", "contract-redacted.pdf", targets)` is the one-line path verb over
@@ -63,7 +63,7 @@ var text = reopened.Pages[0].ExtractText().Text;
 report.AppendLine($"'Jane Doe' still extractable: {text.Contains("Jane Doe", StringComparison.Ordinal)}");
 report.AppendLine($"SSN still extractable: {text.Contains("123-45-6789", StringComparison.Ordinal)}");
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L291-L296' title='Snippet source file'>snippet source</a> | <a href='#snippet-redact-verify' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L320-L325' title='Snippet source file'>snippet source</a> | <a href='#snippet-redact-verify' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Expected output (backing test `CookbookTests.Redact` — run it and diff `.received` vs

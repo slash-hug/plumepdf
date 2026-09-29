@@ -27,7 +27,7 @@ using var document = PdfDocument.Compose(page =>
 document.Save("output/invoice.pdf");
 report.AppendLine($"Pages: {document.Pages.Count}");
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L350-L372' title='Snippet source file'>snippet source</a> | <a href='#snippet-create-invoice' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L379-L401' title='Snippet source file'>snippet source</a> | <a href='#snippet-create-invoice' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 To embed and subset a TrueType/OpenType font instead of a Standard-14 font, load it once with `PdfFont.FromFile("fonts/NotoSans-Bold.ttf")` and assign it via `.Text("...").Font(font)` (Compose) or `Text.Font` (`Manuscript`) — unencodable characters throw a coded `PLUME8009` naming the codepoint and font rather than rendering silently-wrong output.

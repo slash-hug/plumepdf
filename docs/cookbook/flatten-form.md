@@ -14,7 +14,7 @@ using var flattened = PdfDocument.Open("output/flattened.pdf");
 report.AppendLine($"Fields after flatten: {flattened.Form.Fields.Count}");
 report.AppendLine($"Pages: {flattened.Pages.Count}");
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L882-L891' title='Snippet source file'>snippet source</a> | <a href='#snippet-flatten-form' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L911-L920' title='Snippet source file'>snippet source</a> | <a href='#snippet-flatten-form' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Expected output (backing test `CookbookTests.FlattenForm`):

@@ -1,0 +1,3 @@
+﻿Save left out what pointed at removed pages: 2 form fields. Reopen the saved file to see the result.
+Pages: 3, form fields: 0
+Open document still has 2 form field(s)

@@ -22,7 +22,7 @@ using (var document = PdfDocument.Open("samples/classic-xref.pdf"))
 // Byte-identical run to run — the basis for snapshot-testing your own PDF output.
 var identical = File.ReadAllBytes("output/run1.pdf").SequenceEqual(File.ReadAllBytes("output/run2.pdf"));
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L138-L153' title='Snippet source file'>snippet source</a> | <a href='#snippet-deterministic-output' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L167-L182' title='Snippet source file'>snippet source</a> | <a href='#snippet-deterministic-output' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Expected output (backing test `CookbookTests.DeterministicOutput`):
