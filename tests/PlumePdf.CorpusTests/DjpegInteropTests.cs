@@ -243,7 +243,10 @@ public class DjpegInteropTests
 
     private static byte[] DecodeWithDjpeg(string jpegPath)
     {
-        var outputPath = jpegPath + ".ref.pnm";
+        // A unique temp path, never beside the fixture: both target frameworks' test processes can
+        // decode the same fixture at the same moment, and one's cleanup would delete the other's
+        // output mid-read.
+        var outputPath = Path.Combine(Path.GetTempPath(), $"plumepdf-djpeg-{Guid.NewGuid():N}.pnm");
         try
         {
             // -nosmooth: matches PlumePDF's own simple nearest-neighbor chroma upsampling

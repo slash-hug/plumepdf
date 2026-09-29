@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using PlumePdf.Filters.Jpx;
+using PlumePdf.Tests.TestSupport;
 using Xunit;
 
 namespace PlumePdf.Tests.Filters.Jpx;
@@ -15,6 +16,7 @@ namespace PlumePdf.Tests.Filters.Jpx;
 /// ceiling pins the memory posture (<see cref="JpxDecodeBudget"/>) so the
 /// <c>double[,]</c>-per-level regression measured during hardening cannot come back silently.
 /// </summary>
+[Collection(TimingSensitiveCollection.Name)]
 public class JpxMalformedInputTests
 {
     /// <summary>Wall-clock ceiling per input. A decoder that is merely slow on a 100-byte header is a decoder with an unbounded loop.</summary>
