@@ -68,6 +68,17 @@ public sealed class PageCollection : IReadOnlyList<PdfPage>
     /// are left out with their values, and so are tagged-PDF structure elements whose content was
     /// all on removed pages. A reference to anything left out is written as <see langword="null"/>.
     /// <para>
+    /// <see cref="PdfDocument.Save"/> also tidies what pointed at a removed page, in the saved file:
+    /// bookmarks to a removed page are deleted (their children move up); links on kept pages, the
+    /// open action and named destinations that target one are removed; kept fields lose the widgets
+    /// that were on removed pages (radio options stay aligned with their widgets, and a value only a removed widget
+    /// carried becomes <c>/Off</c>), and the form's XFA data is dropped when a field is removed; a
+    /// tagged-PDF structure element whose every content item was on a removed page is pruned, as is
+    /// one left with no content, while the structure tree itself stays. Emptied bookmark and
+    /// named-destination containers are dropped. Each such save adds one <c>PLUME5021</c> (Info)
+    /// entry to <see cref="PdfDocument.Diagnostics"/> counting what was left out.
+    /// </para>
+    /// <para>
     /// <see cref="PdfDocument.SaveIncremental"/> appends to the original file, so a removed page's
     /// bytes always remain in it. That is deliberate: it is how a page is dropped from a signed PDF
     /// without invalidating the signature. Use <see cref="PdfDocument.Save"/> when the removed page

@@ -34,7 +34,7 @@ using (var stamped = PdfDocument.Open("output/stamped.pdf"))
     report.AppendLine($"Page 1 carries the stamp: {stamped.Pages[0].ExtractText().Text.Contains("CONFIDENTIAL", StringComparison.Ordinal)}");
 }
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L224-L241' title='Snippet source file'>snippet source</a> | <a href='#snippet-stamp-document' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L253-L270' title='Snippet source file'>snippet source</a> | <a href='#snippet-stamp-document' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Expected output (backing test `CookbookTests.StampDocument`):
@@ -57,7 +57,7 @@ Verb-stamped page 3 carries the stamp: True
 // The one-line verb: open, stamp every page, SaveIncremental to the output path.
 Pdf.Stamp("samples/three-pages.pdf", "output/stamped-verb.pdf", "APPROVED");
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L243-L246' title='Snippet source file'>snippet source</a> | <a href='#snippet-stamp-document-verb' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L272-L275' title='Snippet source file'>snippet source</a> | <a href='#snippet-stamp-document-verb' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 ## Details worth knowing

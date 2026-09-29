@@ -106,6 +106,35 @@ public partial class CookbookTests
     }
 
     [Fact]
+    public Task RemovePagesAndProveIt()
+    {
+        var report = new StringBuilder();
+        using (var merged = Pdf.Merge("samples/simple-form.pdf", "samples/three-pages.pdf"))
+        {
+            merged.Save("output/form-then-pages.pdf");
+        }
+
+        // begin-snippet: remove-pages-prove-it
+        using var document = PdfDocument.Open("output/form-then-pages.pdf");
+        document.Pages.RemoveAt(0); // the page that carries the form's widgets
+        document.Save("output/without-form-page.pdf");
+
+        // Save reports what it left out; the open document itself is unchanged.
+        foreach (var diagnostic in document.Diagnostics.Where(static d => d.Code == "PLUME5021"))
+        {
+            report.AppendLine(diagnostic.Message);
+        }
+
+        // Reopen the saved file to see the result.
+        using var saved = PdfDocument.Open("output/without-form-page.pdf");
+        report.AppendLine($"Pages: {saved.Pages.Count}, form fields: {saved.Form.Fields.Count}");
+        // end-snippet
+
+        report.AppendLine($"Open document still has {document.Form.Fields.Count} form field(s)");
+        return Verifier.Verify(report.ToString());
+    }
+
+    [Fact]
     public Task SaveIncremental()
     {
         var report = new StringBuilder();

@@ -66,7 +66,7 @@ using var document = PdfDocument.Compose(page =>
 document.Save("output/invoice.pdf");
 report.AppendLine($"Pages: {document.Pages.Count}");
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L350-L372' title='Snippet source file'>snippet source</a> | <a href='#snippet-create-invoice' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L379-L401' title='Snippet source file'>snippet source</a> | <a href='#snippet-create-invoice' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 **Extract text** — a flattened "quick door" for the whole document, or positions, words and lines per page:
@@ -89,7 +89,7 @@ report.AppendLine($"Page 1 text: {page1.Text}");
 report.AppendLine($"Page 1 words: {page1.Words.Count}");
 report.AppendLine($"First letter: '{page1.Letters[0].Value}' at ({page1.Letters[0].X:F1}, {page1.Letters[0].Y:F1})");
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L476-L491' title='Snippet source file'>snippet source</a> | <a href='#snippet-extract-text' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L505-L520' title='Snippet source file'>snippet source</a> | <a href='#snippet-extract-text' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 **Render a page to pixels** — an in-house managed rasterizer, no native dependency:

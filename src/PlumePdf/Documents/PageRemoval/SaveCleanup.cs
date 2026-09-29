@@ -21,9 +21,11 @@ internal static class SaveCleanup
 
         AnnotsPass.Apply(context);
         AcroFormPass.Apply(context);
+
+        // Before the outline: bookmarks name structure elements (/SE) the structure pass prunes.
+        StructureTreePass.Apply(context);
         OutlinePass.Apply(context);
         NamedDestinationPass.Apply(context);
         OpenActionPass.Apply(context);
-        StructureTreePass.Apply(context);
     }
 }

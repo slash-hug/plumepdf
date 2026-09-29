@@ -36,7 +36,7 @@ document.Save("output/optimized.pdf", PdfOptions.Default with { Optimize = true 
 // together is a coded refusal (PLUME5018) — pick one per output.
 document.Save("output/linearized.pdf", PdfOptions.Default with { Linearize = true });
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L165-L179' title='Snippet source file'>snippet source</a> | <a href='#snippet-optimize-linearize' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L194-L208' title='Snippet source file'>snippet source</a> | <a href='#snippet-optimize-linearize' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 ## After a linearized save: the de-linearization diagnostic
@@ -70,7 +70,7 @@ catch (PlumePdfException ex)
     refusal = ex; // PLUME5019 — re-run Save with Linearize for a linearized result
 }
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L193-L211' title='Snippet source file'>snippet source</a> | <a href='#snippet-delinearization-diagnostic' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L222-L240' title='Snippet source file'>snippet source</a> | <a href='#snippet-delinearization-diagnostic' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 To keep a result linearized, re-run `Save` with `PdfOptions.Linearize` after making changes —

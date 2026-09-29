@@ -23,7 +23,7 @@ report.AppendLine($"Page 1 text: {page1.Text}");
 report.AppendLine($"Page 1 words: {page1.Words.Count}");
 report.AppendLine($"First letter: '{page1.Letters[0].Value}' at ({page1.Letters[0].X:F1}, {page1.Letters[0].Y:F1})");
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L476-L491' title='Snippet source file'>snippet source</a> | <a href='#snippet-extract-text' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L505-L520' title='Snippet source file'>snippet source</a> | <a href='#snippet-extract-text' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Expected output (from the backing test `CookbookTests.ExtractText`):
@@ -58,7 +58,7 @@ ExtractedText page1 = source.Pages[0].ExtractText();
 
 var emptyResultIsSuccess = page1.Text.Length == 0 && page1.Letters.Count == 0 && page1.Diagnostics.Count == 0;
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L511-L520' title='Snippet source file'>snippet source</a> | <a href='#snippet-extract-text-scanned' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L540-L549' title='Snippet source file'>snippet source</a> | <a href='#snippet-extract-text-scanned' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Expected output (from the backing test `CookbookTests.ExtractText_ImageOnlyPage`):
