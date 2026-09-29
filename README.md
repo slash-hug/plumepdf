@@ -33,7 +33,7 @@ Existing options force a choice: pay for a commercial SDK, accept AGPL (iText7),
 dotnet add package PlumePdf --prerelease
 ```
 
-The `--prerelease` flag is needed until 1.0.0 ships. Targets .NET 8+, a single assembly with one runtime dependency (`System.Security.Cryptography.Pkcs`), and NativeAOT-safe — no reflection anywhere. The package also carries a build-time Roslyn analyzer (see [Using PlumePDF with AI coding agents](#using-plumepdf-with-ai-coding-agents)).
+The `--prerelease` flag is needed until 1.0.0 ships. Targets .NET 8 and .NET 10, a single assembly with one runtime dependency (`System.Security.Cryptography.Pkcs`), and NativeAOT-safe — no reflection anywhere. The package also carries a build-time Roslyn analyzer (see [Using PlumePDF with AI coding agents](#using-plumepdf-with-ai-coding-agents)).
 
 ## Quick start
 
@@ -144,7 +144,7 @@ Agents working *on* this repository (rather than with the library) start at [`AG
 ## Contributing
 
 ```bash
-dotnet build PlumePdf.sln
+dotnet build PlumePdf.sln -m:1
 dotnet test PlumePdf.sln
 dotnet format PlumePdf.sln --verify-no-changes
 ```

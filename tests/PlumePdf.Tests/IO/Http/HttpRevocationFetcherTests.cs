@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using PlumePdf.IO.Http;
+using PlumePdf.Tests.Signing;
 using Xunit;
 
 namespace PlumePdf.Tests.IO.Http;
@@ -107,7 +108,7 @@ public class HttpRevocationFetcherTests
         }
 
         using var certificate = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
-        return new X509Certificate2(certificate.Export(X509ContentType.Pfx), (string?)null, X509KeyStorageFlags.Exportable);
+        return TestPfx.Load(certificate.Export(X509ContentType.Pfx));
     }
 
     /// <summary>An <see cref="HttpMessageHandler"/> that fails the test if a request is ever actually sent through it.</summary>

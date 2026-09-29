@@ -12,7 +12,7 @@
 
 ## Checklist
 
-- [ ] `dotnet build PlumePdf.sln` — zero warnings (they're errors)
+- [ ] `dotnet build PlumePdf.sln -m:1` — zero warnings (they're errors)
 - [ ] `dotnet test PlumePdf.sln` from the repo root — green, including architecture tests
 - [ ] `dotnet format PlumePdf.sln --verify-no-changes`
 - [ ] New/changed behavior has tests (bug fixes: a regression test)

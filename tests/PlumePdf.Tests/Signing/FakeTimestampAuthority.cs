@@ -109,7 +109,7 @@ public sealed class FakeTimestampAuthority : ITimestampAuthority, IDisposable
 
         // Re-import from a PFX export so the private key is independent of `key`'s lifetime —
         // see TestCertificateAuthority.Persist's remarks for why this matters.
-        return new X509Certificate2(withKey.Export(X509ContentType.Pfx), (string?)null, X509KeyStorageFlags.Exportable);
+        return TestPfx.Load(withKey.Export(X509ContentType.Pfx));
     }
 
     /// <inheritdoc/>

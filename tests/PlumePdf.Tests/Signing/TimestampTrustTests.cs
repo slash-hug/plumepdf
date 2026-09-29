@@ -42,7 +42,7 @@ public class TimestampTrustTests
         attackerRequest.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension([new Oid("1.3.6.1.5.5.7.3.8")], critical: true)); // RFC 3161 §2.3: id-kp-timeStamping, critical.
         attackerRequest.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(attackerRequest.PublicKey, critical: false));
         using var attackerCertEphemeral = attackerRequest.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
-        using var attackerCert = new X509Certificate2(attackerCertEphemeral.Export(X509ContentType.Pfx), (string?)null, X509KeyStorageFlags.Exportable);
+        using var attackerCert = TestPfx.Load(attackerCertEphemeral.Export(X509ContentType.Pfx));
 
         var messageImprint = SHA256.HashData(signerInfo.GetSignature());
         var tokenInfo = new Rfc3161TimestampTokenInfo(

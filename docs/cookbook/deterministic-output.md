@@ -2,6 +2,8 @@
 
 `PdfOptions.Deterministic` fixes the document ID, timestamps, and object ordering so identical input produces byte-identical output — the basis for snapshot-testing PDFs (including verifying your own usage of PlumePDF).
 
+Byte-identity is guaranteed for the same PlumePDF version on the same .NET runtime. Flate-compressed streams come from the runtime's own zlib, and Microsoft's .NET 9+ builds use zlib-ng, so a `net8.0` app and a `net10.0` app can write different (equally valid) compressed bytes for the same input. Take snapshots on the runtime you compare them on.
+
 <!-- snippet: deterministic-output -->
 <a id='snippet-deterministic-output'></a>
 ```cs

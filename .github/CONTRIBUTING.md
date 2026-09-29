@@ -31,7 +31,7 @@ questions.
 ## Building and testing
 
 ```bash
-dotnet build PlumePdf.sln            # warnings are errors; missing XML docs fail the build
+dotnet build PlumePdf.sln -m:1       # warnings are errors; missing XML docs fail the build
 dotnet test PlumePdf.sln             # unit + architecture + corpus (corpus self-skips without corpora)
 dotnet format PlumePdf.sln --verify-no-changes
 ./scripts/fetch-corpora.sh           # optional: real-world corpus for the corpus lane

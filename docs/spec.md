@@ -39,7 +39,7 @@ Sync CPU-bound core; true-async variants at IO edges. Coded exceptions (`PlumePd
 - **Correctness:** conformance corpus (Arlington model, veraPDF corpus, hand-crafted edge cases) in CI; lenient-by-default reading with `doc.Diagnostics`. Detail: `docs/architecture.md`.
 - **Agent-forward:** the 18-point staged charter — AGENTS.md, CI-verified cookbook, in-repo skill, coded errors, deterministic snapshots, analyzers from P2. Detail: `docs/agent-forward.md`.
 - **IP provenance:** strict clean-room; spec text never committed; benchmark competitors isolated in a separate solution.
-- **Targets:** .NET 8+ only.
+- **Targets:** `net8.0` and `net10.0` — every supported .NET LTS. `net8.0` is dropped in a release after .NET 8's end of support (2026-11-10).
 
 ## Quality gates
 

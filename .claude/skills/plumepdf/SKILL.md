@@ -124,7 +124,7 @@ Reading is lenient by default: damaged files recover (up to a full-file scan) an
 ## Verify a change end-to-end
 
 ```
-dotnet build PlumePdf.sln          # warnings are errors; XML docs enforced
+dotnet build PlumePdf.sln -m:1     # warnings are errors; XML docs enforced
 dotnet test PlumePdf.sln           # unit + architecture + corpus + cookbook
 ```
 

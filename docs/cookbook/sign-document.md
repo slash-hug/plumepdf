@@ -2,10 +2,27 @@
 
 `Pdf.Sign` (or `doc.Signatures.Add`) produces a PAdES B-B (baseline) signature: `PdfSignOptions.Certificate` is the convenience door for a local certificate with a private key (e.g. loaded from a PFX file); `PdfSignOptions.Signer` (an `IPdfSigner`) is the seam for an HSM/KMS-backed key that never leaves its own boundary. `Reason`/`Location`/`ContactInfo` are optional descriptive fields written into the signature dictionary.
 
+The recipe loads its PFX through a small helper: `X509CertificateLoader` on .NET 10 (it replaces the `X509Certificate2` constructors, obsolete since .NET 9), the constructor on .NET 8, which has no loader:
+
+<!-- snippet: load-pfx -->
+<a id='snippet-load-pfx'></a>
+```cs
+// .NET 9+ obsoletes the X509Certificate2 byte-array constructors (SYSLIB0057); net8.0 has no
+// X509CertificateLoader.
+private static X509Certificate2 LoadPfx(byte[] pfx) =>
+#if NET9_0_OR_GREATER
+    X509CertificateLoader.LoadPkcs12(pfx, null, X509KeyStorageFlags.Exportable);
+#else
+    new(pfx, (string?)null, X509KeyStorageFlags.Exportable);
+#endif
+```
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L1004-L1013' title='Snippet source file'>snippet source</a> | <a href='#snippet-load-pfx' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
+
 <!-- snippet: sign-document -->
 <a id='snippet-sign-document'></a>
 ```cs
-using var certificate = new X509Certificate2("output/signing-cert.pfx", (string?)null, X509KeyStorageFlags.Exportable);
+using var certificate = LoadPfx(File.ReadAllBytes("output/signing-cert.pfx"));
 
 Pdf.Sign("output/contract.pdf", "output/contract-signed.pdf", new PdfSignOptions
 {

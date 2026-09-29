@@ -4,7 +4,7 @@ PlumePDF: a fully-featured, high-performance, agent-forward PDF library for .NET
 
 ## Commands
 
-- Build: `dotnet build PlumePdf.sln` (run at repo root; warnings are errors, missing XML docs fail the build)
+- Build: `dotnet build PlumePdf.sln -m:1` (run at repo root; `-m:1` because the library's two target-framework compiles thrash when they run at once — about 2x slower in parallel; the library, its tests and the AOT smoke consumer build for every TFM in `PlumeTargetFrameworks` — `net8.0;net10.0` — set in `Directory.Build.props`, and every other project declares its own `TargetFramework`; warnings are errors, missing XML docs fail the build)
 - Test: `dotnet test PlumePdf.sln` (unit + architecture + corpus projects; corpus tests self-skip without corpora)
 - Format check: `dotnet format PlumePdf.sln --verify-no-changes` — run `dotnet format PlumePdf.sln` to fix
 - Fetch corpora (optional, for the corpus lane): `./scripts/fetch-corpora.sh`
@@ -42,7 +42,7 @@ PlumePDF exists to give .NET teams a PDF library free of AGPL/commercial license
 - Codec and rasterizer fast paths are pinned to their general paths by committed differential tests (byte-for-byte), never by a one-time comparison.
 - Tuned thresholds are governed: loosening one — lowering an SSIM floor (`tests/PlumePdf.CorpusTests/thresholds/ssim.json`), widening the JPX tolerance, or raising a raster perf baseline or its tolerance — needs an `SSIM-LOOSEN:` / `TOL-LOOSEN:` / `PERF-LOOSEN:` justification in a commit message, or CI fails.
 - **Analyzer package:** the `PlumePdf` NuGet package also ships a build-time-only Roslyn analyzer under `analyzers/dotnet/cs/` — one runtime assembly, one analyzer assembly, one package. `PLMP####` ids are a separate space from `PLUME####` codes and are documented the same way, one page per id under `docs/analyzers/`.
-- **Runtime dependencies:** `src/PlumePdf/PlumePdf.csproj` carries exactly one `PackageReference` — `System.Security.Cryptography.Pkcs`, pinned to an exact `8.0.x` patch (Microsoft-owned, zero transitive deps on `net8.0`, AOT-cleared). It is a deliberate exception to the zero-dependency posture, not a precedent; `scripts/check-provenance.sh` forbids BouncyCastle and every competitor package.
+- **Runtime dependencies:** `src/PlumePdf/PlumePdf.csproj` carries exactly one runtime dependency — `System.Security.Cryptography.Pkcs` — referenced once per target framework, each pinned to an exact patch of the Pkcs line matching that runtime (`8.0.1` on `net8.0`, `10.0.x` on `net10.0`), so each has zero transitive dependencies (Microsoft-owned, AOT-cleared). It is a deliberate exception to the zero-dependency posture, not a precedent; `scripts/check-provenance.sh` forbids BouncyCastle and every competitor package.
 - **Status prose:** live docs describe the shipped state — never "waits on" / "awaits" a PR (`scripts/check-doc-drift.sh`). History belongs in `CHANGELOG.md`.
 
 ## Known limitations

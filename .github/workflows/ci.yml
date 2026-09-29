@@ -18,9 +18,9 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
         with:
-          # The library targets net8.0 only; the 10.0.x SDK alone can build a net8.0
-          # TFM via roll-forward but never actually *runs* tests on a net8.0
-          # runtime. Pinning 8.0.x too makes the test lane deterministic.
+          # The library and its tests target net8.0 and net10.0 (PlumeTargetFrameworks in
+          # Directory.Build.props); `dotnet test` runs every test project on both runtimes,
+          # so both must be installed.
           dotnet-version: |
             8.0.x
             10.0.x
@@ -36,8 +36,12 @@ jobs:
           dotnet tool restore
           dotnet mdsnippets
           git diff --exit-code
+      # -m:1 on every build of the solution: the library compiles ~30 MB of generated font-blob
+      # source (~3 GB of compiler memory), and its net8.0 and net10.0 compiles running at once
+      # thrash - measured 2x slower than one after the other on a 16 GB machine, and 17+ minutes on
+      # the 7 GB macOS runner. Tests stay parallel (--no-build, no compiler).
       - name: Build (warnings as errors)
-        run: dotnet build PlumePdf.sln -c Release
+        run: dotnet build PlumePdf.sln -c Release -m:1
       - name: Test
         run: dotnet test PlumePdf.sln -c Release --no-build
 
@@ -57,7 +61,7 @@ jobs:
             8.0.x
             10.0.x
       - name: Build
-        run: dotnet build PlumePdf.sln -c Release
+        run: dotnet build PlumePdf.sln -c Release -m:1
       - name: Open/Save contract tests
         run: dotnet test PlumePdf.sln -c Release --no-build --filter FullyQualifiedName~PlumePdf.Tests.OpenSaveContractTests
 
@@ -354,7 +358,7 @@ jobs:
       - name: Install OpenJPEG oracle
         run: ./scripts/install-jpx-oracle.sh
       - name: Build
-        run: dotnet build PlumePdf.sln -c Release
+        run: dotnet build PlumePdf.sln -c Release -m:1
       # The FULL solution runs here, not just the corpus project: this is the only lane
       # with fetched corpora (fonts included) and the external oracles installed, so the
       # font-gated unit tests and CookbookTests (incl. CreatePdfA's Verify snapshot) only
@@ -406,7 +410,7 @@ jobs:
             8.0.x
             10.0.x
       - name: Build
-        run: dotnet build PlumePdf.sln -c Release
+        run: dotnet build PlumePdf.sln -c Release -m:1
       - name: Signing tests
         run: dotnet test PlumePdf.sln -c Release --no-build --filter FullyQualifiedName~PlumePdf.Tests.Signing
 
@@ -431,10 +435,13 @@ jobs:
       # PublishAot lives in the smoke csproj, NOT as a CLI global property: a global
       # -p:PublishAot=true poisons every project in the graph, including the
       # netstandard2.0 analyzer (NETSDK1207).
-      - name: Publish AOT smoke app
-        run: dotnet publish tests/PlumePdf.AotSmoke -c Release
-      - name: Run AOT smoke app
-        run: ./tests/PlumePdf.AotSmoke/bin/Release/net8.0/linux-x64/publish/PlumePdf.AotSmoke tests/PlumePdf.CorpusTests/Fixtures/classic-xref.pdf corpora/fonts/NotoSans-Regular.ttf
+      # A multi-targeted app needs -f per publish; every shipped TFM is proven.
+      - name: Publish and run AOT smoke app (every target framework)
+        run: |
+          for tfm in net8.0 net10.0; do
+            dotnet publish tests/PlumePdf.AotSmoke -c Release -f "$tfm"
+            "./tests/PlumePdf.AotSmoke/bin/Release/$tfm/linux-x64/publish/PlumePdf.AotSmoke" tests/PlumePdf.CorpusTests/Fixtures/classic-xref.pdf corpora/fonts/NotoSans-Regular.ttf
+          done
 
   benchmarks-build:
     runs-on: ubuntu-latest
@@ -515,6 +522,6 @@ jobs:
             8.0.x
             10.0.x
       - name: Build
-        run: dotnet build PlumePdf.sln -c Release
+        run: dotnet build PlumePdf.sln -c Release -m:1
       - name: Concurrency stress tests
         run: dotnet test PlumePdf.sln -c Release --no-build --filter FullyQualifiedName~PlumePdf.CorpusTests.ConcurrencyStressTests

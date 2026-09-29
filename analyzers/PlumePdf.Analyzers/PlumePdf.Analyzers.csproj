@@ -4,7 +4,7 @@
     <!--
       Analyzers must target netstandard2.0 so they load in any Roslyn host (Visual Studio,
       VS Code/OmniSharp, `dotnet build` on any SDK) regardless of what TFM the consuming
-      project targets — this overrides Directory.Build.props's repo-wide net8.0 default.
+      project targets.
       Packaged into the main PlumePdf nupkg under analyzers/dotnet/cs/ (never published to
       NuGet.org on its own): one runtime assembly + one build-time-only
       analyzer assembly, one package.
