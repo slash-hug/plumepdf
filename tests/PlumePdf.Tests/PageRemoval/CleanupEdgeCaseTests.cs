@@ -63,7 +63,7 @@ public class CleanupEdgeCaseTests
 
     // Linearize is left out here: a linearized file whose bookmark action lists form fields gets
     // an outline hint-table object count qpdf rejects, with or without a page removed — a separate
-    // linearizer defect this test would otherwise report.
+    // linearizer defect (#19) this test would otherwise report.
     [Theory]
     [InlineData(SaveLayout.Save)]
     [InlineData(SaveLayout.Optimize)]
