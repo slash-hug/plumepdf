@@ -36,8 +36,12 @@ jobs:
           dotnet tool restore
           dotnet mdsnippets
           git diff --exit-code
+      # -m:1 on every build of the solution: the library compiles ~30 MB of generated font-blob
+      # source (~3 GB of compiler memory), and its net8.0 and net10.0 compiles running at once
+      # thrash - measured 2x slower than one after the other on a 16 GB machine, and 17+ minutes on
+      # the 7 GB macOS runner. Tests stay parallel (--no-build, no compiler).
       - name: Build (warnings as errors)
-        run: dotnet build PlumePdf.sln -c Release
+        run: dotnet build PlumePdf.sln -c Release -m:1
       - name: Test
         run: dotnet test PlumePdf.sln -c Release --no-build
 
@@ -57,7 +61,7 @@ jobs:
             8.0.x
             10.0.x
       - name: Build
-        run: dotnet build PlumePdf.sln -c Release
+        run: dotnet build PlumePdf.sln -c Release -m:1
       - name: Open/Save contract tests
         run: dotnet test PlumePdf.sln -c Release --no-build --filter FullyQualifiedName~PlumePdf.Tests.OpenSaveContractTests
 
@@ -354,7 +358,7 @@ jobs:
       - name: Install OpenJPEG oracle
         run: ./scripts/install-jpx-oracle.sh
       - name: Build
-        run: dotnet build PlumePdf.sln -c Release
+        run: dotnet build PlumePdf.sln -c Release -m:1
       # The FULL solution runs here, not just the corpus project: this is the only lane
       # with fetched corpora (fonts included) and the external oracles installed, so the
       # font-gated unit tests and CookbookTests (incl. CreatePdfA's Verify snapshot) only
@@ -406,7 +410,7 @@ jobs:
             8.0.x
             10.0.x
       - name: Build
-        run: dotnet build PlumePdf.sln -c Release
+        run: dotnet build PlumePdf.sln -c Release -m:1
       - name: Signing tests
         run: dotnet test PlumePdf.sln -c Release --no-build --filter FullyQualifiedName~PlumePdf.Tests.Signing
 
@@ -518,6 +522,6 @@ jobs:
             8.0.x
             10.0.x
       - name: Build
-        run: dotnet build PlumePdf.sln -c Release
+        run: dotnet build PlumePdf.sln -c Release -m:1
       - name: Concurrency stress tests
         run: dotnet test PlumePdf.sln -c Release --no-build --filter FullyQualifiedName~PlumePdf.CorpusTests.ConcurrencyStressTests

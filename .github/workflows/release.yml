@@ -45,7 +45,7 @@ jobs:
       # GITHUB_ACTIONS=true turns on ContinuousIntegrationBuild (see PlumePdf.csproj), so the
       # packed DLL and PDB carry /_/-normalized source paths.
       - name: Build
-        run: dotnet build PlumePdf.sln -c Release
+        run: dotnet build PlumePdf.sln -c Release -m:1
       - name: Test
         run: dotnet test PlumePdf.sln -c Release --no-build
       - name: Pack

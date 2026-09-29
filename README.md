@@ -144,7 +144,7 @@ Agents working *on* this repository (rather than with the library) start at [`AG
 ## Contributing
 
 ```bash
-dotnet build PlumePdf.sln
+dotnet build PlumePdf.sln -m:1
 dotnet test PlumePdf.sln
 dotnet format PlumePdf.sln --verify-no-changes
 ```

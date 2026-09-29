@@ -4,7 +4,7 @@ PlumePDF: a fully-featured, high-performance, agent-forward PDF library for .NET
 
 ## Commands
 
-- Build: `dotnet build PlumePdf.sln` (run at repo root; the library, its tests and the AOT smoke consumer build for every TFM in `PlumeTargetFrameworks` — `net8.0;net10.0` — set in `Directory.Build.props`, and every other project declares its own `TargetFramework`; warnings are errors, missing XML docs fail the build)
+- Build: `dotnet build PlumePdf.sln -m:1` (run at repo root; `-m:1` because the library's two target-framework compiles thrash when they run at once — about 2x slower in parallel; the library, its tests and the AOT smoke consumer build for every TFM in `PlumeTargetFrameworks` — `net8.0;net10.0` — set in `Directory.Build.props`, and every other project declares its own `TargetFramework`; warnings are errors, missing XML docs fail the build)
 - Test: `dotnet test PlumePdf.sln` (unit + architecture + corpus projects; corpus tests self-skip without corpora)
 - Format check: `dotnet format PlumePdf.sln --verify-no-changes` — run `dotnet format PlumePdf.sln` to fix
 - Fetch corpora (optional, for the corpus lane): `./scripts/fetch-corpora.sh`
