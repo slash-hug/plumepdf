@@ -128,18 +128,23 @@ internal static class RemovedSetBuilder
             walk.Visit(rootKids, inheritedPage: null, depth: 0);
         }
 
-        // Never excluded, whatever a malformed file makes them look like.
+        // Never excluded, whatever a malformed file makes them look like — the catalog, and the
+        // /Info and /AcroForm dictionaries (a malformed /Annots naming one must not null it).
+        // A page-tree node is never really either of the last two: a malformed /Info or
+        // /AcroForm that names a removed page stays excluded, or it would bring the page back.
         if (catalogReference is { } catalogRef)
         {
             excluded.Remove(catalogRef.Number);
         }
 
-        if (objects.Trailer.TryGetValue(PdfName.Info, out var info) && info is PdfReference infoRef)
+        if (objects.Trailer.TryGetValue(PdfName.Info, out var info) && info is PdfReference infoRef
+            && !openTimePageTree.Contains(infoRef.Target.Number))
         {
             excluded.Remove(infoRef.Target.Number);
         }
 
-        if (catalog is not null && catalog.TryGetValue(PdfName.AcroForm, out var acroFormValue) && acroFormValue is PdfReference acroFormRef)
+        if (catalog is not null && catalog.TryGetValue(PdfName.AcroForm, out var acroFormValue) && acroFormValue is PdfReference acroFormRef
+            && !openTimePageTree.Contains(acroFormRef.Target.Number))
         {
             excluded.Remove(acroFormRef.Target.Number);
         }

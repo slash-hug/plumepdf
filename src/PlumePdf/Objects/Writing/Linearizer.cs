@@ -172,7 +172,11 @@ internal static class Linearizer
             {
                 outlineSet.Add(number);
                 outlineOrder.Add(number);
-                Collect(OriginalValue(number), outlineSet, outlineOrder, formHierarchySet);
+                // Everything the outline reaches is its group, form fields a bookmark's action
+                // names included: qpdf's outline hint check counts them, and they are part 9
+                // objects either way, so claiming them here only keeps them contiguous with the
+                // items that reference them.
+                Collect(OriginalValue(number), outlineSet, outlineOrder);
             }
         }
 
@@ -198,6 +202,16 @@ internal static class Linearizer
             firstPageSet.UnionWith(outlineSet);
         }
 
+        // With the outline group in part 6, what a remaining page reaches of it is first-page
+        // content that page shares (it must appear in the page's shared-object list), not a
+        // barrier; form objects outside the outline group still are.
+        var remainingBarriers = pageBarriers;
+        if (outlinesInFirstPage)
+        {
+            remainingBarriers = new HashSet<int>(formHierarchySet);
+            remainingBarriers.ExceptWith(outlineSet);
+        }
+
         // Parts 7/8: each remaining page's closure; an object hit by two or more remaining
         // pages (and not already first-page-owned) is shared. `owner` maps an object to its
         // single owning remaining page, or -1 once it proves shared.
@@ -208,7 +222,7 @@ internal static class Linearizer
         {
             var set = new HashSet<int>();
             var order = new List<int>();
-            Collect(classifyPageCopies[pages[k].Reference.Number], set, order, pageBarriers);
+            Collect(classifyPageCopies[pages[k].Reference.Number], set, order, remainingBarriers);
             remainingOrders[k] = order;
             foreach (var number in order)
             {
@@ -290,6 +304,18 @@ internal static class Linearizer
                     part9Order.Add(number);
                     queue.Enqueue(OriginalValue(number));
                 }
+            }
+        }
+
+        // The form field hierarchy was claimed as a barrier for every page closure, so its objects
+        // reach a part only through the walk above, from the catalog's /AcroForm. When that entry
+        // is malformed (it names a page, say) the walk never gets there; anything the hierarchy
+        // claimed that no part took still belongs in part 9, never nowhere.
+        foreach (var number in formHierarchyOrder)
+        {
+            if (classified.Add(number))
+            {
+                part9Order.Add(number);
             }
         }
 

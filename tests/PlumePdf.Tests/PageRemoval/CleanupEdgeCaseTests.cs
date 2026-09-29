@@ -61,12 +61,8 @@ public class CleanupEdgeCaseTests
         Assert.True(form.ContainsKey(PdfName.Get("SigFlags")));
     }
 
-    // Linearize is left out here: a linearized file whose bookmark action lists form fields gets
-    // an outline hint-table object count qpdf rejects, with or without a page removed — a separate
-    // linearizer defect (#19) this test would otherwise report.
     [Theory]
-    [InlineData(SaveLayout.Save)]
-    [InlineData(SaveLayout.Optimize)]
+    [MemberData(nameof(Layouts))]
     public void SurvivingBookmark_DropsPrunedStructureElementAndRemovedSubmitFields(SaveLayout layout)
     {
         var source = CleanupFixtures.Compose(
