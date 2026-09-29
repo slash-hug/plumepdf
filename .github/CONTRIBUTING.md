@@ -62,7 +62,8 @@ there and only there (the AGPL isolation wall); never add them to `PlumePdf.sln`
 
 ## Releasing
 
-Releases are automatic once a version bump reaches `main`; the merge is the approval.
+Releases are automatic once a version bump reaches `main`; the merge is the approval. `main` only
+changes through a pull request with passing CI, so a merge is the only way a release can start.
 
 1. Open a PR that sets `<Version>` in `src/PlumePdf/PlumePdf.csproj` and turns
    `CHANGELOG.md`'s `## [Unreleased]` entries for it into a dated `## [<version>] — YYYY-MM-DD`
@@ -71,14 +72,20 @@ Releases are automatic once a version bump reaches `main`; the merge is the appr
 2. Merge it. `.github/workflows/release.yml` builds, tests and packs, pushes the package and
    its symbols to nuget.org, then creates the `v<version>` tag and a GitHub Release (a
    prerelease for a version with a `-` suffix) with the packages attached.
-3. After a release, move `PackageValidationBaselineVersion` in `PlumePdf.csproj` forward to it.
-   Every PR's pack step checks the public API against that version; a deliberate break is
-   recorded with `dotnet pack -p:ApiCompatGenerateSuppressionFile=true`, which writes
+3. Once the new version is listed on nuget.org, move `PackageValidationBaselineVersion` in
+   `PlumePdf.csproj` forward to it in a separate PR (not in the bump PR: the baseline package
+   has to exist when the release builds). Every PR's pack step checks the public API against
+   that version; a deliberate break is recorded with
+   `dotnet pack -p:ApiCompatGenerateSuppressionFile=true`, which writes
    `CompatibilitySuppressions.xml` for review.
 
 A published NuGet version can never be replaced, only unlisted, so a bad release is fixed by
-the next patch version. If a release fails halfway, re-run the workflow from the Actions tab:
-it skips a version nuget.org already has and a tag that already exists.
+the next patch version. If a release fails halfway, open that run in the Actions tab and use
+**Re-run failed jobs**: it finishes the same commit, and the NuGet push skips a version that is
+already there. Don't start a new run for it — the workflow refuses to release a version that
+nuget.org has but that was never tagged, because a new run would tag a different commit. If the
+tag was created by hand, create the GitHub Release by hand too; the workflow skips tagged
+versions.
 
 ## Bug reports and feature requests
 
