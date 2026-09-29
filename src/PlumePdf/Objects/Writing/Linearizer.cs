@@ -172,7 +172,11 @@ internal static class Linearizer
             {
                 outlineSet.Add(number);
                 outlineOrder.Add(number);
-                Collect(OriginalValue(number), outlineSet, outlineOrder, formHierarchySet);
+                // Everything the outline reaches is its group, form fields a bookmark's action
+                // names included: qpdf's outline hint check counts them, and they are part 9
+                // objects either way, so claiming them here only keeps them contiguous with the
+                // items that reference them.
+                Collect(OriginalValue(number), outlineSet, outlineOrder);
             }
         }
 
@@ -290,6 +294,18 @@ internal static class Linearizer
                     part9Order.Add(number);
                     queue.Enqueue(OriginalValue(number));
                 }
+            }
+        }
+
+        // The form field hierarchy was claimed as a barrier for every page closure, so its objects
+        // reach a part only through the walk above, from the catalog's /AcroForm. When that entry
+        // is malformed (it names a page, say) the walk never gets there; anything the hierarchy
+        // claimed that no part took still belongs in part 9, never nowhere.
+        foreach (var number in formHierarchyOrder)
+        {
+            if (classified.Add(number))
+            {
+                part9Order.Add(number);
             }
         }
 
