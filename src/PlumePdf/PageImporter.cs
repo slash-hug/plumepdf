@@ -1,4 +1,5 @@
 using PlumePdf.Documents;
+using PlumePdf.Documents.PageRemoval;
 using PlumePdf.Objects;
 
 namespace PlumePdf;
@@ -25,6 +26,15 @@ namespace PlumePdf;
 /// reason. Nesting <em>within</em> a single imported object (arrays inside dictionaries
 /// inside arrays, ...) still recurses — that's already bounded by the depth the parser
 /// itself enforced when the object was first read.
+/// <para>
+/// Pages that are not imported must not come along through anything else that references
+/// them: a link, a pop-up or reply, a widget's <c>/P</c>, a radio group spanning pages. Each
+/// source is prepared exactly as <c>PdfDocument.Save</c> prepares a document whose other pages
+/// were removed: <see cref="RemovedSetBuilder"/> excludes the pages not imported (and what
+/// belonged only to them), and <see cref="SaveCleanup"/> tidies what pointed at them, as
+/// copies. A reference into the excluded set is imported as <c>null</c> and never followed;
+/// an object the clean-up replaced is imported from its replacement.
+/// </para>
 /// </remarks>
 internal static class PageImporter
 {
@@ -36,13 +46,32 @@ internal static class PageImporter
     /// <summary>Composes a new document whose pages are <paramref name="pages"/>, imported in order.</summary>
     public static PdfDocument Compose(IEnumerable<(PdfDocument Source, IndirectReference PageReference, PdfDictionary PageDictionary)> pages)
     {
+        var pageList = pages.ToList();
+        foreach (var (source, _, _) in pageList)
+        {
+            // Composing pages out of an encrypted source would
+            // produce an unencrypted copy of restricted content — the same silent
+            // decrypt-on-save Save/SaveIncremental refuse (PLUME5001/PLUME5002), so the
+            // merge/split path refuses identically rather than downgrading to a warning.
+            if (source.HasEncryptedSource)
+            {
+                throw new PlumePdfException("PLUME6012", "Pdf.Merge/Pdf.Split cannot compose pages from a document opened from an encrypted source (Phase 1 does not support encryption write).");
+            }
+        }
+
+        var diagnostics = new DiagnosticCollection();
+        var preparations = Prepare(pageList);
+        foreach (var preparation in preparations.Values.Where(static p => p.Counts.Any))
+        {
+            diagnostics.Add(new PdfDiagnostic("PLUME5021", DiagnosticSeverity.Info, $"Left out what pointed at pages that were not imported: {preparation.Counts.Describe()}."));
+        }
+
         var merged = new Dictionary<int, PdfObject>();
         var nextNumber = 1;
         var catalogNumber = nextNumber++;
         var pagesNumber = nextNumber++;
         var kidsReferences = new List<IndirectReference>();
         var perSourceMaps = new Dictionary<PdfDocument, Dictionary<int, int>>();
-        var diagnostics = new DiagnosticCollection();
 
         // Work queue for reference-chain discovery (see class remarks): reserving a fresh
         // number for a not-yet-seen original object happens eagerly (so every other
@@ -83,6 +112,9 @@ internal static class PageImporter
         {
             switch (value)
             {
+                case PdfReference reference when preparations[source].Excluded.Contains(reference.Target.Number):
+                    return PdfNull.Instance;
+
                 case PdfReference reference:
                     return new PdfReference(Reserve(source, reference.Target));
 
@@ -144,18 +176,10 @@ internal static class PageImporter
             return newDict;
         }
 
-        foreach (var (source, pageReference, pageDictionary) in pages)
+        foreach (var (source, pageReference, _) in pageList)
         {
-            // Composing pages out of an encrypted source would
-            // produce an unencrypted copy of restricted content — the same silent
-            // decrypt-on-save Save/SaveIncremental refuse (PLUME5001/PLUME5002), so the
-            // merge/split path refuses identically rather than downgrading to a warning.
-            if (source.HasEncryptedSource)
-            {
-                throw new PlumePdfException("PLUME6012", "Pdf.Merge/Pdf.Split cannot compose pages from a document opened from an encrypted source (Phase 1 does not support encryption write).");
-            }
-
-            kidsReferences.Add(Reserve(source, pageReference, pageDictionary));
+            // The tidied copy: /Annots without what the clean-up dropped.
+            kidsReferences.Add(Reserve(source, pageReference, preparations[source].PageCopies[pageReference.Number]));
         }
 
         // Carry /AcroForm through the merge — field-array
@@ -166,7 +190,7 @@ internal static class PageImporter
         // reached during the drain below then just finds the existing map entry (same
         // dedup path pages already share for fonts/images) rather than racing it — no
         // orphaned widgets, no duplicate copies of the same original object.
-        var mergedAcroForm = AcroFormMerger.Merge(pages, ImportValue, Reserve);
+        var mergedAcroForm = AcroFormMerger.Merge(pageList, ImportValue, Reserve, (source, number) => preparations[source].Excluded.Contains(number));
 
         while (pending.Count > 0)
         {
@@ -178,7 +202,9 @@ internal static class PageImporter
                 continue;
             }
 
-            var rawValue = source.Objects[new IndirectReference(originalNumber, 0)];
+            var rawValue = preparations[source].Replacements.TryGetValue(originalNumber, out var replaced)
+                ? replaced
+                : source.Objects[new IndirectReference(originalNumber, 0)];
             if (transform is not null && rawValue is PdfDictionary rawDict)
             {
                 rawValue = transform(rawDict);
@@ -219,4 +245,36 @@ internal static class PageImporter
 
         return PdfDocument.CreateSynthetic(new InMemoryObjectSource(trailer, merged), diagnostics);
     }
+
+    // Per source: what must not come along (the pages not imported and what belonged only to
+    // them) and the clean-up's replacement values, computed once over every page imported
+    // from that source.
+    private static Dictionary<PdfDocument, Preparation> Prepare(List<(PdfDocument Source, IndirectReference PageReference, PdfDictionary PageDictionary)> pages)
+    {
+        var preparations = new Dictionary<PdfDocument, Preparation>();
+        foreach (var group in pages.GroupBy(static p => p.Source))
+        {
+            var source = group.Key;
+            var imported = group
+                .GroupBy(static p => p.PageReference.Number)
+                .Select(static g => (g.First().PageReference, g.First().PageDictionary))
+                .ToList();
+
+            var (excluded, removedPages, removedFields) = RemovedSetBuilder.Build(
+                source.Objects, source.Catalog?.Reference, source.Catalog?.Dictionary, source.OpenTimePageTree, source.OpenTimePages, imported, source.Options, pagesOnly: true);
+            var context = new SaveCleanupContext(source.Objects, source.Catalog?.Reference, source.Catalog?.Dictionary, imported, excluded, removedPages, source.Options);
+            context.RemovedFields.UnionWith(removedFields);
+            SaveCleanup.ComputeForImport(context);
+
+            preparations[source] = new Preparation(
+                context.Excluded,
+                context.Replacements,
+                context.Pages.ToDictionary(static p => p.Reference.Number, static p => p.Dictionary),
+                context.Counts);
+        }
+
+        return preparations;
+    }
+
+    private sealed record Preparation(HashSet<int> Excluded, Dictionary<int, PdfObject> Replacements, Dictionary<int, PdfDictionary> PageCopies, SaveCleanupCounts Counts);
 }

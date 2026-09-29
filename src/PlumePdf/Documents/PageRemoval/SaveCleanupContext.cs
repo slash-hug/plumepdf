@@ -104,6 +104,29 @@ internal sealed class SaveCleanupCounts
     /// <summary>1 when the form's XFA data was dropped.</summary>
     public int XfaForms { get; set; }
 
+    /// <summary>What was removed, by kind, as a short English list ("2 bookmarks, 1 form field").</summary>
+    public string Describe()
+    {
+        var parts = new List<string>();
+        void Add(int count, string singular, string plural)
+        {
+            if (count > 0)
+            {
+                parts.Add($"{count} {(count == 1 ? singular : plural)}");
+            }
+        }
+
+        Add(Bookmarks, "bookmark", "bookmarks");
+        Add(Fields, "form field", "form fields");
+        Add(Widgets, "widget", "widgets");
+        Add(Links, "link", "links");
+        Add(OpenActions, "open action", "open actions");
+        Add(NamedDestinations, "named destination", "named destinations");
+        Add(StructureElements, "structure element", "structure elements");
+        Add(XfaForms, "XFA form", "XFA forms");
+        return string.Join(", ", parts);
+    }
+
     /// <summary>Whether the clean-up removed anything at all.</summary>
     public bool Any => Bookmarks + Fields + Widgets + Links + OpenActions + NamedDestinations + StructureElements + XfaForms > 0;
 }

@@ -28,4 +28,21 @@ internal static class SaveCleanup
         NamedDestinationPass.Apply(context);
         OpenActionPass.Apply(context);
     }
+
+    /// <summary>
+    /// The passes that matter when pages are imported into a new document (<c>Pdf.Split</c>,
+    /// <c>Pdf.Merge</c>): the new document gets a fresh catalog, so outlines, named destinations,
+    /// the open action and the structure tree are not carried and are not rewritten.
+    /// </summary>
+    public static void ComputeForImport(SaveCleanupContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        if (context.RemovedPages.Count == 0)
+        {
+            return;
+        }
+
+        AnnotsPass.Apply(context);
+        AcroFormPass.Apply(context);
+    }
 }

@@ -119,6 +119,9 @@ public sealed class PdfDocument : IDisposable
     /// <summary>The object numbers of every page-tree node and page this document was opened with (see <c>PageTreeReader.CollectPages</c>).</summary>
     internal IReadOnlySet<int> OpenTimePageTree => _openTimePageTree;
 
+    /// <summary>The pages this document was opened with, in their original order — whatever <see cref="Pages"/> has become since.</summary>
+    internal IReadOnlyList<IndirectReference> OpenTimePages => _openTimePages;
+
     /// <summary>
     /// Whether this document's trailer declares an <c>/Encrypt</c> dictionary. Gates
     /// <see cref="Save"/> unconditionally and
@@ -728,7 +731,7 @@ public sealed class PdfDocument : IDisposable
 
             if (cleanup.Counts.Any)
             {
-                Diagnostics.Add(new PdfDiagnostic("PLUME5021", DiagnosticSeverity.Info, $"Save left out what pointed at removed pages: {DescribeCleanup(cleanup.Counts)}. Reopen the saved file to see the result."));
+                Diagnostics.Add(new PdfDiagnostic("PLUME5021", DiagnosticSeverity.Info, $"Save left out what pointed at removed pages: {cleanup.Counts.Describe()}. Reopen the saved file to see the result."));
             }
 
             if (effectiveOptions.Linearize)
@@ -745,28 +748,6 @@ public sealed class PdfDocument : IDisposable
                 File.Delete(tempPath);
             }
         }
-    }
-
-    private static string DescribeCleanup(SaveCleanupCounts counts)
-    {
-        var parts = new List<string>();
-        void Add(int count, string singular, string plural)
-        {
-            if (count > 0)
-            {
-                parts.Add($"{count} {(count == 1 ? singular : plural)}");
-            }
-        }
-
-        Add(counts.Bookmarks, "bookmark", "bookmarks");
-        Add(counts.Fields, "form field", "form fields");
-        Add(counts.Widgets, "widget", "widgets");
-        Add(counts.Links, "link", "links");
-        Add(counts.OpenActions, "open action", "open actions");
-        Add(counts.NamedDestinations, "named destination", "named destinations");
-        Add(counts.StructureElements, "structure element", "structure elements");
-        Add(counts.XfaForms, "XFA form", "XFA forms");
-        return string.Join(", ", parts);
     }
 
     // The exclusion set and the clean-up copies for one full rewrite of the current pages.

@@ -43,6 +43,10 @@ internal static class RemovedSetBuilder
     /// <param name="openTimePages">The pages the document was opened with, in their original order.</param>
     /// <param name="keptPages">The pages being saved.</param>
     /// <param name="options">The effective save options (walk caps).</param>
+    /// <param name="pagesOnly">
+    /// For importing pages into a new document (<c>Pdf.Split</c>, <c>Pdf.Merge</c>): the structure
+    /// tree is not carried there and nothing on a page references its elements, so it is not walked.
+    /// </param>
     /// <returns>The excluded object numbers, the subset that are removed pages, and the form fields excluded with them.</returns>
     public static (HashSet<int> Excluded, HashSet<int> RemovedPages, HashSet<int> RemovedFields) Build(
         ObjectRegistry objects,
@@ -51,7 +55,8 @@ internal static class RemovedSetBuilder
         IReadOnlySet<int> openTimePageTree,
         IReadOnlyList<IndirectReference> openTimePages,
         IReadOnlyList<(IndirectReference Reference, PdfDictionary Dictionary)> keptPages,
-        PdfOptions options)
+        PdfOptions options,
+        bool pagesOnly = false)
     {
         var kept = new HashSet<int>(keptPages.Select(static p => p.Reference.Number));
 
@@ -116,7 +121,7 @@ internal static class RemovedSetBuilder
         // Tagged documents: a structure element whose every content item is on a removed page (or
         // is an excluded annotation) is excluded, recursively — its /Alt and /ActualText
         // routinely repeat the removed page's text.
-        if (catalog is not null && Resolve(objects, catalog.TryGetValue(StructTreeRootName, out var structRoot) ? structRoot : null) is PdfDictionary root
+        if (!pagesOnly && catalog is not null && Resolve(objects, catalog.TryGetValue(StructTreeRootName, out var structRoot) ? structRoot : null) is PdfDictionary root
             && root.TryGetValue(KName, out var rootKids))
         {
             var walk = new StructureWalk(objects, removedPages, excluded, options.MaxStructureTreeDepth, options.MaxStructureElementCount);
