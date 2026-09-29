@@ -16,7 +16,7 @@ namespace PlumePdf.Tests.Redaction;
 /// "unreachable from the trailer" but genuinely absent from the saved file's bytes. Every test
 /// here redacts, <see cref="PdfDocument.Save"/>s, then proves absence two independent ways:
 /// (1) reopening and calling <c>ExtractText</c>/<c>ExtractImages</c> (the ordinary reader path),
-/// and (2) <see cref="RecoveryScanner"/>'s brute-force "N G obj" byte scan reconstructing
+/// and (2) <see cref="RecoveredBytes"/>' brute-force "N G obj" byte scan reconstructing
 /// <em>every</em> object physically present in the output file regardless of reachability —
 /// object-graph reachability alone would not catch a writer bug that still emitted the
 /// original bytes somewhere unreferenced. A raw whole-file substring scan is layered on top of
@@ -49,10 +49,10 @@ public class RedactionUnrecoverabilityTests
                 Assert.DoesNotContain(secret, reopened.Pages[0].ExtractText().Text, StringComparison.Ordinal);
             }
 
-            // (2) brute-force RecoveryScanner reconstruction: every object physically present
+            // (2) brute-force recovered-object reconstruction: every object physically present
             // in the file, decoded, regardless of whether the ordinary catalog/page-tree walk
             // would ever reach it.
-            Assert.False(RecoveredBytes.AnyRecoveredObjectContains(fileBytes, secret), $"RecoveryScanner found '{secret}' surviving in an object the ordinary reachability walk might not have visited.");
+            Assert.False(RecoveredBytes.AnyRecoveredObjectContains(fileBytes, secret), $"The brute-force object scan found '{secret}' surviving in an object the ordinary reachability walk might not have visited.");
 
             // (3) raw whole-file byte scan — the strongest, assumption-free check: the target
             // text's plain-text bytes must not appear anywhere in the saved file at all.
@@ -130,7 +130,7 @@ public class RedactionUnrecoverabilityTests
             // The original raw pixel buffer's distinctive byte run must not survive anywhere in
             // the saved file — not filter-decoded on any recovered object, and not present raw
             // (PlumePDF stores Flate-compressed images by default, so a raw-byte scan of the
-            // *compressed* file wouldn't be conclusive on its own; the RecoveryScanner pass
+            // *compressed* file wouldn't be conclusive on its own; the recovered-object pass
             // below decodes every recovered stream through its own /Filter chain, which is the
             // check that actually proves it).
             Assert.False(RecoveredBytes.AnyRecoveredObjectContainsByteRun(fileBytes, pixels.AsSpan(0, 300)));
