@@ -119,6 +119,9 @@ public sealed class PdfDocument : IDisposable
     /// <summary>The object numbers of every page-tree node and page this document was opened with (see <c>PageTreeReader.CollectPages</c>).</summary>
     internal IReadOnlySet<int> OpenTimePageTree => _openTimePageTree;
 
+    /// <summary>The pages this document was opened with, in their original order — whatever <see cref="Pages"/> has become since.</summary>
+    internal IReadOnlyList<IndirectReference> OpenTimePages => _openTimePages;
+
     /// <summary>
     /// Whether this document's trailer declares an <c>/Encrypt</c> dictionary. Gates
     /// <see cref="Save"/> unconditionally and

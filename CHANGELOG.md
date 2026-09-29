@@ -30,6 +30,7 @@ only by diffing output. Entries land in the same change as the behavior they des
     - `PLUME5021` (new, Info) records in `doc.Diagnostics` what each such `Save` left out, once per save.
 
   Issue #16.
+- **`Pdf.Split` and `Pdf.Merge` could copy pages that were not asked for.** Importing a page followed every reference from it, so a link, a pop-up or reply, a widget's `/P`, or a radio group spanning pages pulled another page in, and through it the source's whole page tree. A split part could then contain every page of the document, and merging a document after `RemoveAt` could bring the removed pages back with their form values. Each source is now prepared the way `Save` prepares a document after `RemoveAt`: the pages not imported, and what belonged only to them, are excluded (a reference to them becomes `null` and is not followed), and links, form fields and the other clean-up rules apply to the imported pages. Form merging now decides whether a field sits on a page from the pages the source was opened with, so a field whose page was removed no longer travels as an unplaced field. Issue #17.
 
 ## [1.0.0] — Unreleased (initial public release)
 

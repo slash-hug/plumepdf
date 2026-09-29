@@ -2,6 +2,10 @@
 
 `Pdf.Merge` takes file paths (or already-open `PdfDocument`s) and returns a new in-memory document containing every page in order.
 
+A document's current pages are what is merged: after `document.Pages.RemoveAt`, the removed pages stay
+out, and so does everything that belonged only to them (their annotations, form fields and values),
+whatever still referenced them. Links to a removed page are dropped from the merged pages.
+
 <!-- snippet: merge -->
 <a id='snippet-merge'></a>
 ```cs

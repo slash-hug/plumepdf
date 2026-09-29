@@ -57,6 +57,13 @@ public static class Pdf
     }
 
     /// <summary>Merges the pages of every document in <paramref name="documents"/>, in order, into one new document.</summary>
+    /// <remarks>
+    /// A new document holds only the pages it is given. Nothing that belongs to a page left behind
+    /// comes along through a reference: a link, a pop-up or reply, a form widget, a radio group
+    /// spanning pages. Links to a page left behind are removed, form fields whose widgets were all
+    /// on such pages are left out, and a kept field keeps only its imported widgets — the same
+    /// rules <see cref="PdfDocument.Save"/> applies after <see cref="PageCollection.RemoveAt"/>.
+    /// </remarks>
     /// <exception cref="ArgumentException"><paramref name="documents"/> is empty.</exception>
     public static PdfDocument Merge(params PdfDocument[] documents)
     {
@@ -71,6 +78,13 @@ public static class Pdf
     }
 
     /// <summary>Splits <paramref name="document"/> into one new single-page document per page, in order.</summary>
+    /// <remarks>
+    /// A new document holds only the pages it is given. Nothing that belongs to a page left behind
+    /// comes along through a reference: a link, a pop-up or reply, a form widget, a radio group
+    /// spanning pages. Links to a page left behind are removed, form fields whose widgets were all
+    /// on such pages are left out, and a kept field keeps only its imported widgets — the same
+    /// rules <see cref="PdfDocument.Save"/> applies after <see cref="PageCollection.RemoveAt"/>.
+    /// </remarks>
     public static SplitResult Split(PdfDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);

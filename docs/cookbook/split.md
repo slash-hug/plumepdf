@@ -2,6 +2,11 @@
 
 `Pdf.Split` produces one single-page document per source page; `SaveAll` writes them with `{n}` numbering.
 
+Each part holds only its own page. Nothing from another page comes along through a link, a pop-up, a
+form widget or a radio group that spans pages: links to other pages are removed, and a form field
+travels only with the part holding one of its widgets (a field placed on no page at all goes with
+every part).
+
 <!-- snippet: split -->
 <a id='snippet-split'></a>
 ```cs
