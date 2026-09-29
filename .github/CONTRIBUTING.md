@@ -60,6 +60,26 @@ there and only there (the AGPL isolation wall); never add them to `PlumePdf.sln`
 - **Dependencies:** the runtime dependency posture is deliberately near-zero; adding a package
   to `src/` needs to be agreed on first — open an issue before writing the code.
 
+## Releasing
+
+Releases are automatic once a version bump reaches `main`; the merge is the approval.
+
+1. Open a PR that sets `<Version>` in `src/PlumePdf/PlumePdf.csproj` and turns
+   `CHANGELOG.md`'s `## [Unreleased]` entries for it into a dated `## [<version>] — YYYY-MM-DD`
+   section. That section becomes the GitHub Release notes, and the release refuses to run
+   without it.
+2. Merge it. `.github/workflows/release.yml` builds, tests and packs, pushes the package and
+   its symbols to nuget.org, then creates the `v<version>` tag and a GitHub Release (a
+   prerelease for a version with a `-` suffix) with the packages attached.
+3. After a release, move `PackageValidationBaselineVersion` in `PlumePdf.csproj` forward to it.
+   Every PR's pack step checks the public API against that version; a deliberate break is
+   recorded with `dotnet pack -p:ApiCompatGenerateSuppressionFile=true`, which writes
+   `CompatibilitySuppressions.xml` for review.
+
+A published NuGet version can never be replaced, only unlisted, so a bad release is fixed by
+the next patch version. If a release fails halfway, re-run the workflow from the Actions tab:
+it skips a version nuget.org already has and a tag that already exists.
+
 ## Bug reports and feature requests
 
 Use the issue templates. For anything security-shaped, use `.github/SECURITY.md`'s private
