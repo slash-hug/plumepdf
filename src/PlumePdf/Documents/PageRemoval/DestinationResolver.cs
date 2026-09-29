@@ -64,6 +64,19 @@ internal sealed class DestinationResolver
         }
     }
 
+    /// <summary>
+    /// A resolver over the document's own named destinations — never a clean-up pass's copy of
+    /// the catalog, so what a destination resolves to does not depend on which passes ran first.
+    /// </summary>
+    public static DestinationResolver ForOriginalNames(SaveCleanupContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        var catalog = context.CatalogReference is { } reference && context.Objects[reference] is PdfDictionary original
+            ? original
+            : context.Catalog;
+        return new DestinationResolver(context.Objects, catalog, context.Options);
+    }
+
     /// <summary>The object number of the page <paramref name="destinationOrAction"/> targets in this document, or <see langword="null"/> when it is not a local page destination.</summary>
     public static int? ResolveLocalPage(ObjectRegistry objects, PdfDictionary? catalog, PdfObject destinationOrAction, PdfOptions options)
     {
