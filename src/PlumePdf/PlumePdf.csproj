@@ -6,6 +6,10 @@
     <IsAotCompatible>true</IsAotCompatible>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <EnablePackageValidation>true</EnablePackageValidation>
+    <!-- The last published version: pack fails when the public API breaks against it. A deliberate
+         break is recorded in CompatibilitySuppressions.xml (dotnet pack -p:ApiCompatGenerateSuppressionFile=true)
+         so it shows up in review. Move this forward with each release. -->
+    <PackageValidationBaselineVersion>1.0.0-preview.1</PackageValidationBaselineVersion>
 
     <PackageId>PlumePdf</PackageId>
     <Version>1.0.0-preview.1</Version>

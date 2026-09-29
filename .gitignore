@@ -17,3 +17,6 @@ __pycache__/
 /plans/
 /tasks/
 /.claude/workflow-config.json
+
+# dotnet pack output (CI and local)
+/artifacts/

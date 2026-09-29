@@ -1,23 +1,133 @@
 name: Release
 
-# Publishes PlumePdf to nuget.org when a version tag (v1.0.0-preview.1, v1.0.0, …) is pushed.
-# Uses NuGet Trusted Publishing: GitHub issues a short-lived OIDC token, nuget.org exchanges it
-# for a one-hour API key — no long-lived key is stored in this repository.
+# Publishes PlumePdf when a change to <Version> in src/PlumePdf/PlumePdf.csproj reaches main:
+# merging the version-bump PR is the release approval. The workflow then builds, tests and packs,
+# pushes the package to nuget.org, and creates the v<Version> tag and a GitHub Release whose notes
+# are that version's CHANGELOG.md section. Nothing is published when the version did not change
+# or its tag already exists. Re-run it by hand (workflow_dispatch) after a partial failure: the
+# NuGet push skips a version that is already there, and the tag check keeps it idempotent.
+# After a partial failure, re-run the failed jobs of that same run rather than starting a new one.
 #
-# One-time owner setup (nuget.org → your profile → Trusted Publishing → add a policy):
-#   Repository Owner: slash-hug   Repository: plumepdf   Workflow File: release.yml
-#   Environment: nuget-release
-# and a repository secret NUGET_USER = the nuget.org profile name (not an email address).
+# NuGet Trusted Publishing: GitHub issues a short-lived OIDC token, nuget.org exchanges it for a
+# one-hour API key — no long-lived key is stored in this repository.
+#
+# One-time owner setup:
+#   nuget.org → your profile → Trusted Publishing → policy: Repository Owner slash-hug,
+#     Repository plumepdf, Workflow File release.yml, Environment nuget-release
+#   repository secret NUGET_USER = the nuget.org profile name (not an email address)
+#   environment nuget-release: deployment branch main (no reviewer; the merge is the approval)
+#   branch ruleset on main: changes only through a PR with passing CI, no bypass — this is what
+#     makes a merge the only way a version bump (or a change to this file) reaches main
+#   tag ruleset for v*: GitHub Actions in its bypass list, so this workflow can create the tag
 
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+    paths: ['src/PlumePdf/PlumePdf.csproj']
+  workflow_dispatch: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      release: ${{ steps.plan.outputs.release }}
+      prerelease: ${{ steps.plan.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0  # history for the previous version, and every tag
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      # Fails closed: a version that cannot be read, a push whose previous commit cannot be read,
+      # or nuget.org being unreachable stops here, before anything is published.
+      - name: Decide whether this push releases
+        id: plan
+        env:
+          BEFORE: ${{ github.event.before }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          # MSBuild's own evaluation, so a commented-out <Version> can never win.
+          version_of() { dotnet msbuild "$1" -getProperty:Version -nologo | tr -d '[:space:]'; }
+          valid='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'
+
+          version="$(version_of src/PlumePdf/PlumePdf.csproj)"
+          if ! [[ "$version" =~ $valid ]]; then
+            echo "::error::<Version> '$version' in src/PlumePdf/PlumePdf.csproj is not a release version."
+            exit 1
+          fi
+
+          release=false
+          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            echo "v$version is already tagged; nothing to release."
+          elif [ "$EVENT" = "workflow_dispatch" ]; then
+            release=true
+          else
+            previous_project="$RUNNER_TEMP/previous/PlumePdf.csproj"
+            mkdir -p "$(dirname "$previous_project")"
+            if ! git show "$BEFORE:src/PlumePdf/PlumePdf.csproj" > "$previous_project" 2>/dev/null; then
+              echo "::error::Cannot read the version before this push ($BEFORE): nothing is released. Run the workflow by hand if this push should release v$version."
+              exit 1
+            fi
+
+            previous="$(version_of "$previous_project")"
+            if [ "$version" != "$previous" ]; then
+              release=true
+            else
+              echo "<Version> is still $version; nothing to release."
+            fi
+          fi
+
+          # A version nuget.org already has but that was never tagged means an earlier run published
+          # and then failed; releasing again would tag a different commit than the one published.
+          if [ "$release" = "true" ]; then
+            lower="$(echo "$version" | tr '[:upper:]' '[:lower:]')"
+            published="$(curl -fsS --retry 3 https://api.nuget.org/v3-flatcontainer/plumepdf/index.json)"
+            if echo "$published" | grep -q "\"$lower\""; then
+              echo "::error::$version is already on nuget.org but v$version is not tagged. Re-run the failed jobs of the run that published it, or tag v$version at the published commit by hand."
+              exit 1
+            fi
+          fi
+
+          prerelease=false
+          case "$version" in *-*) prerelease=true ;; esac
+
+          {
+            echo "version=$version"
+            echo "release=$release"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+          echo "version $version → release=$release prerelease=$prerelease"
+
+      # Fails before anything is published when CHANGELOG.md has no dated section for this version.
+      - name: Extract the release notes
+        if: steps.plan.outputs.release == 'true'
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: ./scripts/release-notes.sh "$VERSION" > release-notes.md
+
+      - uses: actions/upload-artifact@v7
+        if: steps.plan.outputs.release == 'true'
+        with:
+          name: release-notes
+          path: release-notes.md
+          overwrite: true
+
   publish:
+    needs: plan
+    if: needs.plan.outputs.release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: nuget-release
@@ -32,22 +142,14 @@ jobs:
             8.0.x
             10.0.x
 
-      - name: Check the tag matches the package version
-        run: |
-          set -euo pipefail
-          tag="${GITHUB_REF_NAME#v}"
-          version="$(dotnet msbuild src/PlumePdf/PlumePdf.csproj -getProperty:Version)"
-          if [ "$tag" != "$version" ]; then
-            echo "::error::Tag v$tag does not match <Version>$version</Version> in src/PlumePdf/PlumePdf.csproj"
-            exit 1
-          fi
-
       # GITHUB_ACTIONS=true turns on ContinuousIntegrationBuild (see PlumePdf.csproj), so the
       # packed DLL and PDB carry /_/-normalized source paths.
       - name: Build
         run: dotnet build PlumePdf.sln -c Release -m:1
       - name: Test
         run: dotnet test PlumePdf.sln -c Release --no-build
+      # Package validation compares the public API against the last published version
+      # (PackageValidationBaselineVersion in PlumePdf.csproj) and fails on an unrecorded break.
       - name: Pack
         run: dotnet pack src/PlumePdf/PlumePdf.csproj -c Release --no-build -o artifacts
 
@@ -55,9 +157,10 @@ jobs:
         with:
           name: nuget-packages
           path: artifacts/
+          overwrite: true
 
       - name: NuGet login (OIDC → short-lived API key)
-        uses: NuGet/login@v1
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841  # v1.2.0
         id: login
         with:
           user: ${{ secrets.NUGET_USER }}
@@ -68,3 +171,39 @@ jobs:
         env:
           NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
         run: dotnet nuget push "artifacts/*.nupkg" --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+  github-release:
+    needs: [plan, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # The tag and the release. This job is the only one in the repository whose token can
+      # write: the v* tag ruleset lets GitHub Actions create release tags, so keep it that way.
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: nuget-packages
+          path: artifacts
+      - uses: actions/download-artifact@v7
+        with:
+          name: release-notes
+
+      - name: Tag and publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          PRERELEASE: ${{ needs.plan.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          flags=()
+          if [ "$PRERELEASE" = "true" ]; then
+            flags+=(--prerelease)
+          fi
+
+          gh release create "v$VERSION" artifacts/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "PlumePdf $VERSION" \
+            --notes-file release-notes.md \
+            "${flags[@]}"

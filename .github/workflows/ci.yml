@@ -44,6 +44,10 @@ jobs:
         run: dotnet build PlumePdf.sln -c Release -m:1
       - name: Test
         run: dotnet test PlumePdf.sln -c Release --no-build
+      # Package validation: the public API must not break against the last published version
+      # (PackageValidationBaselineVersion in PlumePdf.csproj) without a recorded suppression.
+      - name: Pack (API compatibility with the last release)
+        run: dotnet pack src/PlumePdf/PlumePdf.csproj -c Release --no-build -o artifacts
 
   # The save-to-currently-open-path contract (Save's temp-file-then-atomic-replace,
   # SaveIncremental's independent append handle) has Windows-specific file-sharing failure
