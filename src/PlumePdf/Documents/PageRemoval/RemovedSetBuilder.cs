@@ -43,8 +43,8 @@ internal static class RemovedSetBuilder
     /// <param name="openTimePages">The pages the document was opened with, in their original order.</param>
     /// <param name="keptPages">The pages being saved.</param>
     /// <param name="options">The effective save options (walk caps).</param>
-    /// <returns>The excluded object numbers, and the subset that are removed pages.</returns>
-    public static (HashSet<int> Excluded, HashSet<int> RemovedPages) Build(
+    /// <returns>The excluded object numbers, the subset that are removed pages, and the form fields excluded with them.</returns>
+    public static (HashSet<int> Excluded, HashSet<int> RemovedPages, HashSet<int> RemovedFields) Build(
         ObjectRegistry objects,
         IndirectReference? catalogReference,
         PdfDictionary? catalog,
@@ -67,9 +67,10 @@ internal static class RemovedSetBuilder
             }
         }
 
+        var removedFields = new HashSet<int>();
         if (removedPages.Count == 0)
         {
-            return (excluded, removedPages);
+            return (excluded, removedPages, removedFields);
         }
 
         // Keep wins: an annotation any kept page lists is never excluded.
@@ -91,7 +92,10 @@ internal static class RemovedSetBuilder
 
             foreach (var number in AnnotationNumbers(objects, page))
             {
-                if (!keptAnnotations.Contains(number) && IsAnnotation(objects[new IndirectReference(number, 0)]))
+                // A widget that is also a field with /Kids of its own is left to the field-tree
+                // walk below, which excludes it only when none of those kids survives.
+                if (!keptAnnotations.Contains(number) && objects[new IndirectReference(number, 0)] is PdfDictionary annotation
+                    && IsAnnotation(annotation) && !annotation.ContainsKey(PdfName.Kids))
                 {
                     excluded.Add(number);
                 }
@@ -104,8 +108,9 @@ internal static class RemovedSetBuilder
         if (catalog is not null && Resolve(objects, catalog.TryGetValue(PdfName.AcroForm, out var acroForm) ? acroForm : null) is PdfDictionary form
             && form.TryGetValue(FieldsName, out var fields))
         {
-            var visited = new HashSet<int>();
-            ExcludeFieldTree(objects, fields, removedPages, keptAnnotations, excluded, visited, depth: 0, options.MaxFieldTreeDepth);
+            var walk = new FieldWalk(objects, removedPages, keptAnnotations, excluded, removedFields, options.MaxFieldTreeDepth);
+            walk.Visit(fields, depth: 0);
+            walk.ExcludeUnsharedValues();
         }
 
         // Tagged documents: a structure element whose every content item is on a removed page (or
@@ -135,77 +140,115 @@ internal static class RemovedSetBuilder
         }
 
         excluded.ExceptWith(kept);
-        return (excluded, removedPages);
+        return (excluded, removedPages, removedFields);
     }
 
-    // Walks one /Kids (or /Fields) array; returns whether every entry it holds ended up excluded
-    // (false for an empty or unreadable array, so an empty field is never removed on that basis).
-    private static bool ExcludeFieldTree(
+    // The form's field tree, walked once. A field's indirect /V and /RV are excluded with it only
+    // when no surviving field shares them.
+    private sealed class FieldWalk(
         ObjectRegistry objects,
-        PdfObject kids,
         HashSet<int> removedPages,
         HashSet<int> keptAnnotations,
         HashSet<int> excluded,
-        HashSet<int> visited,
-        int depth,
+        HashSet<int> removedFields,
         int maxDepth)
     {
-        if (depth > maxDepth || Resolve(objects, kids) is not PdfArray array || array.Count == 0)
+        private readonly HashSet<int> _visited = [];
+        private readonly List<(int Field, List<int> Values)> _fieldValues = [];
+
+        // Walks one /Kids (or /Fields) array; returns whether every entry it holds ended up
+        // excluded (false for an empty or unreadable array, so an empty field is never removed on
+        // that basis).
+        public bool Visit(PdfObject kids, int depth)
         {
-            return false;
+            if (depth > maxDepth || Resolve(objects, kids) is not PdfArray array || array.Count == 0)
+            {
+                return false;
+            }
+
+            var allExcluded = true;
+            foreach (var entry in array)
+            {
+                if (entry is not PdfReference reference)
+                {
+                    allExcluded = false;
+                    continue;
+                }
+
+                var number = reference.Target.Number;
+                if (!_visited.Add(number) || objects[reference.Target] is not PdfDictionary node)
+                {
+                    allExcluded &= excluded.Contains(number);
+                    continue;
+                }
+
+                _fieldValues.Add((number, ValueReferences(node)));
+                if (node.TryGetValue(PdfName.Kids, out var children))
+                {
+                    // A field with kids: excluded when every kid (widget or child field) is.
+                    if (Visit(children, depth + 1) && !keptAnnotations.Contains(number))
+                    {
+                        excluded.Add(number);
+                        removedFields.Add(number);
+                    }
+                }
+                else if (excluded.Contains(number)
+                    || (IsAnnotation(node) && !keptAnnotations.Contains(number)
+                        && node.TryGetValue(PName, out var page) && page is PdfReference pageRef
+                        && removedPages.Contains(pageRef.Target.Number)))
+                {
+                    // A widget (or merged field/widget) placed on a removed page, listed in some
+                    // /Annots or not.
+                    excluded.Add(number);
+                    removedFields.Add(number);
+                }
+
+                allExcluded &= excluded.Contains(number);
+            }
+
+            return allExcluded;
         }
 
-        var allExcluded = true;
-        foreach (var entry in array)
+        public void ExcludeUnsharedValues()
         {
-            if (entry is not PdfReference reference)
+            var keptValues = new HashSet<int>();
+            foreach (var (field, values) in _fieldValues)
             {
-                allExcluded = false;
-                continue;
-            }
-
-            var number = reference.Target.Number;
-            if (!visited.Add(number) || objects[reference.Target] is not PdfDictionary node)
-            {
-                allExcluded &= excluded.Contains(number);
-                continue;
-            }
-
-            if (node.TryGetValue(PdfName.Kids, out var children))
-            {
-                // A field with kids: excluded when every kid (widget or child field) is.
-                if (ExcludeFieldTree(objects, children, removedPages, keptAnnotations, excluded, visited, depth + 1, maxDepth)
-                    && !keptAnnotations.Contains(number))
+                if (!excluded.Contains(field))
                 {
-                    ExcludeField(node, number, excluded);
+                    keptValues.UnionWith(values);
                 }
             }
-            else if (IsAnnotation(node) && !keptAnnotations.Contains(number)
-                && node.TryGetValue(PName, out var page) && page is PdfReference pageRef
-                && removedPages.Contains(pageRef.Target.Number))
-            {
-                // A widget (or merged field/widget) placed on a removed page, listed in some
-                // /Annots or not.
-                ExcludeField(node, number, excluded);
-            }
 
-            allExcluded &= excluded.Contains(number);
+            foreach (var (field, values) in _fieldValues)
+            {
+                if (excluded.Contains(field))
+                {
+                    foreach (var value in values)
+                    {
+                        if (!keptValues.Contains(value))
+                        {
+                            excluded.Add(value);
+                        }
+                    }
+                }
+            }
         }
 
-        return allExcluded;
-    }
-
-    // A field's own value objects go with it: /V and /RV may be indirect (a signature field's
-    // /V is its signature dictionary, which /Perms /DocMDP can also reach).
-    private static void ExcludeField(PdfDictionary node, int number, HashSet<int> excluded)
-    {
-        excluded.Add(number);
-        foreach (var key in ValueKeys)
+        // /V and /RV may be indirect: a signature field's /V is its signature dictionary, which
+        // /Perms /DocMDP can also reach.
+        private static List<int> ValueReferences(PdfDictionary node)
         {
-            if (node.TryGetValue(key, out var value) && value is PdfReference valueRef)
+            var values = new List<int>();
+            foreach (var key in ValueKeys)
             {
-                excluded.Add(valueRef.Target.Number);
+                if (node.TryGetValue(key, out var value) && value is PdfReference valueRef)
+                {
+                    values.Add(valueRef.Target.Number);
+                }
             }
+
+            return values;
         }
     }
 
@@ -273,13 +316,36 @@ internal static class RemovedSetBuilder
 
             if (ReferenceEquals(type, ObjrName))
             {
-                return node.TryGetValue(ObjName, out var obj) && obj is PdfReference objRef && excluded.Contains(objRef.Target.Number)
-                    ? Placement.Removed
-                    : Placement.Kept;
+                // The referenced object belongs to the removed page when it is an excluded
+                // annotation, or when the reference places it there (/Pg, own or inherited — the
+                // page the object is rendered on); an annotation placed there is excluded too.
+                var target = node.TryGetValue(ObjName, out var obj) && obj is PdfReference objRef ? objRef.Target.Number : (int?)null;
+                if (target is int excludedTarget && excluded.Contains(excludedTarget))
+                {
+                    return Placement.Removed;
+                }
+
+                if (OnPage(ownPage) == Placement.Removed)
+                {
+                    if (target is int annotationNumber && IsAnnotation(objects[new IndirectReference(annotationNumber, 0)]))
+                    {
+                        excluded.Add(annotationNumber);
+                    }
+
+                    return Placement.Removed;
+                }
+
+                return Placement.Kept;
             }
 
-            // A structure element.
+            // A structure element. One with no content of its own still belongs to the page its
+            // own /Pg names.
             var placement = node.TryGetValue(KName, out var kids) ? Visit(kids, ownPage, depth + 1) : Placement.None;
+            if (placement == Placement.None && pg is PdfReference explicitPage && removedPages.Contains(explicitPage.Target.Number))
+            {
+                placement = Placement.Removed;
+            }
+
             if (placement == Placement.Removed && ownNumber is int number)
             {
                 excluded.Add(number);

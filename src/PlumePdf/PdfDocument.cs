@@ -746,8 +746,9 @@ public sealed class PdfDocument : IDisposable
     private SaveCleanupContext PrepareFullRewrite(PdfOptions options)
     {
         var pages = Pages.Select(static p => (p.Reference, p.Dictionary)).ToList();
-        var (excluded, removedPages) = RemovedSetBuilder.Build(Objects, Catalog?.Reference, Catalog?.Dictionary, _openTimePageTree, _openTimePages, pages, options);
+        var (excluded, removedPages, removedFields) = RemovedSetBuilder.Build(Objects, Catalog?.Reference, Catalog?.Dictionary, _openTimePageTree, _openTimePages, pages, options);
         var context = new SaveCleanupContext(Objects, Catalog?.Reference, Catalog?.Dictionary, pages, excluded, removedPages, options);
+        context.RemovedFields.UnionWith(removedFields);
         SaveCleanup.Compute(context);
         return context;
     }
