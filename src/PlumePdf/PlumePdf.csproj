@@ -1,7 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <!-- .NET 8+ only. Single package. -->
+    <!-- Every supported .NET LTS (see PlumeTargetFrameworks in Directory.Build.props). Single package. -->
+    <TargetFrameworks>$(PlumeTargetFrameworks)</TargetFrameworks>
     <IsAotCompatible>true</IsAotCompatible>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <EnablePackageValidation>true</EnablePackageValidation>
@@ -21,7 +22,7 @@
     <!-- Rendered from brand/plumepdf-icon.svg (the source of truth); packed at the package root below. -->
     <PackageIcon>plumepdf-icon-128.png</PackageIcon>
 
-    <!-- SourceLink (built into the .NET 8 SDK) + a .snupkg so consumers can step into the source. -->
+    <!-- SourceLink (built into the .NET SDK) + a .snupkg so consumers can step into the source. -->
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <IncludeSymbols>true</IncludeSymbols>
@@ -84,14 +85,18 @@
   </Target>
 
   <!--
-    The first-ever runtime PackageReference in this project. Microsoft-owned
-    (BCL), zero transitive dependencies on net8.0, NativeAOT-cleared by an empirical publish
-    probe during Phase 5 research. Pinned to the exact 8.0.x patch (never a floating range) so
-    the signing surface's behavior can't drift under an unreviewed restore. Bump deliberately,
-    in its own PR, when a new 8.0.x patch ships - never silently via a version range.
+    The one runtime dependency: System.Security.Cryptography.Pkcs, Microsoft-owned (BCL),
+    NativeAOT-cleared. One reference per TFM, each the Pkcs line matching its runtime, so each
+    has zero transitive dependencies (Pkcs 10.x on net8.0 would pull Microsoft.Bcl.Cryptography
+    and System.Formats.Asn1). Pinned to an exact patch (never a floating range) so the signing
+    surface can't drift under an unreviewed restore. Bump deliberately, in its own PR - never
+    silently via a version range. 8.0.1 is the final 8.x release.
   -->
-  <ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
     <PackageReference Include="System.Security.Cryptography.Pkcs" Version="[8.0.1]" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="[10.0.12]" />
   </ItemGroup>
 
 </Project>

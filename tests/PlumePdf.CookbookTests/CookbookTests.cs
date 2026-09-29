@@ -912,7 +912,7 @@ public partial class CookbookTests
         File.WriteAllBytes("output/signing-cert.pfx", CreateTestCertificatePfx("Cookbook Sign Test"));
 
         // begin-snippet: sign-document
-        using var certificate = new X509Certificate2("output/signing-cert.pfx", (string?)null, X509KeyStorageFlags.Exportable);
+        using var certificate = LoadPfx(File.ReadAllBytes("output/signing-cert.pfx"));
 
         Pdf.Sign("output/contract.pdf", "output/contract-signed.pdf", new PdfSignOptions
         {
@@ -942,7 +942,7 @@ public partial class CookbookTests
             document.Save("output/agreement.pdf");
         }
 
-        using (var certificate = new X509Certificate2(CreateTestCertificatePfx("Cookbook Verify Test"), (string?)null, X509KeyStorageFlags.Exportable))
+        using (var certificate = LoadPfx(CreateTestCertificatePfx("Cookbook Verify Test")))
         {
             Pdf.Sign("output/agreement.pdf", "output/agreement-signed.pdf", new PdfSignOptions { Certificate = certificate });
         }
@@ -972,7 +972,7 @@ public partial class CookbookTests
             document.Save("output/lta-agreement.pdf");
         }
 
-        using var certificate = new X509Certificate2(CreateTestCertificatePfx("Cookbook LTV Test"), (string?)null, X509KeyStorageFlags.Exportable);
+        using var certificate = LoadPfx(CreateTestCertificatePfx("Cookbook LTV Test"));
 
         // begin-snippet: timestamp-and-ltv
         // IO.Http.HttpTimestampAuthority / HttpRevocationFetcher are the in-box HTTP-backed
@@ -1001,6 +1001,15 @@ public partial class CookbookTests
         await Verifier.Verify(report.ToString());
     }
 
+    // .NET 9+ obsoletes the X509Certificate2 byte-array constructors (SYSLIB0057); net8.0 has no
+    // X509CertificateLoader.
+    private static X509Certificate2 LoadPfx(byte[] pfx) =>
+#if NET9_0_OR_GREATER
+        X509CertificateLoader.LoadPkcs12(pfx, null, X509KeyStorageFlags.Exportable);
+#else
+        new(pfx, (string?)null, X509KeyStorageFlags.Exportable);
+#endif
+
     private static byte[] CreateTestCertificatePfx(string commonName)
     {
         using var key = RSA.Create(2048);
@@ -1026,7 +1035,7 @@ public partial class CookbookTests
             request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension([new Oid("1.3.6.1.5.5.7.3.8")], critical: true)); // RFC 3161 §2.3: id-kp-timeStamping.
             request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, critical: false));
             using var ephemeral = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
-            using var tsaCertificate = new X509Certificate2(ephemeral.Export(X509ContentType.Pfx), (string?)null, X509KeyStorageFlags.Exportable);
+            using var tsaCertificate = LoadPfx(ephemeral.Export(X509ContentType.Pfx));
 
             var tokenInfo = new Rfc3161TimestampTokenInfo(
                 new Oid("1.2.3.4.5.6"),

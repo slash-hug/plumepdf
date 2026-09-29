@@ -2,10 +2,12 @@
 
 `Pdf.Sign` (or `doc.Signatures.Add`) produces a PAdES B-B (baseline) signature: `PdfSignOptions.Certificate` is the convenience door for a local certificate with a private key (e.g. loaded from a PFX file); `PdfSignOptions.Signer` (an `IPdfSigner`) is the seam for an HSM/KMS-backed key that never leaves its own boundary. `Reason`/`Location`/`ContactInfo` are optional descriptive fields written into the signature dictionary.
 
+Load a PFX with `X509CertificateLoader.LoadPkcs12FromFile(path, password)` on .NET 10, or `new X509Certificate2(path, password)` on .NET 8 (the recipe's `LoadPfx` helper does whichever applies).
+
 <!-- snippet: sign-document -->
 <a id='snippet-sign-document'></a>
 ```cs
-using var certificate = new X509Certificate2("output/signing-cert.pfx", (string?)null, X509KeyStorageFlags.Exportable);
+using var certificate = LoadPfx(File.ReadAllBytes("output/signing-cert.pfx"));
 
 Pdf.Sign("output/contract.pdf", "output/contract-signed.pdf", new PdfSignOptions
 {

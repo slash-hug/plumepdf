@@ -1,6 +1,11 @@
 <Project>
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <!-- No repo-wide TargetFramework: a TargetFramework set here would silently turn every
+         project's TargetFrameworks into a single-target build. Each project declares its own;
+         the library, its tests and the AOT smoke consumer use PlumeTargetFrameworks. -->
+    <!-- The shipped TFMs: every supported LTS runtime. .NET 8 leaves support on 2026-11-10;
+         drop it here (and its Pkcs reference in src/PlumePdf/PlumePdf.csproj) in a later release. -->
+    <PlumeTargetFrameworks>net8.0;net10.0</PlumeTargetFrameworks>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

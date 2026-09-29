@@ -145,7 +145,7 @@ public sealed class TestCertificateAuthority : IDisposable
     /// association surviving that disposal is exactly the class of bug this sidesteps.
     /// </summary>
     private static X509Certificate2 Persist(X509Certificate2 certificateWithKey) =>
-        new(certificateWithKey.Export(X509ContentType.Pfx), (string?)null, X509KeyStorageFlags.Exportable);
+        TestPfx.Load(certificateWithKey.Export(X509ContentType.Pfx));
 
     /// <inheritdoc/>
     public void Dispose()

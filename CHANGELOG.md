@@ -11,6 +11,10 @@ only by diffing output. Entries land in the same change as the behavior they des
 
 ### Added
 
+- **Targets `net8.0` and `net10.0`** — one package, one assembly per target, NativeAOT-safe on
+  both. The single runtime dependency, `System.Security.Cryptography.Pkcs`, is matched to each
+  runtime (`8.0.1` / `10.0.12`). `PdfOptions.Deterministic` output is byte-identical per runtime;
+  across runtimes, Flate-compressed bytes can differ with the runtime's zlib.
 - **Reading and manipulation** — `PdfDocument.Open`/`OpenAsync` (file, stream, memory), lenient
   recovery with `doc.Diagnostics`, encryption read, `Pdf.Merge`/`Pdf.Split`, page
   reorder/remove, full-rewrite `Save` and signature-preserving `SaveIncremental`,

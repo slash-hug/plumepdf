@@ -156,7 +156,11 @@ if (File.Exists(formFixture))
 using var signingKey = RSA.Create(2048);
 var certificateRequest = new CertificateRequest("CN=PlumePDF AOT Smoke Test", signingKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
 using var ephemeralSigningCertificate = certificateRequest.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
+#if NET9_0_OR_GREATER
+using var signingCertificate = X509CertificateLoader.LoadPkcs12(ephemeralSigningCertificate.Export(X509ContentType.Pfx), null, X509KeyStorageFlags.Exportable);
+#else
 using var signingCertificate = new X509Certificate2(ephemeralSigningCertificate.Export(X509ContentType.Pfx), (string?)null, X509KeyStorageFlags.Exportable);
+#endif
 
 var signedPath = Path.Combine(Path.GetTempPath(), $"plumepdf-aotsmoke-signed-{Guid.NewGuid():N}.pdf");
 try

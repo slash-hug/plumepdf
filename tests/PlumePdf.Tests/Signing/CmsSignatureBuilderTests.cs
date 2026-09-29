@@ -157,7 +157,7 @@ public sealed class CmsSignatureBuilderTests
         var digest = SHA256.HashData(SampleContent);
 
         // A certificate with no private key at all cannot even become a CertificateSigner.
-        using var publicOnly = new System.Security.Cryptography.X509Certificates.X509Certificate2(ca.LeafRsa.RawData);
+        using var publicOnly = TestPfx.LoadPublic(ca.LeafRsa.RawData);
         var ex = Assert.Throws<PlumePdfException>(() => new CertificateSigner(publicOnly));
         Assert.Equal("PLUME4007", ex.Code);
         await Task.CompletedTask;
