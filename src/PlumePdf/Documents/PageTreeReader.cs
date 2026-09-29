@@ -44,7 +44,17 @@ internal static class PageTreeReader
     /// <c>/Pages</c> entry, each paired with its dictionary with inheritable attributes
     /// resolved (see class remarks).
     /// </summary>
-    public static List<(IndirectReference Reference, PdfDictionary Dictionary)> CollectPages(ObjectRegistry objects, PdfDictionary catalog, PdfOptions options, DiagnosticCollection? diagnostics)
+    public static List<(IndirectReference Reference, PdfDictionary Dictionary)> CollectPages(ObjectRegistry objects, PdfDictionary catalog, PdfOptions options, DiagnosticCollection? diagnostics) =>
+        CollectPages(objects, catalog, options, diagnostics, treeNodes: null);
+
+    /// <summary>
+    /// As <see cref="CollectPages(ObjectRegistry, PdfDictionary, PdfOptions, DiagnosticCollection?)"/>,
+    /// also adding to <paramref name="treeNodes"/> the object number of every page-tree node the
+    /// walk actually resolved (each <c>/Pages</c> node, each page, and any indirect <c>/Kids</c>
+    /// array) — never a number that failed to resolve to its expected type, so an unresolvable
+    /// (free-listed) number the registry may later reuse for a new object is never in the set.
+    /// </summary>
+    public static List<(IndirectReference Reference, PdfDictionary Dictionary)> CollectPages(ObjectRegistry objects, PdfDictionary catalog, PdfOptions options, DiagnosticCollection? diagnostics, HashSet<int>? treeNodes)
     {
         ArgumentNullException.ThrowIfNull(objects);
         ArgumentNullException.ThrowIfNull(catalog);
@@ -59,11 +69,11 @@ internal static class PageTreeReader
         }
 
         var visited = new HashSet<int>();
-        Walk(objects, pagesRef.Target, visited, result, options, diagnostics, depth: 0, inherited: default);
+        Walk(objects, pagesRef.Target, visited, treeNodes, result, options, diagnostics, depth: 0, inherited: default);
         return result;
     }
 
-    private static void Walk(ObjectRegistry objects, IndirectReference reference, HashSet<int> visited, List<(IndirectReference, PdfDictionary)> result, PdfOptions options, DiagnosticCollection? diagnostics, int depth, InheritedAttributes inherited)
+    private static void Walk(ObjectRegistry objects, IndirectReference reference, HashSet<int> visited, HashSet<int>? treeNodes, List<(IndirectReference, PdfDictionary)> result, PdfOptions options, DiagnosticCollection? diagnostics, int depth, InheritedAttributes inherited)
     {
         if (depth > MaxDepth)
         {
@@ -82,6 +92,8 @@ internal static class PageTreeReader
             ReportDeviation("PLUME6010", $"Page tree node {reference.Number} did not resolve to a dictionary; skipping it.", options, diagnostics);
             return;
         }
+
+        treeNodes?.Add(reference.Number);
 
         var updatedInherited = inherited.OverriddenBy(node);
         var type = node.TryGetValue(PdfName.Type, out var typeValue) ? ResolveIndirect(objects, typeValue) as PdfName : null;
@@ -112,6 +124,11 @@ internal static class PageTreeReader
             return;
         }
 
+        if (kidsValue is PdfReference kidsReference)
+        {
+            treeNodes?.Add(kidsReference.Target.Number);
+        }
+
         foreach (var kid in kids)
         {
             if (kid is not PdfReference kidRef)
@@ -120,7 +137,7 @@ internal static class PageTreeReader
                 continue;
             }
 
-            Walk(objects, kidRef.Target, visited, result, options, diagnostics, depth + 1, updatedInherited);
+            Walk(objects, kidRef.Target, visited, treeNodes, result, options, diagnostics, depth + 1, updatedInherited);
         }
     }
 

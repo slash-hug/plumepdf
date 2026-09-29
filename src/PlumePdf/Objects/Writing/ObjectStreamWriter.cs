@@ -27,11 +27,11 @@ internal sealed class ObjectStreamWriter
 
     private readonly List<(int Number, long Offset)> _members = [];
     private readonly MemoryStream _payload = new();
-    private readonly Func<PdfReference, IndirectReference> _translateReference;
+    private readonly Func<PdfReference, IndirectReference?> _translateReference;
 
     /// <summary>Creates a writer for one object stream's members.</summary>
     /// <param name="translateReference">The same reference-renumbering callback the surrounding full rewrite serializes every direct object with.</param>
-    public ObjectStreamWriter(Func<PdfReference, IndirectReference> translateReference)
+    public ObjectStreamWriter(Func<PdfReference, IndirectReference?> translateReference)
     {
         ArgumentNullException.ThrowIfNull(translateReference);
         _translateReference = translateReference;

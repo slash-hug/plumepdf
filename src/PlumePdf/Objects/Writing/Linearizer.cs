@@ -65,19 +65,29 @@ internal static class Linearizer
     /// <param name="catalogDictionary">The source catalog dictionary, or <see langword="null"/> when unresolvable.</param>
     /// <param name="pages">The pages to include, in final order — never empty (the caller refuses a zero-page linearize with <c>PLUME5020</c>).</param>
     /// <param name="options">Options controlling the write, notably <see cref="PdfOptions.Deterministic"/>.</param>
+    /// <param name="excluded">As <see cref="FullRewriteWriter.Write"/>'s parameter of the same name: never followed, written as <c>null</c>, excluded from every part and hint table.</param>
+    /// <param name="replacements">As <see cref="FullRewriteWriter.Write"/>'s parameter of the same name, consulted by classification and serialization alike.</param>
     public static void Write(
         Stream output,
         ObjectRegistry objects,
         IndirectReference? catalogReference,
         PdfDictionary? catalogDictionary,
         IReadOnlyList<(IndirectReference Reference, PdfDictionary Dictionary)> pages,
-        PdfOptions options)
+        PdfOptions options,
+        IReadOnlySet<int>? excluded = null,
+        IReadOnlyDictionary<int, PdfObject>? replacements = null)
     {
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(objects);
         ArgumentNullException.ThrowIfNull(pages);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentOutOfRangeException.ThrowIfZero(pages.Count);
+
+        // Excluded objects are barriers at every walk below (classification and part 9
+        // alike) and translate to null, so classification and serialization see one graph and
+        // the hint tables describe exactly what is written.
+        excluded ??= FullRewriteWriter.EmptyExclusions;
+        var callerOverrides = FullRewriteWriter.SeedOverrides(catalogReference, pages, excluded, replacements);
 
         // ---- Phase 1: classify every reachable object into its Annex F part, in the -------
         // ---- source's original number space. ----------------------------------------------
@@ -92,7 +102,9 @@ internal static class Linearizer
         }
 
         PdfObject OriginalValue(int number) =>
-            classifyPageCopies.TryGetValue(number, out var copy) ? copy : objects[new IndirectReference(number, 0)];
+            classifyPageCopies.TryGetValue(number, out var copy) ? copy
+                : callerOverrides.TryGetValue(number, out var replaced) ? replaced
+                : objects[new IndirectReference(number, 0)];
 
         var classifyCatalogCopy = FullRewriteWriter.BuildCatalogCopy(catalogDictionary ?? new PdfDictionary(), placeholderParent);
 
@@ -110,7 +122,7 @@ internal static class Linearizer
                     }
 
                     var number = reference.Target.Number;
-                    if (pageNumbers.Contains(number) || number == catalogNumber
+                    if (pageNumbers.Contains(number) || number == catalogNumber || excluded.Contains(number)
                         || extraBarriers?.Contains(number) == true || !set.Add(number))
                     {
                         continue;
@@ -134,7 +146,7 @@ internal static class Linearizer
             if (acroFormValue is PdfReference acroFormReference && !ReferenceEquals(acroFormReference, placeholderParent))
             {
                 var number = acroFormReference.Target.Number;
-                if (!pageNumbers.Contains(number) && number != catalogNumber)
+                if (!pageNumbers.Contains(number) && number != catalogNumber && !excluded.Contains(number))
                 {
                     Collect(OriginalValue(number), formHierarchySet, formHierarchyOrder);
                 }
@@ -155,7 +167,8 @@ internal static class Linearizer
             && !ReferenceEquals(outlinesReference, placeholderParent))
         {
             var number = outlinesReference.Target.Number;
-            if (!pageNumbers.Contains(number) && number != catalogNumber && !formHierarchySet.Contains(number))
+            if (!pageNumbers.Contains(number) && number != catalogNumber && !formHierarchySet.Contains(number)
+                && !excluded.Contains(number))
             {
                 outlineSet.Add(number);
                 outlineOrder.Add(number);
@@ -228,7 +241,7 @@ internal static class Linearizer
                 && !ReferenceEquals(reference, placeholderParent))
             {
                 var number = reference.Target.Number;
-                if (!pageNumbers.Contains(number) && number != catalogNumber && !firstPageSet.Contains(number)
+                if (!pageNumbers.Contains(number) && number != catalogNumber && !excluded.Contains(number) && !firstPageSet.Contains(number)
                     && !owner.ContainsKey(number) && !formHierarchySet.Contains(number)
                     && !outlineSet.Contains(number) && !docLevelOrder.Contains(number))
                 {
@@ -269,7 +282,7 @@ internal static class Linearizer
                     }
 
                     var number = reference.Target.Number;
-                    if (pageNumbers.Contains(number) || number == catalogNumber || !classified.Add(number))
+                    if (pageNumbers.Contains(number) || number == catalogNumber || excluded.Contains(number) || !classified.Add(number))
                     {
                         continue;
                     }
@@ -359,7 +372,7 @@ internal static class Linearizer
         pagesRootDict.Set(KidsName, kids);
         pagesRootDict.Set(CountName, PdfNumber.Get(pages.Count));
 
-        var overrides = new Dictionary<int, PdfObject>();
+        var overrides = new Dictionary<int, PdfObject>(callerOverrides);
         foreach (var (reference, dictionary) in pages)
         {
             overrides[reference.Number] = FullRewriteWriter.BuildPageCopy(dictionary, pagesRootReference);
@@ -370,12 +383,14 @@ internal static class Linearizer
         PdfObject FinalValue(int originalNumber) =>
             overrides.TryGetValue(originalNumber, out var overridden) ? overridden : objects[new IndirectReference(originalNumber, 0)];
 
-        IndirectReference Translate(PdfReference reference) =>
+        IndirectReference? Translate(PdfReference reference) =>
             syntheticReferences.Contains(reference)
                 ? reference.Target
                 : finalNumber.TryGetValue(reference.Target.Number, out var translated)
                     ? new IndirectReference(translated, 0)
-                    : throw new PlumePdfException("PLUME5010", $"Internal writer invariant violated: a reference to object {reference.Target.Number} was encountered outside the discovered graph while linearizing.");
+                    : excluded.Contains(reference.Target.Number)
+                        ? null
+                        : throw new PlumePdfException("PLUME5010", $"Internal writer invariant violated: a reference to object {reference.Target.Number} was encountered outside the discovered graph while linearizing.");
 
         // File-order body sequences (part 5, the hint stream, is inserted between parts 4
         // and 6 at write time — its object number is already reserved as the last).
