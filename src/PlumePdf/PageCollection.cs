@@ -60,7 +60,44 @@ public sealed class PageCollection : IReadOnlyList<PdfPage>
     }
 
     /// <summary>Removes the page at <paramref name="index"/> from the document.</summary>
+    /// <remarks>
+    /// <see cref="PdfDocument.Save"/> never writes a removed page, its content or its annotations
+    /// (form widgets included), in any layout (plain, <see cref="PdfOptions.Optimize"/>,
+    /// <see cref="PdfOptions.Linearize"/>), whatever still references them — a bookmark, a link, an
+    /// open action, a named destination, ... Form fields whose widgets were all on removed pages
+    /// are left out with their values, and so are tagged-PDF structure elements whose content was
+    /// all on removed pages. A reference to anything left out is written as <see langword="null"/>.
+    /// <para>
+    /// <see cref="PdfDocument.SaveIncremental"/> appends to the original file, so a removed page's
+    /// bytes always remain in it. That is deliberate: it is how a page is dropped from a signed PDF
+    /// without invalidating the signature. Use <see cref="PdfDocument.Save"/> when the removed page
+    /// must not survive in the saved file, or <see cref="PdfDocument.Redact"/> for content that
+    /// must be unrecoverable.
+    /// </para>
+    /// <para>
+    /// Removing a page changes this collection only. Saving never modifies the open document —
+    /// <see cref="PdfDocument.Form"/> and the object graph still describe the original — so reopen
+    /// the saved file to see the result.
+    /// </para>
+    /// <para>
+    /// Known limitations: a destination that targets a page by integer index, and
+    /// <c>/PageLabels</c> ranges, are not renumbered after a removal — both can point at the
+    /// wrong page (or a now out-of-range one) once earlier pages are removed.
+    /// </para>
+    /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is out of range.</exception>
+    /// <example>
+    /// <code>
+    /// using var document = PdfDocument.Open("input.pdf");
+    /// document.Pages.RemoveAt(1); // drop page 2
+    /// document.Save("output.pdf");
+    ///
+    /// // Reopen to see the result — the removed page is gone, and nothing in the
+    /// // saved file still references it.
+    /// using var reopened = PdfDocument.Open("output.pdf");
+    /// Console.WriteLine(reopened.Pages.Count);
+    /// </code>
+    /// </example>
     public void RemoveAt(int index)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(index);

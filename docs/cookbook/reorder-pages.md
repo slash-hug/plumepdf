@@ -1,6 +1,12 @@
 # Reorder and remove pages
 
-`document.Pages` is mutable: `Move` reorders, `RemoveAt` deletes. Save afterwards with either save path.
+`document.Pages` is mutable: `Move` reorders, `RemoveAt` deletes. How you save afterwards matters for a
+removed page: `Save` performs a full rewrite and never writes the removed page, its content, or its
+annotations back — whatever still references them is written as `null`. `SaveIncremental` appends
+onto a copy of the document's original bytes, so a removed page's bytes stay in the saved file; that
+trade-off is deliberate (it lets you drop a page from a signed PDF without invalidating the
+signature), but it means `SaveIncremental` is the wrong choice when the removed page must not survive
+in the file. Use `Save` for that, or `Pdf.Redact` for content that must be unrecoverable.
 
 <!-- snippet: reorder-pages -->
 <a id='snippet-reorder-pages'></a>

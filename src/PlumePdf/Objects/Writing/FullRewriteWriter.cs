@@ -53,23 +53,38 @@ internal static class FullRewriteWriter
     /// <param name="catalogDictionary">The source document's catalog dictionary, or <see langword="null"/> when unresolvable.</param>
     /// <param name="pages">The pages to include, in final order.</param>
     /// <param name="options">Options controlling the write, notably <see cref="PdfOptions.Deterministic"/>.</param>
+    /// <param name="excluded">
+    /// Original object numbers that must not reach the output (the pages removed before this
+    /// save, the original page-tree nodes, and what belonged only to those pages): a reference
+    /// to one is never followed and is written as <c>null</c>. <see langword="null"/> excludes
+    /// nothing.
+    /// </param>
+    /// <param name="replacements">
+    /// Replacement values for original object numbers other than the catalog and the retained
+    /// pages (those arrive as <paramref name="catalogDictionary"/> and <paramref name="pages"/>),
+    /// and values for numbers above the registry's range that the caller allocated for this save
+    /// only. Consulted before <paramref name="objects"/> during discovery and serialization.
+    /// </param>
     public static void Write(
         Stream output,
         ObjectRegistry objects,
         IndirectReference? catalogReference,
         PdfDictionary? catalogDictionary,
         IReadOnlyList<(IndirectReference Reference, PdfDictionary Dictionary)> pages,
-        PdfOptions options)
+        PdfOptions options,
+        IReadOnlySet<int>? excluded = null,
+        IReadOnlyDictionary<int, PdfObject>? replacements = null)
     {
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(objects);
         ArgumentNullException.ThrowIfNull(pages);
         ArgumentNullException.ThrowIfNull(options);
 
+        excluded ??= EmptyExclusions;
         var originalNumberToNew = new Dictionary<int, int>();
         var pendingOriginal = new Queue<int>();
         var extraObjects = new List<(int Number, PdfObject Value)>();
-        var overrides = new Dictionary<int, PdfObject>();
+        var overrides = SeedOverrides(catalogReference, pages, excluded, replacements);
 
         // References this writer constructs itself, already carrying a final object number
         // (a /Pages node's /Kids entries, every retained page's replacement /Parent, the
@@ -165,19 +180,21 @@ internal static class FullRewriteWriter
             var value = ValueFor(objects, overrides, originalNumber);
             foreach (var reference in FindReferences(value))
             {
-                if (!syntheticReferences.Contains(reference))
+                if (!syntheticReferences.Contains(reference) && !excluded.Contains(reference.Target.Number))
                 {
                     AssignOriginal(reference.Target.Number);
                 }
             }
         }
 
-        IndirectReference Translate(PdfReference reference) =>
+        IndirectReference? Translate(PdfReference reference) =>
             syntheticReferences.Contains(reference)
                 ? reference.Target
                 : originalNumberToNew.TryGetValue(reference.Target.Number, out var newNumber)
                     ? new IndirectReference(newNumber, 0)
-                    : throw new PlumePdfException("PLUME5010", $"Internal writer invariant violated: a reference to object {reference.Target.Number} was encountered outside the discovered graph.");
+                    : excluded.Contains(reference.Target.Number)
+                        ? null
+                        : throw new PlumePdfException("PLUME5010", $"Internal writer invariant violated: a reference to object {reference.Target.Number} was encountered outside the discovered graph.");
 
         // 7. Serialize: header, the small fixed set of synthetic objects, then every
         //    discovered original object in assignment order. The optimized path
@@ -225,7 +242,7 @@ internal static class FullRewriteWriter
         int nextNumber,
         int catalogNumber,
         int? infoNumber,
-        Func<PdfReference, IndirectReference> translate,
+        Func<PdfReference, IndirectReference?> translate,
         PdfOptions options)
     {
         // Every final object in assignment order, indexed by its final number.
@@ -323,6 +340,53 @@ internal static class FullRewriteWriter
 
         copy.Set(ParentName, pagesRootReference);
         return copy;
+    }
+
+    internal static readonly IReadOnlySet<int> EmptyExclusions = new HashSet<int>();
+
+    // The writer's own override table, seeded with the caller's replacements. The catalog and
+    // the retained pages are never replaced this way (they arrive through their own parameters
+    // and the writer rebuilds them around the fresh /Pages node), and neither may be excluded.
+    internal static Dictionary<int, PdfObject> SeedOverrides(
+        IndirectReference? catalogReference,
+        IReadOnlyList<(IndirectReference Reference, PdfDictionary Dictionary)> pages,
+        IReadOnlySet<int> excluded,
+        IReadOnlyDictionary<int, PdfObject>? replacements)
+    {
+        var reserved = new HashSet<int>();
+        if (catalogReference is { } catalog)
+        {
+            reserved.Add(catalog.Number);
+        }
+
+        foreach (var (reference, _) in pages)
+        {
+            reserved.Add(reference.Number);
+        }
+
+        foreach (var number in reserved)
+        {
+            if (excluded.Contains(number))
+            {
+                throw new PlumePdfException("PLUME5010", $"Internal writer invariant violated: object {number} is the catalog or a retained page but was excluded from the output.");
+            }
+        }
+
+        var overrides = new Dictionary<int, PdfObject>();
+        if (replacements is not null)
+        {
+            foreach (var (number, value) in replacements)
+            {
+                if (reserved.Contains(number))
+                {
+                    throw new PlumePdfException("PLUME5010", $"Internal writer invariant violated: object {number} is the catalog or a retained page and cannot be supplied as a replacement.");
+                }
+
+                overrides[number] = value;
+            }
+        }
+
+        return overrides;
     }
 
     private static PdfObject ValueFor(ObjectRegistry objects, Dictionary<int, PdfObject> overrides, int originalNumber) =>

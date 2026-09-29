@@ -1,5 +1,6 @@
 using PlumePdf.Documents;
 using PlumePdf.Documents.Metadata;
+using PlumePdf.Documents.PageRemoval;
 using PlumePdf.Documents.Redaction;
 using PlumePdf.Documents.Signing;
 using PlumePdf.IO;
@@ -68,7 +69,7 @@ public sealed class PdfDocument : IDisposable
 
         Catalog = DocumentCatalog.Resolve(Objects, Objects.Trailer, options, diagnostics);
         var pageReferences = Catalog is not null
-            ? PageTreeReader.CollectPages(Objects, Catalog.Dictionary, options, diagnostics)
+            ? PageTreeReader.CollectPages(Objects, Catalog.Dictionary, options, diagnostics, _openTimePageTree)
             : [];
 
         var pages = new List<PdfPage>(pageReferences.Count);
@@ -76,6 +77,8 @@ public sealed class PdfDocument : IDisposable
         {
             pages.Add(new PdfPage(reference, dictionary, this));
         }
+
+        _openTimePages = [.. pageReferences.Select(static p => p.Reference)];
 
         // R-n: a page reorder/removal is a mutation of this document exactly like
         // Objects.MarkDirty/RegisterNew/AllocateNumber, so it participates in the same
@@ -106,6 +109,15 @@ public sealed class PdfDocument : IDisposable
 
     /// <summary>The resolved document catalog, or <see langword="null"/> when the trailer's <c>/Root</c> could not be resolved (recorded to <see cref="Diagnostics"/>).</summary>
     internal DocumentCatalog? Catalog { get; }
+
+    // Every page-tree node, page and indirect /Kids array the open-time walk resolved. A full
+    // rewrite always replaces the tree with a fresh flat /Pages node, so any of these that is
+    // not a page being saved must never reach the output — whatever still references it.
+    private readonly HashSet<int> _openTimePageTree = [];
+    private readonly IReadOnlyList<IndirectReference> _openTimePages;
+
+    /// <summary>The object numbers of every page-tree node and page this document was opened with (see <c>PageTreeReader.CollectPages</c>).</summary>
+    internal IReadOnlySet<int> OpenTimePageTree => _openTimePageTree;
 
     /// <summary>
     /// Whether this document's trailer declares an <c>/Encrypt</c> dictionary. Gates
@@ -636,6 +648,15 @@ public sealed class PdfDocument : IDisposable
             throw new PlumePdfException("PLUME5020", "PdfOptions.Linearize requires at least one page — linearization's entire layout (ISO 32000-1 Annex F) is organized around a first page, so a zero-page document has nothing to linearize. Save without the option instead.");
         }
 
+        // Pages removed since open must not come back through anything that still references
+        // them: the writers exclude the removed pages, the original page-tree nodes and what
+        // belonged only to those pages, and the save-time clean-up rewrites (as copies — this
+        // document is not modified) the bookmarks, form fields, links, open action, named
+        // destinations and structure elements that pointed at them. Computed before the
+        // signature scan so a signature field removed with its page is not counted as
+        // invalidated.
+        var cleanup = PrepareFullRewrite(effectiveOptions);
+
         // A full rewrite renumbers every object, which invalidates any existing
         // signature's /ByteRange (the offsets it names no longer point at the same bytes) —
         // the asymmetry SaveIncremental's own XML docs already flag ("required for signed
@@ -662,6 +683,8 @@ public sealed class PdfDocument : IDisposable
             existingSignatures = [];
         }
 
+        existingSignatures = [.. existingSignatures.Where(s => !cleanup.RemovedFields.Contains(s.FieldReference.Number))];
+
         if (existingSignatures.Count > 0)
         {
             var names = string.Join(", ", existingSignatures.Select(static s => s.FieldName));
@@ -686,18 +709,18 @@ public sealed class PdfDocument : IDisposable
         {
             using (var tempStream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
             {
-                var pages = Pages.Select(static p => (p.Reference, p.Dictionary)).ToList();
+                var pages = cleanup.Pages;
                 if (effectiveOptions.Linearize)
                 {
                     // Two-pass staged output through this already-existing temp
                     // file (the recorded carve-out of the "no whole-document byte buffer"
                     // promise — staging through the temp FILE is fine; a whole-document MEMORY
                     // buffer is what the promise forbids).
-                    Linearizer.Write(tempStream, Objects, Catalog?.Reference, Catalog?.Dictionary, pages, effectiveOptions);
+                    Linearizer.Write(tempStream, Objects, Catalog?.Reference, cleanup.Catalog, pages, effectiveOptions, cleanup.Excluded, cleanup.Replacements);
                 }
                 else
                 {
-                    FullRewriteWriter.Write(tempStream, Objects, Catalog?.Reference, Catalog?.Dictionary, pages, effectiveOptions);
+                    FullRewriteWriter.Write(tempStream, Objects, Catalog?.Reference, cleanup.Catalog, pages, effectiveOptions, cleanup.Excluded, cleanup.Replacements);
                 }
             }
 
@@ -717,6 +740,17 @@ public sealed class PdfDocument : IDisposable
                 File.Delete(tempPath);
             }
         }
+    }
+
+    // The exclusion set and the clean-up copies for one full rewrite of the current pages.
+    private SaveCleanupContext PrepareFullRewrite(PdfOptions options)
+    {
+        var pages = Pages.Select(static p => (p.Reference, p.Dictionary)).ToList();
+        var (excluded, removedPages, removedFields) = RemovedSetBuilder.Build(Objects, Catalog?.Reference, Catalog?.Dictionary, _openTimePageTree, _openTimePages, pages, options);
+        var context = new SaveCleanupContext(Objects, Catalog?.Reference, Catalog?.Dictionary, pages, excluded, removedPages, options);
+        context.RemovedFields.UnionWith(removedFields);
+        SaveCleanup.Compute(context);
+        return context;
     }
 
     /// <summary>

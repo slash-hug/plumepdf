@@ -6,6 +6,7 @@ using PlumePdf.Documents.Redaction;
 using PlumePdf.Elements;
 using PlumePdf.IO;
 using PlumePdf.Objects;
+using PlumePdf.Tests.TestSupport;
 using Xunit;
 
 namespace PlumePdf.Tests.Redaction;
@@ -15,7 +16,7 @@ namespace PlumePdf.Tests.Redaction;
 /// "unreachable from the trailer" but genuinely absent from the saved file's bytes. Every test
 /// here redacts, <see cref="PdfDocument.Save"/>s, then proves absence two independent ways:
 /// (1) reopening and calling <c>ExtractText</c>/<c>ExtractImages</c> (the ordinary reader path),
-/// and (2) <see cref="RecoveryScanner"/>'s brute-force "N G obj" byte scan reconstructing
+/// and (2) <see cref="RecoveredBytes"/>' brute-force "N G obj" byte scan reconstructing
 /// <em>every</em> object physically present in the output file regardless of reachability —
 /// object-graph reachability alone would not catch a writer bug that still emitted the
 /// original bytes somewhere unreferenced. A raw whole-file substring scan is layered on top of
@@ -48,10 +49,10 @@ public class RedactionUnrecoverabilityTests
                 Assert.DoesNotContain(secret, reopened.Pages[0].ExtractText().Text, StringComparison.Ordinal);
             }
 
-            // (2) brute-force RecoveryScanner reconstruction: every object physically present
+            // (2) brute-force recovered-object reconstruction: every object physically present
             // in the file, decoded, regardless of whether the ordinary catalog/page-tree walk
             // would ever reach it.
-            Assert.False(AnyRecoveredObjectContains(fileBytes, secret), $"RecoveryScanner found '{secret}' surviving in an object the ordinary reachability walk might not have visited.");
+            Assert.False(RecoveredBytes.AnyRecoveredObjectContains(fileBytes, secret), $"The brute-force object scan found '{secret}' surviving in an object the ordinary reachability walk might not have visited.");
 
             // (3) raw whole-file byte scan — the strongest, assumption-free check: the target
             // text's plain-text bytes must not appear anywhere in the saved file at all.
@@ -88,7 +89,7 @@ public class RedactionUnrecoverabilityTests
                 Assert.DoesNotContain(secret, reopened.Pages[0].ExtractText().Text, StringComparison.Ordinal);
             }
 
-            Assert.False(AnyRecoveredObjectContains(fileBytes, secret));
+            Assert.False(RecoveredBytes.AnyRecoveredObjectContains(fileBytes, secret));
             Assert.DoesNotContain(secret, Encoding.Latin1.GetString(fileBytes), StringComparison.Ordinal);
         }
         finally
@@ -129,109 +130,14 @@ public class RedactionUnrecoverabilityTests
             // The original raw pixel buffer's distinctive byte run must not survive anywhere in
             // the saved file — not filter-decoded on any recovered object, and not present raw
             // (PlumePDF stores Flate-compressed images by default, so a raw-byte scan of the
-            // *compressed* file wouldn't be conclusive on its own; the RecoveryScanner pass
+            // *compressed* file wouldn't be conclusive on its own; the recovered-object pass
             // below decodes every recovered stream through its own /Filter chain, which is the
             // check that actually proves it).
-            Assert.False(AnyRecoveredObjectContainsByteRun(fileBytes, pixels.AsSpan(0, 300)));
+            Assert.False(RecoveredBytes.AnyRecoveredObjectContainsByteRun(fileBytes, pixels.AsSpan(0, 300)));
         }
         finally
         {
             File.Delete(path);
-        }
-    }
-
-    // Brute-force reconstructs every object physically present in fileBytes (RecoveryScanner's
-    // "N G obj" scan, independent of any cross-reference table or catalog reachability),
-    // filter-decodes every stream it finds, and checks both the decoded stream bytes and any
-    // string values for `needle`. Defensive by design: a single malformed/unparseable recovered
-    // object is skipped rather than failing the scan (matching RecoveryScanner's own
-    // lenient-by-default philosophy) — this test cares whether the secret text survives
-    // *anywhere parseable*, not whether every byte in the file parses as a well-formed object.
-    private static bool AnyRecoveredObjectContains(byte[] fileBytes, string needle)
-    {
-        var needleBytes = Encoding.Latin1.GetBytes(needle);
-        return AnyRecoveredObjectContainsByteRun(fileBytes, needleBytes);
-    }
-
-    private static bool AnyRecoveredObjectContainsByteRun(byte[] fileBytes, ReadOnlySpan<byte> needle)
-    {
-        using var source = new StreamByteSource(fileBytes.AsMemory());
-        var table = RecoveryScanner.Scan(source, PdfOptions.Default, diagnostics: null);
-
-        foreach (var (_, entry) in table.EntriesByObjectNumber)
-        {
-            if (entry.Kind != CrossReferenceEntryKind.InFile || entry.ByteOffset >= fileBytes.Length)
-            {
-                continue;
-            }
-
-            PdfObject value;
-            try
-            {
-                var slice = fileBytes.AsSpan((int)entry.ByteOffset).ToArray();
-                value = ObjectParser.ParseIndirectObject(slice, PdfOptions.Default, diagnostics: null, out _);
-            }
-            catch (PlumePdfException)
-            {
-                continue;
-            }
-
-            if (ContainsByteRun(value, needle))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool ContainsByteRun(PdfObject value, ReadOnlySpan<byte> needle)
-    {
-        switch (value)
-        {
-            case PdfString s:
-                return s.Bytes.Span.IndexOf(needle) >= 0;
-
-            case PdfStream stream:
-                if (stream.RawBytes.Span.IndexOf(needle) >= 0)
-                {
-                    return true;
-                }
-
-                try
-                {
-                    var decoded = stream.GetDecodedBytes(PdfFilterRegistry.Default, PdfOptions.Default);
-                    return decoded.AsSpan().IndexOf(needle) >= 0;
-                }
-                catch (PlumePdfException)
-                {
-                    return false;
-                }
-
-            case PdfDictionary dict:
-                foreach (var (_, entryValue) in dict)
-                {
-                    if (ContainsByteRun(entryValue, needle))
-                    {
-                        return true;
-                    }
-                }
-
-                return false;
-
-            case PdfArray array:
-                foreach (var element in array)
-                {
-                    if (ContainsByteRun(element, needle))
-                    {
-                        return true;
-                    }
-                }
-
-                return false;
-
-            default:
-                return false;
         }
     }
 

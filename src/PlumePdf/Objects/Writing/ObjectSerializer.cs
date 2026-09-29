@@ -34,7 +34,8 @@ internal static class ObjectSerializer
     /// than by number alone, so a reference the writer constructs pointing at an
     /// already-final number (e.g. a fresh <c>/Pages</c> node's <c>/Kids</c> entries) can
     /// never be misread as an unrelated original object number that happens to collide with
-    /// it numerically.
+    /// it numerically. Returning <see langword="null"/> writes the <c>null</c> object in the
+    /// reference's place (the full-rewrite writers' excluded objects).
     /// </param>
     /// <param name="onPlaceholder">
     /// Invoked with the placeholder instance and the <paramref name="output"/> position at
@@ -43,7 +44,7 @@ internal static class ObjectSerializer
     /// — <see langword="null"/> for an ordinary write with no signing session
     /// involved.
     /// </param>
-    public static void WriteIndirectObject(Stream output, int number, int generation, PdfObject value, Func<PdfReference, IndirectReference>? translateReference = null, Action<PdfObject, long>? onPlaceholder = null)
+    public static void WriteIndirectObject(Stream output, int number, int generation, PdfObject value, Func<PdfReference, IndirectReference?>? translateReference = null, Action<PdfObject, long>? onPlaceholder = null)
     {
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(value);
@@ -61,7 +62,7 @@ internal static class ObjectSerializer
     /// <param name="value">The value to write.</param>
     /// <param name="translateReference">See <see cref="WriteIndirectObject"/>'s parameter of the same name.</param>
     /// <param name="onPlaceholder">See <see cref="WriteIndirectObject"/>'s parameter of the same name.</param>
-    public static void WriteValue(Stream output, PdfObject value, Func<PdfReference, IndirectReference>? translateReference = null, Action<PdfObject, long>? onPlaceholder = null)
+    public static void WriteValue(Stream output, PdfObject value, Func<PdfReference, IndirectReference?>? translateReference = null, Action<PdfObject, long>? onPlaceholder = null)
     {
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(value);
@@ -91,8 +92,18 @@ internal static class ObjectSerializer
 
             case PdfReference reference:
                 {
-                    var target = translateReference(reference);
-                    WriteAscii(output, $"{target.Number} {target.Generation} R");
+                    // A null translation means the target is excluded from the output (a page
+                    // removed before a full rewrite, and what belonged only to it): the
+                    // reference is written as the null object and the target never follows.
+                    if (translateReference(reference) is { } target)
+                    {
+                        WriteAscii(output, $"{target.Number} {target.Generation} R");
+                    }
+                    else
+                    {
+                        WriteAscii(output, "null");
+                    }
+
                     break;
                 }
 
@@ -178,7 +189,7 @@ internal static class ObjectSerializer
         WriteAscii(output, "]");
     }
 
-    private static void WriteArray(Stream output, PdfArray array, Func<PdfReference, IndirectReference> translateReference, Action<PdfObject, long>? onPlaceholder = null)
+    private static void WriteArray(Stream output, PdfArray array, Func<PdfReference, IndirectReference?> translateReference, Action<PdfObject, long>? onPlaceholder = null)
     {
         WriteAscii(output, "[");
         for (var i = 0; i < array.Count; i++)
@@ -194,7 +205,7 @@ internal static class ObjectSerializer
         WriteAscii(output, "]");
     }
 
-    private static void WriteDictionary(Stream output, PdfDictionary dict, Func<PdfReference, IndirectReference> translateReference, Action<PdfObject, long>? onPlaceholder = null)
+    private static void WriteDictionary(Stream output, PdfDictionary dict, Func<PdfReference, IndirectReference?> translateReference, Action<PdfObject, long>? onPlaceholder = null)
     {
         WriteAscii(output, "<<");
         foreach (var (key, value) in dict)
@@ -208,7 +219,7 @@ internal static class ObjectSerializer
         WriteAscii(output, " >>");
     }
 
-    private static void WriteStream(Stream output, PdfStream stream, Func<PdfReference, IndirectReference> translateReference, Action<PdfObject, long>? onPlaceholder = null)
+    private static void WriteStream(Stream output, PdfStream stream, Func<PdfReference, IndirectReference?> translateReference, Action<PdfObject, long>? onPlaceholder = null)
     {
         var dict = new PdfDictionary();
         foreach (var (key, value) in stream.Dictionary)

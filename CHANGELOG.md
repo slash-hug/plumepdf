@@ -7,6 +7,20 @@ only by diffing output. Entries land in the same change as the behavior they des
 
 ## [Unreleased]
 
+### Fixed
+
+- **A page removed with `Pages.RemoveAt` could still be written by `Save`, in all three layouts.** A full-rewrite `Save` (plain, `Optimize`, `Linearize`) writes every object reachable from the catalog. A removed page stayed reachable through anything that still referenced it: a bookmark, a link, an open action, a form field or widget, a named destination, a structure element. Its `/Parent` then reached the original page tree, whose `/Kids` brought back **every** removed page. Affected `Linearize` output also failed `qpdf --check`, because the resurrected pages broke the hint tables. `Save` now leaves out:
+  - the removed pages and the original page-tree nodes;
+  - the annotations on removed pages, including form widgets placed on them;
+  - form fields whose widgets were all on removed pages, with their values;
+  - tagged-PDF structure elements whose content was all on removed pages.
+
+  A reference to any of these is written as `null`. The open document is not changed by `Save`.
+  - **`SaveIncremental` keeps a removed page's bytes, by design.** It appends to the original file, which is how a page is dropped from a signed PDF without invalidating the signature. Use `Save` when the page must not survive, or `Pdf.Redact` for content that must be unrecoverable.
+  - **Known limitations:** destinations that name a page by integer index, and `/PageLabels` ranges, are not renumbered after a removal.
+
+  Issue #16.
+
 ## [1.0.0] — Unreleased (initial public release)
 
 ### Added
