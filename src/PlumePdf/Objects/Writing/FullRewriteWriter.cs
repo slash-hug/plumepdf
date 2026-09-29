@@ -164,7 +164,8 @@ internal static class FullRewriteWriter
 
         // 5. /Info, if present — carried over via ordinary discovery (not overridden).
         int? infoNumber = null;
-        if (objects.Trailer.TryGetValue(PdfName.Info, out var infoValue) && infoValue is PdfReference infoRef)
+        if (objects.Trailer.TryGetValue(PdfName.Info, out var infoValue) && infoValue is PdfReference infoRef
+            && !excluded.Contains(infoRef.Target.Number))
         {
             infoNumber = AssignOriginal(infoRef.Target.Number);
         }

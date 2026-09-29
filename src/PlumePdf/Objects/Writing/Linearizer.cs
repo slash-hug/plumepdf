@@ -202,6 +202,16 @@ internal static class Linearizer
             firstPageSet.UnionWith(outlineSet);
         }
 
+        // With the outline group in part 6, what a remaining page reaches of it is first-page
+        // content that page shares (it must appear in the page's shared-object list), not a
+        // barrier; form objects outside the outline group still are.
+        var remainingBarriers = pageBarriers;
+        if (outlinesInFirstPage)
+        {
+            remainingBarriers = new HashSet<int>(formHierarchySet);
+            remainingBarriers.ExceptWith(outlineSet);
+        }
+
         // Parts 7/8: each remaining page's closure; an object hit by two or more remaining
         // pages (and not already first-page-owned) is shared. `owner` maps an object to its
         // single owning remaining page, or -1 once it proves shared.
@@ -212,7 +222,7 @@ internal static class Linearizer
         {
             var set = new HashSet<int>();
             var order = new List<int>();
-            Collect(classifyPageCopies[pages[k].Reference.Number], set, order, pageBarriers);
+            Collect(classifyPageCopies[pages[k].Reference.Number], set, order, remainingBarriers);
             remainingOrders[k] = order;
             foreach (var number in order)
             {
