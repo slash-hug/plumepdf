@@ -58,11 +58,16 @@ public static class Pdf
 
     /// <summary>Merges the pages of every document in <paramref name="documents"/>, in order, into one new document.</summary>
     /// <remarks>
+    /// A document (or page) passed more than once gives one page per occurrence: each repeated
+    /// occurrence is copied on its own, and its form fields are independent copies renamed like any
+    /// field-name collision between documents.
+    /// <para>
     /// A new document holds only the pages it is given. Nothing that belongs to a page left behind
     /// comes along through a reference: a link, a pop-up or reply, a form widget, a radio group
     /// spanning pages. Links to a page left behind are removed, form fields whose widgets were all
     /// on such pages are left out, and a kept field keeps only its imported widgets — the same
     /// rules <see cref="PdfDocument.Save"/> applies after <see cref="PageCollection.RemoveAt"/>.
+    /// </para>
     /// </remarks>
     /// <exception cref="ArgumentException"><paramref name="documents"/> is empty.</exception>
     public static PdfDocument Merge(params PdfDocument[] documents)

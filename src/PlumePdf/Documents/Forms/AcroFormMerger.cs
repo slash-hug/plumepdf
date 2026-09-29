@@ -36,17 +36,17 @@ internal static class AcroFormMerger
     /// merge).
     /// </summary>
     public static PdfDictionary? Merge(
-        IEnumerable<(PdfDocument Source, IndirectReference PageReference, PdfDictionary PageDictionary)> pages,
-        Func<PdfDocument, PdfObject, PdfObject> importValue,
-        Func<PdfDocument, IndirectReference, PdfDictionary?, Func<PdfDictionary, PdfDictionary>?, IndirectReference> reserve,
-        Func<PdfDocument, int, bool> isExcluded)
+        IEnumerable<(ImportSource Source, IndirectReference PageReference, PdfDictionary PageDictionary)> pages,
+        Func<ImportSource, PdfObject, PdfObject> importValue,
+        Func<ImportSource, IndirectReference, PdfDictionary?, Func<PdfDictionary, PdfDictionary>?, IndirectReference> reserve,
+        Func<ImportSource, int, bool> isExcluded)
     {
         ArgumentNullException.ThrowIfNull(pages);
         ArgumentNullException.ThrowIfNull(importValue);
         ArgumentNullException.ThrowIfNull(reserve);
 
-        var sources = new List<PdfDocument>();
-        var seenSources = new HashSet<PdfDocument>();
+        var sources = new List<ImportSource>();
+        var seenSources = new HashSet<ImportSource>();
         foreach (var (source, _, _) in pages)
         {
             if (seenSources.Add(source))
@@ -71,7 +71,7 @@ internal static class AcroFormMerger
         // no page at all (pure-data or orphan-widget field) also travels, because dropping
         // it would silently destroy form data — only fields placed exclusively on
         // NON-imported pages are excluded.
-        var importedWidgetsBySource = new Dictionary<PdfDocument, HashSet<int>>();
+        var importedWidgetsBySource = new Dictionary<ImportSource, HashSet<int>>();
         foreach (var (source, _, pageDictionary) in pages)
         {
             if (!importedWidgetsBySource.TryGetValue(source, out var set))
@@ -82,7 +82,7 @@ internal static class AcroFormMerger
             CollectAnnotNumbers(source, pageDictionary, set);
         }
 
-        var placedWidgetsBySource = new Dictionary<PdfDocument, HashSet<int>>();
+        var placedWidgetsBySource = new Dictionary<ImportSource, HashSet<int>>();
         foreach (var source in importedWidgetsBySource.Keys)
         {
             placedWidgetsBySource[source] = PlacedWidgets(source);
@@ -265,7 +265,7 @@ internal static class AcroFormMerger
         return copy;
     }
 
-    private static void MergeResources(PdfDictionary mergedDr, PdfDocument source, PdfDictionary sourceDr, Func<PdfDocument, PdfObject, PdfObject> importValue)
+    private static void MergeResources(PdfDictionary mergedDr, ImportSource source, PdfDictionary sourceDr, Func<ImportSource, PdfObject, PdfObject> importValue)
     {
         foreach (var (categoryKey, categoryValue) in sourceDr)
         {
@@ -302,7 +302,7 @@ internal static class AcroFormMerger
         return PdfString.FromLiteral(withBom);
     }
 
-    private static void CollectAnnotNumbers(PdfDocument source, PdfDictionary pageDictionary, HashSet<int> into)
+    private static void CollectAnnotNumbers(ImportSource source, PdfDictionary pageDictionary, HashSet<int> into)
     {
         if (pageDictionary.TryGetValue(AcroFormNames.Annots, out var annotsValue)
             && AcroFormReader.Resolve(source.Objects, annotsValue) is PdfArray annots)
@@ -325,7 +325,7 @@ internal static class AcroFormMerger
     /// in an imported page's <c>/Annots</c>. Merged field+widget dictionaries are the common
     /// case; a parent field qualifies through any qualifying leaf.
     /// </summary>
-    private static bool FieldReachesImportedWidget(PdfDocument source, IndirectReference reference, PdfDictionary fieldDict, HashSet<int> importedWidgets, int depth, HashSet<int> visited)
+    private static bool FieldReachesImportedWidget(ImportSource source, IndirectReference reference, PdfDictionary fieldDict, HashSet<int> importedWidgets, int depth, HashSet<int> visited)
     {
         if (depth > MaxReachabilityDepth || !visited.Add(reference.Number))
         {
@@ -357,7 +357,7 @@ internal static class AcroFormMerger
     // Widgets placed on any page the source was opened with — not just the pages it has now,
     // so a field whose page was removed before the merge counts as placed there (and does not
     // travel), rather than as placed nowhere.
-    private static HashSet<int> PlacedWidgets(PdfDocument source)
+    private static HashSet<int> PlacedWidgets(ImportSource source)
     {
         var placed = new HashSet<int>();
         foreach (var reference in source.OpenTimePages)

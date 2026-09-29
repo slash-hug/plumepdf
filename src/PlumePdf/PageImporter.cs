@@ -60,7 +60,18 @@ internal static class PageImporter
         }
 
         var diagnostics = new DiagnosticCollection();
-        var preparations = Prepare(pageList);
+        // A page imported more than once comes from a further occurrence of its document, copied
+        // independently (see ImportSource).
+        var occurrences = new Dictionary<(PdfDocument, int), int>();
+        var imports = pageList.ConvertAll(page =>
+        {
+            var key = (page.Source, page.PageReference.Number);
+            var occurrence = occurrences.TryGetValue(key, out var seen) ? seen : 0;
+            occurrences[key] = occurrence + 1;
+            return (Source: new ImportSource(page.Source, occurrence), page.PageReference, page.PageDictionary);
+        });
+
+        var preparations = Prepare(imports);
         foreach (var preparation in preparations.Values.Where(static p => p.Counts.Any))
         {
             diagnostics.Add(new PdfDiagnostic("PLUME5021", DiagnosticSeverity.Info, $"Left out what pointed at pages that were not imported: {preparation.Counts.Describe()}."));
@@ -71,7 +82,7 @@ internal static class PageImporter
         var catalogNumber = nextNumber++;
         var pagesNumber = nextNumber++;
         var kidsReferences = new List<IndirectReference>();
-        var perSourceMaps = new Dictionary<PdfDocument, Dictionary<int, int>>();
+        var perSourceMaps = new Dictionary<ImportSource, Dictionary<int, int>>();
 
         // Work queue for reference-chain discovery (see class remarks): reserving a fresh
         // number for a not-yet-seen original object happens eagerly (so every other
@@ -81,9 +92,9 @@ internal static class PageImporter
         // supply a same-shape-but-modified stand-in — built from the *original* (source-space)
         // dictionary, never a mutation of it — that ImportValue then deep-copies normally, the
         // same "override, don't mutate the source" shape PageOverride already uses for pages.
-        var pending = new Queue<(PdfDocument Source, int OriginalNumber, PdfDictionary? PageOverride, Func<PdfDictionary, PdfDictionary>? Transform)>();
+        var pending = new Queue<(ImportSource Source, int OriginalNumber, PdfDictionary? PageOverride, Func<PdfDictionary, PdfDictionary>? Transform)>();
 
-        Dictionary<int, int> MapFor(PdfDocument source)
+        Dictionary<int, int> MapFor(ImportSource source)
         {
             if (!perSourceMaps.TryGetValue(source, out var map))
             {
@@ -94,7 +105,7 @@ internal static class PageImporter
             return map;
         }
 
-        IndirectReference Reserve(PdfDocument source, IndirectReference originalReference, PdfDictionary? pageOverride = null, Func<PdfDictionary, PdfDictionary>? transform = null)
+        IndirectReference Reserve(ImportSource source, IndirectReference originalReference, PdfDictionary? pageOverride = null, Func<PdfDictionary, PdfDictionary>? transform = null)
         {
             var map = MapFor(source);
             if (map.TryGetValue(originalReference.Number, out var existing))
@@ -108,7 +119,7 @@ internal static class PageImporter
             return new IndirectReference(assigned, 0);
         }
 
-        PdfObject ImportValue(PdfDocument source, PdfObject value)
+        PdfObject ImportValue(ImportSource source, PdfObject value)
         {
             switch (value)
             {
@@ -154,7 +165,7 @@ internal static class PageImporter
             }
         }
 
-        PdfDictionary ImportPageDictionary(PdfDocument source, PdfDictionary pageDictionary)
+        PdfDictionary ImportPageDictionary(ImportSource source, PdfDictionary pageDictionary)
         {
             // pageDictionary (PdfPage.Dictionary, via PageTreeReader) already has the four
             // inheritable attributes (/Resources, /MediaBox, /CropBox, /Rotate) resolved onto
@@ -176,7 +187,7 @@ internal static class PageImporter
             return newDict;
         }
 
-        foreach (var (source, pageReference, _) in pageList)
+        foreach (var (source, pageReference, _) in imports)
         {
             // The tidied copy: /Annots without what the clean-up dropped.
             kidsReferences.Add(Reserve(source, pageReference, preparations[source].PageCopies[pageReference.Number]));
@@ -190,7 +201,7 @@ internal static class PageImporter
         // reached during the drain below then just finds the existing map entry (same
         // dedup path pages already share for fonts/images) rather than racing it — no
         // orphaned widgets, no duplicate copies of the same original object.
-        var mergedAcroForm = AcroFormMerger.Merge(pageList, ImportValue, Reserve, (source, number) => preparations[source].Excluded.Contains(number));
+        var mergedAcroForm = AcroFormMerger.Merge(imports, ImportValue, Reserve, (source, number) => preparations[source].Excluded.Contains(number));
 
         while (pending.Count > 0)
         {
@@ -249,9 +260,9 @@ internal static class PageImporter
     // Per source: what must not come along (the pages not imported and what belonged only to
     // them) and the clean-up's replacement values, computed once over every page imported
     // from that source.
-    private static Dictionary<PdfDocument, Preparation> Prepare(List<(PdfDocument Source, IndirectReference PageReference, PdfDictionary PageDictionary)> pages)
+    private static Dictionary<ImportSource, Preparation> Prepare(List<(ImportSource Source, IndirectReference PageReference, PdfDictionary PageDictionary)> pages)
     {
-        var preparations = new Dictionary<PdfDocument, Preparation>();
+        var preparations = new Dictionary<ImportSource, Preparation>();
         foreach (var group in pages.GroupBy(static p => p.Source))
         {
             var source = group.Key;
@@ -261,8 +272,8 @@ internal static class PageImporter
                 .ToList();
 
             var (excluded, removedPages, removedFields) = RemovedSetBuilder.Build(
-                source.Objects, source.Catalog?.Reference, source.Catalog?.Dictionary, source.OpenTimePageTree, source.OpenTimePages, imported, source.Options, pagesOnly: true);
-            var context = new SaveCleanupContext(source.Objects, source.Catalog?.Reference, source.Catalog?.Dictionary, imported, excluded, removedPages, source.Options);
+                source.Objects, source.Catalog?.Reference, source.Catalog?.Dictionary, source.Document.OpenTimePageTree, source.OpenTimePages, imported, source.Document.Options, pagesOnly: true);
+            var context = new SaveCleanupContext(source.Objects, source.Catalog?.Reference, source.Catalog?.Dictionary, imported, excluded, removedPages, source.Document.Options);
             context.RemovedFields.UnionWith(removedFields);
             SaveCleanup.ComputeForImport(context);
 

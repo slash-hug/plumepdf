@@ -9,6 +9,11 @@ new document's `Diagnostics` holds a `PLUME5021` entry counting what was left ou
 gets a fresh catalog: bookmarks, named destinations and the structure tree are not carried, so a link
 that targets a named destination stays but leads nowhere.
 
+Passing the same document (or page) more than once gives one page per occurrence. Each repeated
+occurrence is copied on its own, including its fonts and images, and its form fields become
+independent copies renamed like any field-name collision between documents (`name` → `name~2`), so
+each copy can be filled separately.
+
 <!-- snippet: merge -->
 <a id='snippet-merge'></a>
 ```cs
