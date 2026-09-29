@@ -16,6 +16,14 @@ document.SaveIncremental("output/incremental.pdf");
 <sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L113-L121' title='Snippet source file'>snippet source</a> | <a href='#snippet-save-incremental' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
+**Caveat:** the `RemoveAt(0)` call above only takes page 1 out of `document.Pages` in memory. Because
+`SaveIncremental` appends onto a copy of the original bytes, the removed page's bytes are still
+present in `output/incremental.pdf` — only the new page tree stops pointing at them. That is
+deliberate (it is how a page is dropped from a signed PDF without invalidating the signature), but
+it means `SaveIncremental` is the wrong save path when the removed page must not survive in the file.
+Use `Save` for that, or `Pdf.Redact` for content that must be unrecoverable. See
+[`reorder-pages.md`](reorder-pages.md) for the full guarantee `Save` gives you.
+
 Expected output (backing test `CookbookTests.SaveIncremental`):
 
 <!-- snippet: CookbookTests.SaveIncremental.verified.txt -->
