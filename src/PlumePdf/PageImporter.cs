@@ -72,9 +72,10 @@ internal static class PageImporter
         });
 
         var preparations = Prepare(imports);
-        foreach (var preparation in preparations.Values.Where(static p => p.Counts.Any))
+        // One entry per distinct report: repeated occurrences of a document usually leave out the same.
+        foreach (var report in preparations.Values.Where(static p => p.Counts.Any).Select(static p => p.Counts.Describe()).Distinct(StringComparer.Ordinal))
         {
-            diagnostics.Add(new PdfDiagnostic("PLUME5021", DiagnosticSeverity.Info, $"Left out what pointed at pages that were not imported: {preparation.Counts.Describe()}."));
+            diagnostics.Add(new PdfDiagnostic("PLUME5021", DiagnosticSeverity.Info, $"Left out what pointed at pages that were not imported: {report}."));
         }
 
         var merged = new Dictionary<int, PdfObject>();
@@ -266,10 +267,8 @@ internal static class PageImporter
         foreach (var group in pages.GroupBy(static p => p.Source))
         {
             var source = group.Key;
-            var imported = group
-                .GroupBy(static p => p.PageReference.Number)
-                .Select(static g => (g.First().PageReference, g.First().PageDictionary))
-                .ToList();
+            // Each page appears at most once per source occurrence.
+            var imported = group.Select(static p => (p.PageReference, p.PageDictionary)).ToList();
 
             var (excluded, removedPages, removedFields) = RemovedSetBuilder.Build(
                 source.Objects, source.Catalog?.Reference, source.Catalog?.Dictionary, source.Document.OpenTimePageTree, source.OpenTimePages, imported, source.Document.Options, pagesOnly: true);
