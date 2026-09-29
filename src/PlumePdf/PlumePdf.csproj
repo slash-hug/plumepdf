@@ -12,7 +12,7 @@
     <PackageValidationBaselineVersion>1.0.0-preview.1</PackageValidationBaselineVersion>
 
     <PackageId>PlumePdf</PackageId>
-    <Version>1.0.0-preview.1</Version>
+    <Version>1.0.0-preview.2</Version>
     <Description>A fully-featured, high-performance, agent-forward PDF library for .NET. Apache 2.0.</Description>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>

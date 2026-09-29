@@ -7,6 +7,19 @@ only by diffing output. Entries land in the same change as the behavior they des
 
 ## [Unreleased]
 
+## [1.0.0-preview.2] — 2026-09-29
+
+### Added
+
+- **Targets `net8.0` and `net10.0`.** One package, one assembly per target, NativeAOT-safe on
+  both (preview.1 targeted `net8.0` only). The single runtime dependency,
+  `System.Security.Cryptography.Pkcs`, is matched to each runtime (`8.0.1` / `10.0.12`).
+  `PdfOptions.Deterministic` output is byte-identical per runtime; across runtimes,
+  Flate-compressed bytes can differ with the runtime's zlib.
+- **`PLUME5021` (Info).** After `Pages.RemoveAt`, `Save` records in `doc.Diagnostics` what it left
+  out that pointed at removed pages (bookmarks, fields, links, …); `Pdf.Split` and `Pdf.Merge`
+  record the same for pages they were not given.
+
 ### Fixed
 
 - **A page removed with `Pages.RemoveAt` could still be written by `Save`, in all three layouts.** A full-rewrite `Save` (plain, `Optimize`, `Linearize`) writes every object reachable from the catalog. A removed page stayed reachable through anything that still referenced it: a bookmark, a link, an open action, a form field or widget, a named destination, a structure element. Its `/Parent` then reached the original page tree, whose `/Kids` brought back **every** removed page. Affected `Linearize` output also failed `qpdf --check`, because the resurrected pages broke the hint tables. `Save` now leaves out:
@@ -74,5 +87,6 @@ only by diffing output. Entries land in the same change as the behavior they des
 - Coded errors throughout: every failure carries a stable `PLUME####` code and an
   `Exception.HelpLink` to its reference page under `docs/errors/`.
 
-[Unreleased]: https://github.com/slash-hug/plumepdf/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/slash-hug/plumepdf/compare/v1.0.0-preview.2...HEAD
+[1.0.0-preview.2]: https://github.com/slash-hug/plumepdf/releases/tag/v1.0.0-preview.2
 [1.0.0]: https://github.com/slash-hug/plumepdf/releases/tag/v1.0.0

@@ -18,7 +18,8 @@ name: Release
 #   environment nuget-release: deployment branch main (no reviewer; the merge is the approval)
 #   branch ruleset on main: changes only through a PR with passing CI, no bypass — this is what
 #     makes a merge the only way a version bump (or a change to this file) reaches main
-#   tag ruleset for v*: GitHub Actions in its bypass list, so this workflow can create the tag
+#   tag ruleset for v*: restricts only update and deletion (release tags are immutable), so this
+#     workflow's token can create the tag; only the github-release job's token can write
 
 on:
   push:
