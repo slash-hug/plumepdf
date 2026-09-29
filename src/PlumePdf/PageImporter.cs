@@ -59,7 +59,12 @@ internal static class PageImporter
             }
         }
 
+        var diagnostics = new DiagnosticCollection();
         var preparations = Prepare(pageList);
+        foreach (var preparation in preparations.Values.Where(static p => p.Counts.Any))
+        {
+            diagnostics.Add(new PdfDiagnostic("PLUME5021", DiagnosticSeverity.Info, $"Left out what pointed at pages that were not imported: {preparation.Counts.Describe()}."));
+        }
 
         var merged = new Dictionary<int, PdfObject>();
         var nextNumber = 1;
@@ -67,7 +72,6 @@ internal static class PageImporter
         var pagesNumber = nextNumber++;
         var kidsReferences = new List<IndirectReference>();
         var perSourceMaps = new Dictionary<PdfDocument, Dictionary<int, int>>();
-        var diagnostics = new DiagnosticCollection();
 
         // Work queue for reference-chain discovery (see class remarks): reserving a fresh
         // number for a not-yet-seen original object happens eagerly (so every other
@@ -257,19 +261,20 @@ internal static class PageImporter
                 .ToList();
 
             var (excluded, removedPages, removedFields) = RemovedSetBuilder.Build(
-                source.Objects, source.Catalog?.Reference, source.Catalog?.Dictionary, source.OpenTimePageTree, source.OpenTimePages, imported, source.Options);
+                source.Objects, source.Catalog?.Reference, source.Catalog?.Dictionary, source.OpenTimePageTree, source.OpenTimePages, imported, source.Options, pagesOnly: true);
             var context = new SaveCleanupContext(source.Objects, source.Catalog?.Reference, source.Catalog?.Dictionary, imported, excluded, removedPages, source.Options);
             context.RemovedFields.UnionWith(removedFields);
-            SaveCleanup.Compute(context);
+            SaveCleanup.ComputeForImport(context);
 
             preparations[source] = new Preparation(
                 context.Excluded,
                 context.Replacements,
-                context.Pages.ToDictionary(static p => p.Reference.Number, static p => p.Dictionary));
+                context.Pages.ToDictionary(static p => p.Reference.Number, static p => p.Dictionary),
+                context.Counts);
         }
 
         return preparations;
     }
 
-    private sealed record Preparation(HashSet<int> Excluded, Dictionary<int, PdfObject> Replacements, Dictionary<int, PdfDictionary> PageCopies);
+    private sealed record Preparation(HashSet<int> Excluded, Dictionary<int, PdfObject> Replacements, Dictionary<int, PdfDictionary> PageCopies, SaveCleanupCounts Counts);
 }

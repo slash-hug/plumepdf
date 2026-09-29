@@ -4,7 +4,10 @@
 
 A document's current pages are what is merged: after `document.Pages.RemoveAt`, the removed pages stay
 out, and so does everything that belonged only to them (their annotations, form fields and values),
-whatever still referenced them. Links to a removed page are dropped from the merged pages.
+whatever still referenced them. Links to a removed page are dropped from the merged pages, and the
+new document's `Diagnostics` holds a `PLUME5021` entry counting what was left out. The merged document
+gets a fresh catalog: bookmarks, named destinations and the structure tree are not carried, so a link
+that targets a named destination stays but leads nowhere.
 
 <!-- snippet: merge -->
 <a id='snippet-merge'></a>

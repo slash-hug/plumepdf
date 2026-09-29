@@ -74,4 +74,69 @@ public class SplitMergeConfidentialityTests
 
         CleanupFixtures3b.AssertQpdfClean(bytes, $"{shape} {removal} merge");
     }
+
+    [Fact]
+    public void MergingDifferentDocuments_AfterRemovingPagesFromOne_LeavesThemOut()
+    {
+        // Page 1 links to pages 2 and 3 (a /Dest and a GoTo action); both are removed before the merge.
+        var withLinks = CleanupFixtures.Compose("", new Dictionary<int, string>
+        {
+            [20] = "<< /Type /Annot /Subtype /Link /Rect [0 0 20 20] /Dest [4 0 R /Fit] >>",
+            [21] = "<< /Type /Annot /Subtype /Link /Rect [20 0 40 20] /A << /S /GoTo /D [5 0 R /Fit] >> >>",
+        }, "/Annots [20 0 R 21 0 R]");
+        using var first = PdfDocument.Open(withLinks);
+        first.Pages.RemoveAt(2);
+        first.Pages.RemoveAt(1);
+        using var second = PdfDocument.Open(RemovedPageFixtures.Build("none").Bytes);
+
+        using var merged = Pdf.Merge(first, second);
+        var bytes = RemovedPageFixtures.SaveToBytes(merged, SaveLayout.Save);
+
+        Assert.Equal(4, merged.Pages.Count);
+        Assert.Equal(1, CountOccurrences(bytes, "PAGE-TWO-MARK"));   // the second document's page 2 only
+        Assert.Equal(1, CountOccurrences(bytes, "PAGE-THREE-MARK")); // the second document's page 3 only
+        Assert.Contains(merged.Diagnostics, static d => d.Code == "PLUME5021" && d.Message.Contains("2 links", StringComparison.Ordinal));
+        CleanupFixtures3b.AssertQpdfClean(bytes, "cross-document merge");
+    }
+
+    [Fact]
+    public void WidgetListedOnlyOnAPageNotImported_WithNoP_StaysOut()
+    {
+        // Widget 30 has no /P; page 2's /Annots is the only thing that places it. Its field
+        // must not come along into the part holding page 1.
+        var source = CleanupFixtures.Compose("/AcroForm << /Fields [30 0 R] >>", new Dictionary<int, string>
+        {
+            [30] = "<< /FT /Tx /T (onlytwo) /V (ONLY-ON-PAGE-TWO) /Type /Annot /Subtype /Widget /Rect [0 0 50 20] >>",
+        }, "", "/Annots [30 0 R]");
+        using var document = PdfDocument.Open(source);
+        using var parts = Pdf.Split(document);
+
+        var first = RemovedPageFixtures.SaveToBytes(parts.Documents[0], SaveLayout.Save);
+        var second = RemovedPageFixtures.SaveToBytes(parts.Documents[1], SaveLayout.Save);
+
+        Assert.False(RecoveredBytes.AnyRecoveredObjectContains(first, "ONLY-ON-PAGE-TWO"));
+        Assert.True(RecoveredBytes.AnyRecoveredObjectContains(second, "ONLY-ON-PAGE-TWO"));
+    }
+
+    [Fact]
+    public void Split_RecordsWhatEachPartLeftOut()
+    {
+        using var document = PdfDocument.Open(RemovedPageFixtures.Build("L").Bytes);
+        using var parts = Pdf.Split(document);
+
+        // Page 1's link targets page 2, which the first part does not hold.
+        Assert.Contains(parts.Documents[0].Diagnostics, static d => d.Code == "PLUME5021" && d.Message.Contains("1 link", StringComparison.Ordinal));
+    }
+
+    private static int CountOccurrences(byte[] bytes, string needle)
+    {
+        var text = System.Text.Encoding.Latin1.GetString(bytes);
+        var count = 0;
+        for (var at = text.IndexOf(needle, StringComparison.Ordinal); at >= 0; at = text.IndexOf(needle, at + needle.Length, StringComparison.Ordinal))
+        {
+            count++;
+        }
+
+        return count;
+    }
 }

@@ -14,6 +14,10 @@ This `Info` entry in `doc.Diagnostics` counts what was left out, by kind. It is 
 `Save` that left anything out, so two saves add two entries. The open document itself is not
 changed.
 
+`Pdf.Split` and `Pdf.Merge` apply the same rules to the pages they import, treating the pages they
+were not given like removed pages; each new document then carries its own `PLUME5021` entry for
+what it left out (for example, a link from an imported page to a page that was not imported).
+
 **Example:**
 
 ```csharp
