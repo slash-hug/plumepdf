@@ -222,6 +222,7 @@ This index is populated one page per code as codes are minted in `src/`, in the 
 | [PLUME5018](PLUME5018.md) | `Optimize` and `Linearize` cannot be combined |
 | [PLUME5019](PLUME5019.md) | `SaveIncremental` after a linearized save de-linearizes (diagnostic; `Strict` refuses) |
 | [PLUME5020](PLUME5020.md) | `Linearize` requires at least one page |
+| [PLUME5021](PLUME5021.md) | `Save` left out what pointed at removed pages (info) |
 | [PLUME6001](PLUME6001.md) | catalog could not be resolved (diagnostic) |
 | [PLUME6002](PLUME6002.md) | catalog's `/Pages` could not be resolved (diagnostic) |
 | [PLUME6010](PLUME6010.md) | malformed page-tree node skipped (diagnostic) |
