@@ -61,26 +61,23 @@ public sealed class PageCollection : IReadOnlyList<PdfPage>
 
     /// <summary>Removes the page at <paramref name="index"/> from the document.</summary>
     /// <remarks>
-    /// <see cref="PdfDocument.Save"/> guarantees the removed page, its content, and its
-    /// annotations (including form widgets) are never written — whatever still references them
-    /// (bookmarks, links, an open action, form fields, named destinations, tagged-PDF structure
-    /// entries, …) is written with that reference as <see langword="null"/> instead. This holds
-    /// across all three <see cref="PdfDocument.Save"/> layouts (plain, <see cref="PdfOptions.Optimize"/>,
-    /// <see cref="PdfOptions.Linearize"/>).
+    /// <see cref="PdfDocument.Save"/> never writes a removed page, its content or its annotations
+    /// (form widgets included), in any layout (plain, <see cref="PdfOptions.Optimize"/>,
+    /// <see cref="PdfOptions.Linearize"/>), whatever still references them — a bookmark, a link, an
+    /// open action, a named destination, ... Form fields whose widgets were all on removed pages
+    /// are left out with their values, and so are tagged-PDF structure elements whose content was
+    /// all on removed pages. A reference to anything left out is written as <see langword="null"/>.
     /// <para>
-    /// <see cref="PdfDocument.SaveIncremental"/> appends onto a copy of this document's original
-    /// bytes, so it can never remove a removed page's bytes — that is deliberate, the same way a
-    /// signed document keeps its prior revision: it is how you drop a page from a signed PDF
-    /// without invalidating the signature. Use <see cref="PdfDocument.Save"/> when the removed
-    /// page must not survive in the saved file, or <see cref="PdfDocument.Redact"/> for content
-    /// that must be unrecoverable.
+    /// <see cref="PdfDocument.SaveIncremental"/> appends to the original file, so a removed page's
+    /// bytes always remain in it. That is deliberate: it is how a page is dropped from a signed PDF
+    /// without invalidating the signature. Use <see cref="PdfDocument.Save"/> when the removed page
+    /// must not survive in the saved file, or <see cref="PdfDocument.Redact"/> for content that
+    /// must be unrecoverable.
     /// </para>
     /// <para>
-    /// This collection change is in-memory only — the document's own object graph, including
-    /// <see cref="PdfDocument.Form"/>, does not change until <see cref="PdfDocument.Save"/> or
-    /// <see cref="PdfDocument.SaveIncremental"/> runs. Reopen the saved file to see the result;
-    /// checking <c>document.Form</c> (or any other live property) on the still-open document
-    /// after <see cref="RemoveAt"/> still reflects the original, unremoved state.
+    /// Removing a page changes this collection only. Saving never modifies the open document —
+    /// <see cref="PdfDocument.Form"/> and the object graph still describe the original — so reopen
+    /// the saved file to see the result.
     /// </para>
     /// <para>
     /// Known limitations: a destination that targets a page by integer index, and
