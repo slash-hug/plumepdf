@@ -1001,6 +1001,7 @@ public partial class CookbookTests
         await Verifier.Verify(report.ToString());
     }
 
+    // begin-snippet: load-pfx
     // .NET 9+ obsoletes the X509Certificate2 byte-array constructors (SYSLIB0057); net8.0 has no
     // X509CertificateLoader.
     private static X509Certificate2 LoadPfx(byte[] pfx) =>
@@ -1009,6 +1010,7 @@ public partial class CookbookTests
 #else
         new(pfx, (string?)null, X509KeyStorageFlags.Exportable);
 #endif
+    // end-snippet
 
     private static byte[] CreateTestCertificatePfx(string commonName)
     {
