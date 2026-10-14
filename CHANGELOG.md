@@ -7,6 +7,16 @@ only by diffing output. Entries land in the same change as the behavior they des
 
 ## [Unreleased]
 
+### Security
+
+- **`System.Security.Cryptography.Pkcs` updated to `8.0.2` (`net8.0`) and `10.0.13` (`net10.0`).**
+  The previous pins, `8.0.1` and `10.0.12`, are affected by two .NET denial-of-service
+  advisories, [CVE-2026-84008](https://github.com/advisories/GHSA-846f-f764-76mx) (high) and
+  [CVE-2026-70162](https://github.com/advisories/GHSA-2fmv-rv2c-59x7) (moderate). PlumePDF uses
+  this package to parse the CMS signature data embedded in PDFs (`Pdf.Verify`,
+  `doc.Signatures`), which comes from the document being read. Both new versions keep zero
+  transitive dependencies on their target.
+
 ## [1.0.0-preview.2] — 2026-09-29
 
 ### Added
