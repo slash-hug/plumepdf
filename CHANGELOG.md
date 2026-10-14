@@ -17,6 +17,16 @@ only by diffing output. Entries land in the same change as the behavior they des
   `doc.Signatures`), which comes from the document being read. Both new versions keep zero
   transitive dependencies on their target.
 
+### Fixed
+
+- **A linearized file larger than 2 GiB could not be opened.** `PdfDocument.Open` read each
+  cross-reference section from its offset to the end of the file, and a linearized file's first
+  section sits near the start, so this read the whole file: past 2 GiB it failed, and the
+  fallback brute-force scan then threw a bare `OutOfMemoryException`. Sections are now read
+  through a window that grows only as far as the section needs, so opening a linearized file
+  no longer reads it whole at any size. A brute-force scan that cannot fit in one array is now
+  the coded `PLUME1005`.
+
 ## [1.0.0-preview.2] — 2026-09-29
 
 ### Added

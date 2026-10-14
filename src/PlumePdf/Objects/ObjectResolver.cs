@@ -345,8 +345,8 @@ internal sealed class ObjectResolver : IObjectSource
         return finalBuffer;
     }
 
-    /// <summary>Best-effort signal that <paramref name="buffer"/> was too small to hold the whole object <see cref="ReadObjectWindow"/> just probe-parsed out of it.</summary>
-    private static bool LooksTruncated(byte[] buffer, PdfObject value, DiagnosticCollection probeDiagnostics)
+    /// <summary>Best-effort signal that <paramref name="buffer"/> was too small to hold the whole object just probe-parsed out of it — by <see cref="ReadObjectWindow"/>, or by <c>CrossReferenceReader</c> for a cross-reference stream.</summary>
+    internal static bool LooksTruncated(byte[] buffer, PdfObject value, DiagnosticCollection probeDiagnostics)
     {
         // A stream whose raw payload runs right up to (or past) the edge of the window we
         // gave it almost certainly got truncated - either /Length pushed past the edge, or

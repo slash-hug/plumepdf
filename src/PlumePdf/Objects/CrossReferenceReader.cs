@@ -93,16 +93,21 @@ internal sealed class CrossReferenceSection(PdfDictionary trailer, IReadOnlyDict
 /// under lenient reading, and propagates under <see cref="PdfOptions.Strict"/>.
 /// </summary>
 /// <remarks>
-/// Each section is read by loading everything from its offset to end-of-file
-/// (<see cref="ByteSource.ReadToEnd"/>) rather than pre-computing its exact length — a
-/// deliberate Phase 1 simplification. For the common case (the xref section lives at the
-/// tail of the file) this reads a small window; for a long <c>/Prev</c> chain of small
-/// incremental updates on a very large file, each link re-reads its own remainder-to-EOF
-/// window, which is not optimal. Revisit with benchmark evidence before
-/// treating this as settled.
+/// A section's length isn't known before it is parsed, so each one is read through a window
+/// that starts at <see cref="InitialSectionWindowBytes"/> and grows fourfold until the
+/// section parses without reaching the window's edge (or the window covers the rest of the
+/// source). Reading from the section's offset to end-of-file instead would read nearly the
+/// whole file for a linearized document, whose first section sits near the start — and
+/// could not be done at all past 2 GiB. A section that never parses cleanly (damaged data)
+/// still grows the window to the end of the source, as the old read did; past 2 GiB that
+/// costs reads of up to ~1.4 GiB before the coded refusal.
 /// </remarks>
 internal static class CrossReferenceReader
 {
+    // Large enough for a typical section (a few thousand classic entries, or a compressed
+    // cross-reference stream) on the first read; a bigger one grows the window.
+    private const int InitialSectionWindowBytes = 64 * 1024;
+
     /// <summary>Reads cross-reference data, falling back to brute-force recovery on failure unless <see cref="PdfOptions.Strict"/> is set.</summary>
     public static CrossReferenceTable ReadWithRecovery(ByteSource source, PdfOptions options, DiagnosticCollection? diagnostics)
     {
@@ -217,22 +222,88 @@ internal static class CrossReferenceReader
             return null;
         }
 
-        var buffer = source.ReadToEnd(offset);
+        var buffer = ReadSectionWindow(source, offset, options);
+        return ParseSection(buffer, offset, options, diagnostics, out _);
+    }
+
+    /// <summary>
+    /// Reads the bytes of the section at <paramref name="offset"/>: a window that grows until
+    /// the section parses without reaching its edge. Probe parses run lenient, into a discarded
+    /// <see cref="DiagnosticCollection"/>, so a window that is merely too small never throws or
+    /// reports anything; the caller parses the returned window once more for real.
+    /// </summary>
+    /// <exception cref="PlumePdfException"><c>PLUME1005</c>: the section would need a window larger than one array can hold.</exception>
+    private static byte[] ReadSectionWindow(ByteSource source, long offset, PdfOptions options)
+    {
+        var probeOptions = options.Strict ? options with { Strict = false } : options;
+        var remaining = source.Length - offset;
+        var window = Math.Min(InitialSectionWindowBytes, remaining);
+
+        while (true)
+        {
+            if (window > Array.MaxLength)
+            {
+                throw new PlumePdfException("PLUME1005", $"The cross-reference section at offset {offset} did not fit in a {Array.MaxLength}-byte read window (the single-array limit).");
+            }
+
+            var buffer = new byte[window];
+            source.Read(offset, buffer);
+            if (window == remaining)
+            {
+                return buffer;
+            }
+
+            bool truncated;
+            try
+            {
+                ParseSection(buffer, offset, probeOptions, new DiagnosticCollection(), out truncated);
+            }
+            catch (PlumePdfException)
+            {
+                truncated = true; // possibly just a window cut mid-token; grow and retry.
+            }
+
+            if (!truncated)
+            {
+                return buffer;
+            }
+
+            window = Math.Min(window * 4, remaining);
+        }
+    }
+
+    /// <summary>
+    /// Parses the section at the start of <paramref name="buffer"/>. <paramref name="truncated"/>
+    /// reports that the buffer may have ended before the section did: a classic table that ran
+    /// out of input before its trailer, a trailer value cut off at the end, or a cross-reference
+    /// stream that <see cref="ObjectResolver.LooksTruncated"/> flags.
+    /// </summary>
+    private static CrossReferenceSection? ParseSection(byte[] buffer, long offset, PdfOptions options, DiagnosticCollection? diagnostics, out bool truncated)
+    {
+        truncated = false;
         var tokenizer = new PdfTokenizer(buffer);
 
         if (!tokenizer.Read())
         {
+            truncated = true;
             return null;
         }
 
         if (tokenizer.TokenType == PdfTokenType.Keyword && tokenizer.ValueSpan.SequenceEqual("xref"u8))
         {
-            return ReadClassicTable(buffer, ref tokenizer, options, diagnostics);
+            return ReadClassicTable(buffer, ref tokenizer, options, diagnostics, out truncated);
         }
 
         if (tokenizer.TokenType == PdfTokenType.Integer)
         {
-            var value = ObjectParser.ParseIndirectObject(buffer, options, diagnostics, out _);
+            var objectDiagnostics = new DiagnosticCollection();
+            var value = ObjectParser.ParseIndirectObject(buffer, options, objectDiagnostics, out _);
+            truncated = ObjectResolver.LooksTruncated(buffer, value, objectDiagnostics);
+            foreach (var diagnostic in objectDiagnostics)
+            {
+                diagnostics?.Add(diagnostic);
+            }
+
             if (value is PdfStream xrefStream)
             {
                 return ReadCrossReferenceStream(xrefStream, options, diagnostics);
@@ -243,8 +314,9 @@ internal static class CrossReferenceReader
         return null;
     }
 
-    private static CrossReferenceSection ReadClassicTable(byte[] buffer, ref PdfTokenizer tokenizer, PdfOptions options, DiagnosticCollection? diagnostics)
+    private static CrossReferenceSection ReadClassicTable(byte[] buffer, ref PdfTokenizer tokenizer, PdfOptions options, DiagnosticCollection? diagnostics, out bool truncated)
     {
+        truncated = false;
         var entries = new Dictionary<int, CrossReferenceEntry>();
 
         while (true)
@@ -252,18 +324,32 @@ internal static class CrossReferenceReader
             var checkpoint = tokenizer.Consumed;
             if (!tokenizer.Read())
             {
+                truncated = true;
                 ReportDeviation("PLUME2035", "Classic cross-reference table ran to end of input before 'trailer'.", tokenizer.Consumed, options, diagnostics);
                 return new CrossReferenceSection(new PdfDictionary(), entries);
             }
 
             if (tokenizer.TokenType == PdfTokenType.Keyword && tokenizer.ValueSpan.SequenceEqual("trailer"u8))
             {
-                var trailerValue = ObjectParser.ParseValue(buffer, ref tokenizer, options, diagnostics);
+                // A trailer dictionary that runs to the end of the input without closing may
+                // have been cut off there — including between the two '<' of its "<<", which
+                // reads as an unterminated hex string (PLUME2013).
+                var trailerDiagnostics = new DiagnosticCollection();
+                var trailerValue = ObjectParser.ParseValue(buffer, ref tokenizer, options, trailerDiagnostics);
+                foreach (var diagnostic in trailerDiagnostics)
+                {
+                    truncated |= diagnostic.Code is "PLUME2013" or "PLUME2014" or "PLUME2017";
+                    diagnostics?.Add(diagnostic);
+                }
+
                 return new CrossReferenceSection(trailerValue as PdfDictionary ?? new PdfDictionary(), entries);
             }
 
             if (tokenizer.TokenType != PdfTokenType.Integer)
             {
+                // A token that runs to the end of the input (such as "trai") may be the start
+                // of 'trailer', cut off there.
+                truncated = tokenizer.Consumed >= buffer.Length;
                 ReportDeviation("PLUME2036", $"Expected a subsection header or 'trailer' near offset {tokenizer.Consumed}.", tokenizer.Consumed, options, diagnostics);
                 tokenizer.Reset(checkpoint);
                 return new CrossReferenceSection(new PdfDictionary(), entries);
@@ -272,6 +358,9 @@ internal static class CrossReferenceReader
             var firstObjectNumber = tokenizer.IntegerValue;
             if (!tokenizer.Read() || tokenizer.TokenType != PdfTokenType.Integer)
             {
+                // Running out of input here (rather than meeting a wrong token) means the
+                // input may have been cut off mid-entry.
+                truncated = tokenizer.TokenType == PdfTokenType.EndOfInput;
                 ReportDeviation("PLUME2036", "Expected a subsection entry count after its first object number.", tokenizer.Consumed, options, diagnostics);
                 return new CrossReferenceSection(new PdfDictionary(), entries);
             }
