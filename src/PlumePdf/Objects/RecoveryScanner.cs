@@ -24,6 +24,7 @@ internal static class RecoveryScanner
     private static readonly byte[] TrailerKeyword = "trailer"u8.ToArray();
 
     /// <summary>Scans <paramref name="source"/> end to end and reconstructs a best-effort cross-reference table.</summary>
+    /// <exception cref="PlumePdfException"><c>PLUME1005</c>: the bytes to scan don't fit in one array; <c>PLUME2041</c>: nothing to rebuild a trailer from.</exception>
     public static CrossReferenceTable Scan(ByteSource source, PdfOptions options, DiagnosticCollection? diagnostics)
     {
         // Bound the read itself by MaxBruteForceScanBytes - not just the scan over an
@@ -31,7 +32,12 @@ internal static class RecoveryScanner
         // ReadToEnd(0) had already materialized the entire (possibly huge, possibly hostile)
         // source, wouldn't actually bound anything.
         var capBytes = options.MaxBruteForceScanBytes <= 0 ? 0L : options.MaxBruteForceScanBytes;
-        var readLength = Math.Min(source.Length, Math.Min(capBytes, int.MaxValue));
+        var readLength = Math.Min(source.Length, capBytes);
+        if (readLength > Array.MaxLength)
+        {
+            throw new PlumePdfException("PLUME1005", $"Brute-force recovery would need to scan {readLength} bytes, more than one in-memory array can hold ({Array.MaxLength}); a source this large can only be read through its cross-reference data. Set PdfOptions.MaxBruteForceScanBytes to scan only the start of the file.");
+        }
+
         var buffer = new byte[(int)readLength];
         source.Read(0, buffer);
         var scanCap = buffer.Length;
