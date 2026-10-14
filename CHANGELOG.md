@@ -7,6 +7,11 @@ only by diffing output. Entries land in the same change as the behavior they des
 
 ## [Unreleased]
 
+## [1.0.0-preview.8] — 2026-10-14
+
+Version numbers `1.0.0-preview.3` to `1.0.0-preview.7` are skipped: builds labelled with them
+circulated before the public repository existed, and NuGet would rank them above a lower number.
+
 ### Security
 
 - **`System.Security.Cryptography.Pkcs` updated to `8.0.2` (`net8.0`) and `10.0.13` (`net10.0`).**
@@ -107,6 +112,7 @@ only by diffing output. Entries land in the same change as the behavior they des
 - Coded errors throughout: every failure carries a stable `PLUME####` code and an
   `Exception.HelpLink` to its reference page under `docs/errors/`.
 
-[Unreleased]: https://github.com/slash-hug/plumepdf/compare/v1.0.0-preview.2...HEAD
+[Unreleased]: https://github.com/slash-hug/plumepdf/compare/v1.0.0-preview.8...HEAD
+[1.0.0-preview.8]: https://github.com/slash-hug/plumepdf/releases/tag/v1.0.0-preview.8
 [1.0.0-preview.2]: https://github.com/slash-hug/plumepdf/releases/tag/v1.0.0-preview.2
 [1.0.0]: https://github.com/slash-hug/plumepdf/releases/tag/v1.0.0
