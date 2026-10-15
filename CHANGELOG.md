@@ -7,6 +7,28 @@ only by diffing output. Entries land in the same change as the behavior they des
 
 ## [Unreleased]
 
+### Fixed
+
+- **Streams whose `/Length` is an indirect reference read the rest of the file.** Below 2 GiB,
+  resolving such a stream (common in Ghostscript, pdfTeX and scanner output) read from its
+  offset to the end of the file — a 7.5 MB image in a 196 MB file allocated 642 MB; past 2 GiB
+  it threw `OverflowException`, so `Save` and `ExtractImages` failed. A stream is now read once
+  at its declared size, with an indirect `/Length` resolved through the cross-reference table
+  first; the growing search for the stream's end is kept only for a missing or wrong `/Length`.
+  When that search would need more than one array (~2 GiB), the object is reported as the coded
+  `PLUME2061`, citing the limit, instead of an `OverflowException` failing the whole read. The
+  same 7.5 MB image now allocates about 15 MB. Memory-mapped reads also copy through a fixed
+  64 KiB buffer instead of renting a pooled buffer the size of each read.
+
+### Changed
+
+- **An indirect `/Length` no longer reports `PLUME2019`.** Every stream with an indirect
+  `/Length` used to be recovered by scanning for `endstream`, recording `PLUME2019` and, under
+  `PdfOptions.Strict`, refusing the document. The resolved length is now used directly, so these
+  streams parse without a diagnostic and are accepted under `Strict`, and a payload that happens
+  to contain the bytes `endstream` is no longer cut short. `PLUME2019` now means the `/Length`
+  was missing, unresolvable or wrong.
+
 ## [1.0.0-preview.8] — 2026-10-14
 
 Version numbers `1.0.0-preview.3` to `1.0.0-preview.7` are skipped: builds labelled with them

@@ -15,6 +15,9 @@ internal sealed class SparseByteSource(long length, params (long Offset, byte[] 
 {
     public override long Length { get; } = length;
 
+    /// <summary>A test's own note about the layout it built (an object offset, say).</summary>
+    public long Tag { get; init; }
+
     public override int Read(long position, Span<byte> destination)
     {
         var count = (int)Math.Min(destination.Length, Math.Max(0, Length - position));

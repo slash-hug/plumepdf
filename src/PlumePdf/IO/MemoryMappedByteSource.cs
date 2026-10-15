@@ -156,18 +156,34 @@ internal sealed class MemoryMappedByteSource : ByteSource
             return toRead;
         }
 
-        var buffer = ArrayPool<byte>.Shared.Rent(toRead);
+        // Copy through one fixed-size pooled chunk: renting a buffer the size of the read would
+        // make ArrayPool<byte>.Shared allocate (and keep, for the life of the process) one
+        // array per large read size.
+        var chunk = ArrayPool<byte>.Shared.Rent(Math.Min(toRead, CopyChunkBytes));
         try
         {
-            var read = _accessor.ReadArray(position, buffer, 0, toRead);
-            buffer.AsSpan(0, read).CopyTo(destination);
-            return read;
+            var total = 0;
+            while (total < toRead)
+            {
+                var read = _accessor.ReadArray(position + total, chunk, 0, Math.Min(chunk.Length, toRead - total));
+                if (read <= 0)
+                {
+                    break;
+                }
+
+                chunk.AsSpan(0, read).CopyTo(destination[total..]);
+                total += read;
+            }
+
+            return total;
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(buffer);
+            ArrayPool<byte>.Shared.Return(chunk);
         }
     }
+
+    private const int CopyChunkBytes = 64 * 1024;
 
     /// <inheritdoc/>
     public override void Dispose()
