@@ -192,9 +192,15 @@ internal static class NativeImageSamples
 
         // A soft mask with /Matte holds colour pre-blended against it and must keep its
         // parent's /Width and /Height, so neither side of such a pair is resized alone.
-        if (softMask ? dictionary.ContainsKey(MatteName) : HasMatteSoftMask(dictionary, objects))
+        // An image carrying /Matte is such a mask however it was offered.
+        if (dictionary.ContainsKey(MatteName))
         {
-            return Skip(PlannedSkip.MatteSoftMask, softMask ? "A /Matte soft mask, which must keep its parent's size." : "Its /SMask carries /Matte, which must keep this image's size.", out skip, out detail);
+            return Skip(PlannedSkip.MatteSoftMask, "A /Matte soft mask, which must keep its parent's size.", out skip, out detail);
+        }
+
+        if (!softMask && HasMatteSoftMask(dictionary, objects))
+        {
+            return Skip(PlannedSkip.MatteSoftMask, "Its /SMask carries /Matte, which must keep this image's size.", out skip, out detail);
         }
 
         var colorSpace = Resolve(dictionary, PdfName.ColorSpace, objects);

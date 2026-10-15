@@ -38,13 +38,16 @@ public class NativeImageSamplesTests
     }
 
     // A soft mask with /Matte must keep its parent's /Width and /Height; separate
-    // never-larger decisions for the two could resize one and not the other.
-    [Fact]
-    public void SoftMaskWithMatte_IsSkipped()
+    // never-larger decisions for the two could resize one and not the other. The image's
+    // own /Matte marks it as such a mask however the caller offered it.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void SoftMaskWithMatte_IsSkipped(bool offeredAsSoftMask)
     {
         var dictionary = ImageDictionary(9, 9, ColorSpaceFor(1));
         dictionary.Set(PdfName.Get("Matte"), new PdfArray([PdfNumber.Get(1), PdfNumber.Get(1), PdfNumber.Get(1)]));
-        var (ok, samples, skip, detail) = Decode(new PdfStream(dictionary, Samples(9, 9, 1)), softMask: true);
+        var (ok, samples, skip, detail) = Decode(new PdfStream(dictionary, Samples(9, 9, 1)), softMask: offeredAsSoftMask);
 
         Assert.False(ok);
         Assert.Null(samples);
