@@ -403,13 +403,10 @@ internal static class PlacementScanner
                 continue;
             }
 
-            if (normal is PdfReference single)
+            // A reference is either the appearance stream itself or an indirect states dictionary.
+            if (normal is PdfReference single && scan.XObject(single.Target).IsFormLike)
             {
-                if (scan.XObject(single.Target).IsFormLike)
-                {
-                    WalkAppearance(walk, annotation, single.Target, pageResources);
-                }
-
+                WalkAppearance(walk, annotation, single.Target, pageResources);
                 continue;
             }
 
