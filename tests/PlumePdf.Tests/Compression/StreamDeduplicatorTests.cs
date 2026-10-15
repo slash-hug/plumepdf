@@ -111,6 +111,30 @@ public class StreamDeduplicatorTests
         Assert.Equal(new Dictionary<int, int> { [second] = first }, Find(document));
     }
 
+    // A stream built in memory (an edit replacing an image, say) carries no /Length; its payload
+    // length is known exactly, so it still buckets with an identical stream read from the file.
+    [Fact]
+    public void InMemoryStreamWithoutLength_MergesWithAnIdenticalFileStream()
+    {
+        var pdf = Fixtures.TwoImagePage(out var first, out var second);
+        pdf.Stream(first, Fixtures.GrayImage(2, 2), "PIXELS!");
+        pdf.Stream(second, Fixtures.GrayImage(2, 2), "OTHER!!");
+        using var document = PdfDocument.Open(pdf.Build());
+        var original = Assert.IsType<PdfStream>(document.Objects[new IndirectReference(second, 0)]);
+        var dictionary = new PdfDictionary();
+        foreach (var (key, value) in original.Dictionary)
+        {
+            if (!ReferenceEquals(key, PdfName.Length))
+            {
+                dictionary.Set(key, value);
+            }
+        }
+
+        document.Objects.Replace(new IndirectReference(second, 0), new PdfStream(dictionary, Encoding.Latin1.GetBytes("PIXELS!")));
+
+        Assert.Equal(new Dictionary<int, int> { [second] = first }, Find(document));
+    }
+
     [Fact]
     public void NearIdenticalPayloads_OfTheSameLength_NeverMerge()
     {

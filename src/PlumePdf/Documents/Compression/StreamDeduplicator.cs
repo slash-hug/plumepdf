@@ -66,13 +66,15 @@ internal static class StreamDeduplicator
         IReadOnlyDictionary<int, PdfObject>? replacements,
         CancellationToken cancellationToken)
     {
-        var candidates = Discover(objects, catalogReference, catalog, pages, excluded, replacements, cancellationToken);
-        return Merge(objects, candidates, excluded, cancellationToken);
+        var candidates = Discover(objects, catalogReference, catalog, pages, excluded, replacements, out var payloadLengths, cancellationToken);
+        return Merge(objects, candidates, payloadLengths, excluded, cancellationToken);
     }
 
     // The writer's discovery walk, keeping the dictionary of every stream it would write as
     // itself and may merge. The catalog and pages are rebuilt around a stand-in /Pages
-    // reference (the writer's fresh node), which is never followed.
+    // reference (the writer's fresh node), which is never followed. A candidate handed back
+    // whole (built in memory, or already read) has its exact payload length recorded, since such
+    // a stream need not carry a /Length.
     private static SortedDictionary<int, PdfDictionary> Discover(
         ObjectRegistry objects,
         IndirectReference? catalogReference,
@@ -80,8 +82,10 @@ internal static class StreamDeduplicator
         IReadOnlyList<(IndirectReference Reference, PdfDictionary Dictionary)> pages,
         IReadOnlySet<int> excluded,
         IReadOnlyDictionary<int, PdfObject>? replacements,
+        out Dictionary<int, long> payloadLengths,
         CancellationToken cancellationToken)
     {
+        payloadLengths = [];
         var overrides = FullRewriteWriter.SeedOverrides(catalogReference, pages, excluded, replacements);
         var pagesRoot = new PdfReference(new IndirectReference(0, 0));
         var seen = new HashSet<int>();
@@ -137,6 +141,10 @@ internal static class StreamDeduplicator
             if (!replaced && streamDictionary is not null && IsEligible(streamDictionary))
             {
                 candidates[number] = streamDictionary;
+                if (value is PdfStream whole)
+                {
+                    payloadLengths[number] = whole.RawBytes.Length;
+                }
             }
         }
 
@@ -166,12 +174,13 @@ internal static class StreamDeduplicator
     private static Dictionary<int, int> Merge(
         ObjectRegistry objects,
         SortedDictionary<int, PdfDictionary> candidates,
+        Dictionary<int, long> payloadLengths,
         IReadOnlySet<int> excluded,
         CancellationToken cancellationToken)
     {
         var aliases = new Dictionary<int, int>();
         var duplicatesOf = new Dictionary<int, List<int>>();
-        var declaredLengths = new Dictionary<int, long>();
+        var declaredLengths = payloadLengths;
         var payloadKeys = new Dictionary<int, string?>();
         var buffer = new MemoryStream();
 
