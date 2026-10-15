@@ -309,6 +309,31 @@ public class PlacementScannerTests
         Assert.Equal([0, 1, 1], Scan(pdf).InlineImagePages);
     }
 
+    // A tiling pattern and a Type 3 font are walked once per scan, but an inline image inside
+    // one is still met on every page that uses it (once per page, however often it is used there).
+    [Fact]
+    public void InlineImagesInATilingPattern_AreRecordedForEveryPageThatUsesIt()
+    {
+        var pdf = new ScanTestPdf()
+            .Stream(11, "/Type /Pattern /PatternType 1 /PaintType 1 /TilingType 1 /BBox [0 0 10 10] /XStep 10 /YStep 10", "q 10 0 0 10 0 0 cm BI /W 1 /H 1 /CS /G /BPC 8 ID \u0001 EI Q")
+            .Page(3, "/Pattern cs /P0 scn 0 0 100 100 re f /P0 scn 0 0 9 9 re f", resources: "/Pattern << /P0 11 0 R >>")
+            .Page(5, "/Pattern cs /P0 scn 0 0 100 100 re f", resources: "/Pattern << /P0 11 0 R >>");
+
+        Assert.Equal([0, 1], Scan(pdf).InlineImagePages);
+    }
+
+    [Fact]
+    public void InlineImagesInAType3Glyph_AreRecordedForEveryPageThatUsesIt()
+    {
+        var pdf = new ScanTestPdf()
+            .Stream(11, "", "0 0 d0 BI /W 1 /H 1 /CS /G /BPC 8 ID \u0001 EI")
+            .Object(12, "<< /Type /Font /Subtype /Type3 /FontBBox [0 0 1 1] /FontMatrix [1 0 0 1 0 0] /CharProcs << /a 11 0 R >> /Encoding << /Differences [97 /a] >> /FirstChar 97 /LastChar 97 /Widths [1] >>")
+            .Page(3, "BT /T3 72 Tf (a) Tj ET", resources: "/Font << /T3 12 0 R >>")
+            .Page(5, "BT /T3 72 Tf (a) Tj ET", resources: "/Font << /T3 12 0 R >>");
+
+        Assert.Equal([0, 1], Scan(pdf).InlineImagePages);
+    }
+
     [Fact]
     public void IndirectContentsArray_IsRead()
     {

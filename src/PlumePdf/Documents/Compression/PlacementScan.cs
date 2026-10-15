@@ -32,7 +32,10 @@ internal sealed record ImagePlacementSummary(double? DpiX, double? DpiY, int Pag
 /// without drawing it (<see cref="PlacementKind.NotPlaced"/>), keyed by object number. An image
 /// no retained page reaches, and a soft mask reached only through its parent's <c>/SMask</c>, is absent.
 /// </param>
-/// <param name="InlineImagePages">The page index of every inline image met, one entry per occurrence, in page order.</param>
+/// <param name="InlineImagePages">
+/// The page index of every inline image met, one entry per occurrence, in page order. One inside a tiling pattern
+/// or Type 3 glyph counts once for each page that uses that pattern or font.
+/// </param>
 /// <param name="Diagnostics">Cycles, depth or operator caps hit, and unreadable content met during the scan.</param>
 internal sealed record PlacementScan(
     IReadOnlyDictionary<int, ImagePlacementSummary> Images,

@@ -31,7 +31,8 @@ namespace PlumePdf.Documents.Compression;
 /// Only stream dictionaries are taken from the registry (<see cref="IObjectSource.ResolveForDiscovery"/>),
 /// and content payloads (pages, forms, patterns, glyphs, appearances) are read once each through
 /// <see cref="IObjectSource.ReadPayloadOnce"/>, so the scan leaves no stream in the object cache.
-/// Tiling patterns and Type 3 fonts are walked once per scan, since nothing in them is measured.
+/// Tiling patterns and Type 3 fonts are walked once per scan, since nothing in them is measured;
+/// an inline image inside one is still recorded once for every page that uses it.
 /// </para>
 /// </remarks>
 internal static class PlacementScanner
@@ -344,10 +345,16 @@ internal static class PlacementScanner
         }
 
         var patternMode = mode == WalkMode.Type3 ? WalkMode.Type3 : WalkMode.Tiling;
-        if (scan.WalkedOnce.Add((reference.Target.Number, patternMode)))
+        var key = (reference.Target.Number, patternMode);
+        if (!scan.WalkedOnce.Add(key))
         {
-            WalkForm(walk, reference.Target, PdfMatrix.Identity, resources, patternMode, depth, applyMatrix: false);
+            ReplayInlineImages(walk, key);
+            return;
         }
+
+        var before = scan.InlineImagePages.Count;
+        WalkForm(walk, reference.Target, PdfMatrix.Identity, resources, patternMode, depth, applyMatrix: false);
+        RecordInlineImages(walk, key, before);
     }
 
     // Tf selecting a Type 3 font: every glyph procedure is walked once per scan, since a glyph
@@ -364,23 +371,53 @@ internal static class PlacementScanner
         }
 
         object identity = entry is PdfReference fontReference ? fontReference.Target.Number : font;
-        if (!scan.WalkedFonts.Add(identity)
-            || scan.ResolveDictionary(font.TryGetValue(CharProcsName, out var procs) ? procs : null) is not { } charProcs)
+        if (!scan.WalkedFonts.Add(identity))
+        {
+            ReplayInlineImages(walk, identity);
+            return;
+        }
+
+        if (scan.ResolveDictionary(font.TryGetValue(CharProcsName, out var procs) ? procs : null) is not { } charProcs)
         {
             return;
         }
 
+        var before = scan.InlineImagePages.Count;
         var fontResources = scan.ResolveDictionary(font.TryGetValue(ResourcesName, out var r) ? r : null) ?? resources;
         foreach (var (_, procedure) in charProcs)
         {
             if (walk.Stopped)
             {
-                return;
+                break;
             }
 
             if (procedure is PdfReference procedureReference)
             {
                 WalkForm(walk, procedureReference.Target, PdfMatrix.Identity, fontResources, WalkMode.Type3, depth, applyMatrix: false);
+            }
+        }
+
+        RecordInlineImages(walk, identity, before);
+    }
+
+    // Content walked once per scan still holds its inline images on every page that uses it:
+    // the first walk counts them, and each later page records that many again, once per page
+    // however often the page uses it.
+    private static void RecordInlineImages(PageWalk walk, object key, int before)
+    {
+        walk.Scan.OnceWalkedInlineImages[key] = walk.Scan.InlineImagePages.Count - before;
+        walk.Scan.OnceWalkedPages.Add((key, walk.PageIndex));
+    }
+
+    private static void ReplayInlineImages(PageWalk walk, object key)
+    {
+        // A use met while its first walk is still under way (it draws itself) has no count yet.
+        var scan = walk.Scan;
+        if (scan.OnceWalkedInlineImages.TryGetValue(key, out var count) && scan.OnceWalkedPages.Add((key, walk.PageIndex)))
+        {
+            for (var i = 0; i < count; i++)
+            {
+                scan.InlineImagePages.Add(walk.PageIndex);
             }
         }
     }
@@ -633,6 +670,12 @@ internal static class PlacementScanner
         public HashSet<(int Number, WalkMode Mode)> WalkedOnce { get; } = [];
 
         public HashSet<object> WalkedFonts { get; } = [];
+
+        /// <summary>How many inline images each once-walked pattern or Type 3 font holds.</summary>
+        public Dictionary<object, int> OnceWalkedInlineImages { get; } = [];
+
+        /// <summary>The pages each once-walked pattern or Type 3 font has recorded its inline images for.</summary>
+        public HashSet<(object Key, int Page)> OnceWalkedPages { get; } = [];
 
         /// <summary>What the listing sweep has visited, across every page.</summary>
         public Reach Listed { get; } = new();
