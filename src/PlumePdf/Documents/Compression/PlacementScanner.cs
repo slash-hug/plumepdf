@@ -51,6 +51,9 @@ internal static class PlacementScanner
     private static readonly PdfName CharProcsName = PdfName.Get("CharProcs");
     private static readonly PdfName UserUnitName = PdfName.Get("UserUnit");
 
+    // An annotation's normal, down (pressed) and rollover (hover) appearances.
+    private static readonly PdfName[] AppearanceKinds = [PdfName.N, PdfName.Get("D"), PdfName.Get("R")];
+
     /// <summary>Where a piece of content is drawn, which decides whether its placements can be measured.</summary>
     private enum WalkMode
     {
@@ -440,26 +443,34 @@ internal static class PlacementScanner
             }
 
             if (scan.ResolveDictionary(entry) is not { } annotation
-                || scan.ResolveDictionary(annotation.TryGetValue(PdfName.AP, out var ap) ? ap : null) is not { } appearances
-                || !appearances.TryGetValue(PdfName.N, out var normal))
+                || scan.ResolveDictionary(annotation.TryGetValue(PdfName.AP, out var ap) ? ap : null) is not { } appearances)
             {
                 continue;
             }
 
-            // A reference is either the appearance stream itself or an indirect states dictionary.
-            if (normal is PdfReference single && scan.XObject(single.Target).IsFormLike)
+            // The pressed and hover appearances are drawn too, so their images are placed as well.
+            foreach (var kind in AppearanceKinds)
             {
-                WalkAppearance(walk, annotation, single.Target, pageResources);
-                continue;
-            }
-
-            if (scan.ResolveDictionary(normal) is { } states)
-            {
-                foreach (var (_, state) in states)
+                if (!appearances.TryGetValue(kind, out var appearance))
                 {
-                    if (state is PdfReference stateReference && scan.XObject(stateReference.Target).IsFormLike)
+                    continue;
+                }
+
+                // A reference is either the appearance stream itself or an indirect states dictionary.
+                if (appearance is PdfReference single && scan.XObject(single.Target).IsFormLike)
+                {
+                    WalkAppearance(walk, annotation, single.Target, pageResources);
+                    continue;
+                }
+
+                if (scan.ResolveDictionary(appearance) is { } states)
+                {
+                    foreach (var (_, state) in states)
                     {
-                        WalkAppearance(walk, annotation, stateReference.Target, pageResources);
+                        if (state is PdfReference stateReference && scan.XObject(stateReference.Target).IsFormLike)
+                        {
+                            WalkAppearance(walk, annotation, stateReference.Target, pageResources);
+                        }
                     }
                 }
             }
@@ -534,13 +545,18 @@ internal static class PlacementScanner
             foreach (var entry in annotations)
             {
                 if (scan.ResolveDictionary(entry) is { } annotation
-                    && scan.ResolveDictionary(annotation.TryGetValue(PdfName.AP, out var ap) ? ap : null) is { } appearances
-                    && appearances.TryGetValue(PdfName.N, out var normal))
+                    && scan.ResolveDictionary(annotation.TryGetValue(PdfName.AP, out var ap) ? ap : null) is { } appearances)
                 {
-                    Follow(normal);
-                    foreach (var (_, state) in Entries(scan.ResolveDictionary(normal)))
+                    foreach (var kind in AppearanceKinds)
                     {
-                        Follow(state);
+                        if (appearances.TryGetValue(kind, out var appearance))
+                        {
+                            Follow(appearance);
+                            foreach (var (_, state) in Entries(scan.ResolveDictionary(appearance)))
+                            {
+                                Follow(state);
+                            }
+                        }
                     }
                 }
             }

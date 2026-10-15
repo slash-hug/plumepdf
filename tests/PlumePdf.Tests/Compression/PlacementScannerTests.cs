@@ -148,6 +148,38 @@ public class PlacementScannerTests
         AssertMeasured(Scan(pdf).Images[Image], 100, 100, page: 0);
     }
 
+    [Theory]
+    [InlineData("D")]
+    [InlineData("R")]
+    public void DownAndRolloverAppearances_ContributeTheirPlacement(string kind)
+    {
+        // The page draws the image at 600 DPI; only the pressed or hover appearance shows it at 100 DPI.
+        var pdf = new ScanTestPdf()
+            .Image(Image, 600, 600)
+            .Stream(11, $"/Type /XObject /Subtype /Form /BBox [0 0 1 1] /Resources << /XObject << /Im0 {Image} 0 R >> >>", "/Im0 Do")
+            .Stream(13, "/Type /XObject /Subtype /Form /BBox [0 0 1 1]", string.Empty)
+            .Object(12, $"<< /Type /Annot /Subtype /Widget /Rect [0 0 432 432] /AP << /N 13 0 R /{kind} 11 0 R >> >>")
+            .Page(3, "q 72 0 0 72 0 0 cm /Im0 Do Q", xobjects: $"/Im0 {Image} 0 R", extra: "/Annots [12 0 R]");
+
+        AssertMeasured(Scan(pdf).Images[Image], 100, 100, page: 0);
+    }
+
+    [Theory]
+    [InlineData("D")]
+    [InlineData("R")]
+    public void ImageOnlyInADownOrRolloverStatesDictionary_IsScanned(string kind)
+    {
+        var pdf = new ScanTestPdf()
+            .Image(Image, 300, 150)
+            .Stream(11, $"/Type /XObject /Subtype /Form /BBox [0 0 1 1] /Resources << /XObject << /Im0 {Image} 0 R >> >>", "/Im0 Do")
+            .Stream(13, "/Type /XObject /Subtype /Form /BBox [0 0 1 1]", string.Empty)
+            .Object(15, "<< /On 11 0 R /Off 13 0 R >>")
+            .Object(12, $"<< /Type /Annot /Subtype /Widget /AS /Off /Rect [100 100 172 136] /AP << /N 13 0 R /{kind} 15 0 R >> >>")
+            .Page(3, string.Empty, extra: "/Annots [12 0 R]");
+
+        AssertMeasured(Scan(pdf).Images[Image], 300, 300, page: 0);
+    }
+
     [Fact]
     public void SoftMaskGroup_PlacesItsImageWithTheCtmAtGs()
     {
