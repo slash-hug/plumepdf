@@ -21,9 +21,12 @@ internal static class ObjectParser
     /// the beginning of <paramref name="buffer"/>, returning its value and, via
     /// <paramref name="reference"/>, the object number and generation read from the framing
     /// itself (which the caller should cross-check against where it expected to find this
-    /// object, per the recovery ladder).
+    /// object, per the recovery ladder). <paramref name="resolvedStreamLength"/> is the value of
+    /// an indirect <c>/Length</c> the caller already resolved: a stream whose own
+    /// <c>/Length</c> isn't a direct integer uses it instead of scanning for
+    /// <c>endstream</c>, provided it lands on <c>endstream</c>.
     /// </summary>
-    public static PdfObject ParseIndirectObject(ReadOnlySpan<byte> buffer, PdfOptions options, DiagnosticCollection? diagnostics, out IndirectReference reference)
+    public static PdfObject ParseIndirectObject(ReadOnlySpan<byte> buffer, PdfOptions options, DiagnosticCollection? diagnostics, out IndirectReference reference, int? resolvedStreamLength = null)
     {
         var tokenizer = new PdfTokenizer(buffer);
 
@@ -47,7 +50,12 @@ internal static class ObjectParser
         }
 
         reference = new IndirectReference(number, generation);
-        var value = ParseValue(buffer, ref tokenizer, options, diagnostics);
+        if (!tokenizer.Read())
+        {
+            throw new PlumePdfException("PLUME2011", "Unexpected end of input while parsing an object value.");
+        }
+
+        var value = ParseCurrentToken(buffer, ref tokenizer, options, diagnostics, 0, resolvedStreamLength);
 
         var beforeEndobj = tokenizer.Consumed;
         if (!(tokenizer.Read() && tokenizer.TokenType == PdfTokenType.Keyword && tokenizer.ValueSpan.SequenceEqual("endobj"u8)))
@@ -69,7 +77,7 @@ internal static class ObjectParser
         return ParseCurrentToken(buffer, ref tokenizer, options, diagnostics, depth);
     }
 
-    private static PdfObject ParseCurrentToken(ReadOnlySpan<byte> buffer, ref PdfTokenizer tokenizer, PdfOptions options, DiagnosticCollection? diagnostics, int depth)
+    private static PdfObject ParseCurrentToken(ReadOnlySpan<byte> buffer, ref PdfTokenizer tokenizer, PdfOptions options, DiagnosticCollection? diagnostics, int depth, int? resolvedStreamLength = null)
     {
         ReportIfMalformed(ref tokenizer, options, diagnostics);
 
@@ -96,7 +104,7 @@ internal static class ObjectParser
 
             case PdfTokenType.DictStart:
                 GuardDepth(options, depth + 1);
-                return ParseDictionaryOrStream(buffer, ref tokenizer, options, diagnostics, depth + 1);
+                return ParseDictionaryOrStream(buffer, ref tokenizer, options, diagnostics, depth + 1, resolvedStreamLength);
 
             case PdfTokenType.Keyword:
                 return ParseKeyword(ref tokenizer, options, diagnostics);
@@ -204,7 +212,82 @@ internal static class ObjectParser
         return array;
     }
 
-    private static PdfObject ParseDictionaryOrStream(ReadOnlySpan<byte> buffer, ref PdfTokenizer tokenizer, PdfOptions options, DiagnosticCollection? diagnostics, int depth)
+    private static PdfObject ParseDictionaryOrStream(ReadOnlySpan<byte> buffer, ref PdfTokenizer tokenizer, PdfOptions options, DiagnosticCollection? diagnostics, int depth, int? resolvedStreamLength)
+    {
+        var dict = ParseDictionaryEntries(buffer, ref tokenizer, options, diagnostics, depth);
+
+        var beforeStreamCheck = tokenizer.Consumed;
+        if (tokenizer.Read())
+        {
+            if (tokenizer.TokenType == PdfTokenType.Keyword && tokenizer.ValueSpan.SequenceEqual("stream"u8))
+            {
+                return ParseStreamPayload(buffer, ref tokenizer, dict, options, diagnostics, resolvedStreamLength);
+            }
+
+            tokenizer.Reset(beforeStreamCheck);
+        }
+
+        return dict;
+    }
+
+    /// <summary>
+    /// Locates the payload of the stream object at the start of <paramref name="buffer"/>
+    /// without reading the payload: parses the <c>N G obj</c> framing and the stream
+    /// dictionary (lenient, diagnostics discarded) and returns the offset just past the EOL
+    /// that follows the <c>stream</c> keyword. False when the buffer doesn't hold a complete
+    /// stream dictionary followed by <c>stream</c>, so a caller can read a stream at its
+    /// declared length instead of probing ever-larger windows for its end.
+    /// </summary>
+    public static bool TryLocateStreamPayload(ReadOnlySpan<byte> buffer, PdfOptions options, out PdfDictionary dictionary, out int payloadStart)
+    {
+        dictionary = null!;
+        payloadStart = 0;
+        var lenient = options.Strict ? options with { Strict = false } : options;
+        var probeDiagnostics = new DiagnosticCollection();
+        var tokenizer = new PdfTokenizer(buffer);
+
+        try
+        {
+            for (var i = 0; i < 3; i++)
+            {
+                if (!tokenizer.Read() || tokenizer.TokenType != (i < 2 ? PdfTokenType.Integer : PdfTokenType.Keyword))
+                {
+                    return false;
+                }
+            }
+
+            if (!tokenizer.ValueSpan.SequenceEqual("obj"u8) || !tokenizer.Read() || tokenizer.TokenType != PdfTokenType.DictStart)
+            {
+                return false;
+            }
+
+            GuardDepth(lenient, 1);
+            var dict = ParseDictionaryEntries(buffer, ref tokenizer, lenient, probeDiagnostics, 1);
+            foreach (var diagnostic in probeDiagnostics)
+            {
+                if (diagnostic.Code is "PLUME2013" or "PLUME2014" or "PLUME2017")
+                {
+                    return false; // the dictionary ran into the buffer's edge
+                }
+            }
+
+            if (!tokenizer.Read() || tokenizer.TokenType != PdfTokenType.Keyword || !tokenizer.ValueSpan.SequenceEqual("stream"u8)
+                || tokenizer.Consumed + 2 > buffer.Length)
+            {
+                return false;
+            }
+
+            dictionary = dict;
+            payloadStart = SkipStreamKeywordEol(buffer, tokenizer.Consumed);
+            return true;
+        }
+        catch (PlumePdfException)
+        {
+            return false;
+        }
+    }
+
+    private static PdfDictionary ParseDictionaryEntries(ReadOnlySpan<byte> buffer, ref PdfTokenizer tokenizer, PdfOptions options, DiagnosticCollection? diagnostics, int depth)
     {
         var dict = new PdfDictionary();
 
@@ -233,26 +316,13 @@ internal static class ObjectParser
             dict.Set(key, value);
         }
 
-        var beforeStreamCheck = tokenizer.Consumed;
-        if (tokenizer.Read())
-        {
-            if (tokenizer.TokenType == PdfTokenType.Keyword && tokenizer.ValueSpan.SequenceEqual("stream"u8))
-            {
-                return ParseStreamPayload(buffer, ref tokenizer, dict, options, diagnostics);
-            }
-
-            tokenizer.Reset(beforeStreamCheck);
-        }
-
         return dict;
     }
 
-    private static PdfStream ParseStreamPayload(ReadOnlySpan<byte> buffer, ref PdfTokenizer tokenizer, PdfDictionary dict, PdfOptions options, DiagnosticCollection? diagnostics)
+    // The "stream" keyword is followed by CRLF or a bare LF (a bare CR is nonconforming
+    // but tolerated) before the raw payload begins, per §7.3.8.1.
+    private static int SkipStreamKeywordEol(ReadOnlySpan<byte> buffer, int position)
     {
-        var position = tokenizer.Consumed;
-
-        // The "stream" keyword is followed by CRLF or a bare LF (a bare CR is nonconforming
-        // but tolerated) before the raw payload begins, per §7.3.8.1.
         if (position < buffer.Length && buffer[position] == (byte)'\r')
         {
             position++;
@@ -263,11 +333,16 @@ internal static class ObjectParser
             position++;
         }
 
-        var payloadStart = position;
-        var directLength = TryGetDirectLength(dict);
+        return position;
+    }
+
+    private static PdfStream ParseStreamPayload(ReadOnlySpan<byte> buffer, ref PdfTokenizer tokenizer, PdfDictionary dict, PdfOptions options, DiagnosticCollection? diagnostics, int? resolvedStreamLength)
+    {
+        var payloadStart = SkipStreamKeywordEol(buffer, tokenizer.Consumed);
+        var directLength = TryGetDirectLength(dict) ?? resolvedStreamLength;
         int payloadLength;
 
-        if (directLength is int knownLength && knownLength >= 0 && payloadStart + knownLength <= buffer.Length
+        if (directLength is int knownLength && knownLength >= 0 && (long)payloadStart + knownLength <= buffer.Length
             && LooksLikeEndstream(buffer, payloadStart + knownLength))
         {
             payloadLength = knownLength;

@@ -195,8 +195,8 @@ internal sealed class ObjectResolver : IObjectSource
 
         try
         {
-            var buffer = ReadObjectWindow(recovered.ByteOffset, remaining);
-            var value = ObjectParser.ParseIndirectObject(buffer, _options, null, out var actual);
+            var buffer = ReadObjectWindow(expectedNumber, recovered.ByteOffset, remaining, out var streamLength);
+            var value = ObjectParser.ParseIndirectObject(buffer, _options, null, out var actual, streamLength);
             if (actual.Number != expectedNumber)
             {
                 return null;
@@ -241,13 +241,12 @@ internal sealed class ObjectResolver : IObjectSource
             return PdfNull.Instance;
         }
 
-        var buffer = ReadObjectWindow(entry.ByteOffset, remaining);
-
         PdfObject value;
         IndirectReference actual;
         try
         {
-            value = ObjectParser.ParseIndirectObject(buffer, _options, _diagnostics, out actual);
+            var buffer = ReadObjectWindow(expectedNumber, entry.ByteOffset, remaining, out var streamLength);
+            value = ObjectParser.ParseIndirectObject(buffer, _options, _diagnostics, out actual, streamLength);
         }
         catch (PlumePdfException ex)
         {
@@ -294,58 +293,218 @@ internal sealed class ObjectResolver : IObjectSource
         }
     }
 
+    // Bytes read past a stream's declared end so the exact read also holds the EOL,
+    // 'endstream' and 'endobj' that close the object; widened once, to the larger value,
+    // when 'endobj' sits further out than that.
+    private const int StreamTrailerSlackBytes = 1024;
+    private const int WideStreamTrailerSlackBytes = 64 * 1024;
+
+    // How many indirect /Length resolutions may nest on one thread (a length object is
+    // normally a plain integer; nesting means a length that is itself a stream with an
+    // indirect /Length — malformed — and the cap keeps a long chain of those off the stack).
+    private const int MaxLengthResolutionDepth = 4;
+
+    // The streams whose indirect /Length this thread is resolving right now, per resolver: a
+    // length that leads back to one of them is a cycle, and is unusable rather than re-entered.
+    [ThreadStatic]
+    private static HashSet<(ObjectResolver Resolver, int Number)>? t_lengthsInFlight;
+
     /// <summary>
-    /// Reads a bounded window starting at <paramref name="offset"/> that's big enough to hold
-    /// one complete indirect object — parsing the object header (then, for a stream, its
-    /// <c>/Length</c> bytes) up front instead is the textbook approach, but that needs a
-    /// resolver-aware two-pass parser <see cref="ObjectParser"/> doesn't have yet (plan
-    /// follow-up); this gets the same practical result today, with no parser changes and no
-    /// risk of behavior drift for objects that already parse correctly. Starts at
-    /// <see cref="InitialResolveWindowBytes"/> and doubles (probing with a disposable
-    /// <see cref="DiagnosticCollection"/> and <see cref="PdfOptions.Strict"/> forced off, so a
-    /// too-small window can never itself throw or pollute <c>doc.Diagnostics</c>) until the
-    /// object parses without hitting the window's edge, or the window covers everything left
-    /// in the source. The final, real parse (with the caller's actual options/diagnostics)
-    /// always re-parses the winning buffer once more — cheap (no extra I/O; the buffer is
-    /// already resident), and keeps this a pure "how much to read" decision with zero
-    /// behavioral difference from parsing the whole offset-to-EOF remainder the old way.
+    /// Reads a buffer starting at <paramref name="offset"/> that holds one complete indirect
+    /// object. Reads <see cref="InitialResolveWindowBytes"/> first, which holds most objects
+    /// whole, and probe-parses it (with a disposable <see cref="DiagnosticCollection"/> and
+    /// <see cref="PdfOptions.Strict"/> forced off, so a too-small window can never itself
+    /// throw or pollute <c>doc.Diagnostics</c>). When the probe had to scan for
+    /// <c>endstream</c> — the object is a stream whose <c>/Length</c> is indirect, or doesn't
+    /// fit the window — the stream is read once at its declared size instead: the
+    /// <c>/Length</c>, resolved through the cross-reference table when it is an indirect
+    /// reference (returned in <paramref name="streamLength"/> so the parse uses it rather than
+    /// scanning), plus the bytes that close the object. Only when there is no usable
+    /// <c>/Length</c> — missing, unresolvable, or not landing on <c>endstream</c> — does the
+    /// probe window keep growing (4× each time) until the object parses without reaching its
+    /// edge. The caller's real parse of the returned buffer has the same outcome as parsing
+    /// everything from <paramref name="offset"/> to the end of the source.
     /// </summary>
-    private byte[] ReadObjectWindow(long offset, long remaining)
+    private byte[] ReadObjectWindow(int expectedNumber, long offset, long remaining, out int? streamLength)
     {
+        streamLength = null;
         var probeOptions = _options.Strict ? _options with { Strict = false } : _options;
         var window = (int)Math.Min(InitialResolveWindowBytes, remaining);
+        var buffer = ReadWindow(offset, window);
+        var declaredLengthTried = false;
 
-        while (window < remaining)
+        while (true)
         {
-            var probeBuffer = new byte[window];
-            _source.Read(offset, probeBuffer);
-
-            var probeDiagnostics = new DiagnosticCollection();
-            var fitsWindow = true;
-            try
+            var fits = FitsWindow(buffer, probeOptions, out var scannedForEndstream);
+            if (scannedForEndstream && !declaredLengthTried
+                && ObjectParser.TryLocateStreamPayload(buffer, _options, out var dictionary, out var payloadStart))
             {
-                var probedValue = ObjectParser.ParseIndirectObject(probeBuffer, probeOptions, probeDiagnostics, out _);
-                fitsWindow = !LooksTruncated(probeBuffer, probedValue, probeDiagnostics);
-            }
-            catch (PlumePdfException)
-            {
-                fitsWindow = false; // could just be a window cut mid-token; grow and retry.
+                declaredLengthTried = true;
+                if (TryReadStreamAtDeclaredLength(expectedNumber, offset, remaining, buffer, dictionary, payloadStart, out var exact, out streamLength))
+                {
+                    return exact;
+                }
             }
 
-            if (fitsWindow)
+            if (fits || window == remaining)
             {
-                return probeBuffer;
+                return buffer;
             }
 
-            window = (int)Math.Min((long)window * 4, remaining);
+            window = GrowProbeWindow(window, remaining);
+            buffer = ReadWindow(offset, window);
         }
-
-        var finalBuffer = new byte[window];
-        _source.Read(offset, finalBuffer);
-        return finalBuffer;
     }
 
-    /// <summary>Best-effort signal that <paramref name="buffer"/> was too small to hold the whole object just probe-parsed out of it — by <see cref="ReadObjectWindow"/>, or by <c>CrossReferenceReader</c> for a cross-reference stream.</summary>
+    private byte[] ReadWindow(long offset, int length)
+    {
+        var buffer = new byte[length];
+        _source.Read(offset, buffer);
+        return buffer;
+    }
+
+    private static bool FitsWindow(byte[] buffer, PdfOptions probeOptions, out bool scannedForEndstream)
+    {
+        scannedForEndstream = false;
+        var probeDiagnostics = new DiagnosticCollection();
+        try
+        {
+            var probedValue = ObjectParser.ParseIndirectObject(buffer, probeOptions, probeDiagnostics, out _);
+            scannedForEndstream = probeDiagnostics.Any(d => d.Code == "PLUME2019");
+            return !LooksTruncated(buffer, probedValue, probeDiagnostics);
+        }
+        catch (PlumePdfException)
+        {
+            return false; // could just be a window cut mid-token; read more and retry.
+        }
+    }
+
+    private bool TryReadStreamAtDeclaredLength(int expectedNumber, long offset, long remaining, byte[] probed, PdfDictionary dictionary, int payloadStart, out byte[] buffer, out int? streamLength)
+    {
+        buffer = probed;
+        streamLength = null;
+        if (!dictionary.TryGetValue(PdfName.Length, out var lengthValue))
+        {
+            return false;
+        }
+
+        int? indirectLength = null;
+        if (lengthValue is PdfReference lengthReference)
+        {
+            indirectLength = ResolveIndirectLength(expectedNumber, lengthReference.Target);
+            lengthValue = indirectLength is int resolved ? PdfNumber.Get(resolved) : PdfNull.Instance;
+        }
+
+        if (lengthValue is not PdfNumber { IsInteger: true } number || !number.TryToInt32(out var length) || length < 0)
+        {
+            return false;
+        }
+
+        // A declared length past the end of the source, or too large for one array, is more
+        // likely wrong than real: leave it to the probe, which finds the real 'endstream' (or
+        // refuses once its window would exceed one array).
+        var end = (long)payloadStart + length;
+        if (end >= remaining || end + WideStreamTrailerSlackBytes > Array.MaxLength)
+        {
+            return false;
+        }
+
+        foreach (var slack in (ReadOnlySpan<int>)[StreamTrailerSlackBytes, WideStreamTrailerSlackBytes])
+        {
+            var size = Math.Min(end + slack, remaining);
+            var candidate = size <= probed.Length ? probed : ReadWindow(offset, (int)size);
+            var closing = ClosingAfterPayload(candidate, (int)end);
+            if (closing == StreamClosing.None)
+            {
+                return false; // the declared length doesn't land on 'endstream'
+            }
+
+            if (closing == StreamClosing.EndstreamAndEndobj || size == remaining || slack == WideStreamTrailerSlackBytes)
+            {
+                buffer = candidate;
+                streamLength = indirectLength;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private enum StreamClosing
+    {
+        None,
+        Endstream,
+        EndstreamAndEndobj,
+    }
+
+    // What closes the stream at 'end': 'endstream' (after optional whitespace), and whether
+    // 'endobj' (likewise) follows within the buffer.
+    private static StreamClosing ClosingAfterPayload(byte[] buffer, int end)
+    {
+        var p = SkipWhitespace(buffer, end);
+        if (!buffer.AsSpan(p).StartsWith("endstream"u8))
+        {
+            return StreamClosing.None;
+        }
+
+        p = SkipWhitespace(buffer, p + "endstream"u8.Length);
+        return buffer.AsSpan(p).StartsWith("endobj"u8) ? StreamClosing.EndstreamAndEndobj : StreamClosing.Endstream;
+    }
+
+    private static int SkipWhitespace(byte[] buffer, int position)
+    {
+        while (position < buffer.Length && PdfScanner.IsWhitespace(buffer[position]))
+        {
+            position++;
+        }
+
+        return position;
+    }
+
+    /// <summary>
+    /// The value of a stream's indirect <c>/Length</c>, or <see langword="null"/> when it can't
+    /// be used: no live cross-reference entry (checked first, so a dangling reference never
+    /// adds a diagnostic), a reference back to a stream whose length this thread is already
+    /// resolving (a cycle), nesting past <see cref="MaxLengthResolutionDepth"/>, or a value
+    /// that isn't a non-negative integer.
+    /// </summary>
+    private int? ResolveIndirectLength(int streamNumber, IndirectReference lengthReference)
+    {
+        var inFlight = t_lengthsInFlight ??= [];
+        if (lengthReference.Number == streamNumber || !HasLiveEntry(lengthReference.Number)
+            || inFlight.Contains((this, lengthReference.Number)) || inFlight.Count >= MaxLengthResolutionDepth
+            || !inFlight.Add((this, streamNumber)))
+        {
+            return null;
+        }
+
+        try
+        {
+            return Resolve(lengthReference) is PdfNumber { IsInteger: true } number && number.TryToInt32(out var length) && length >= 0 ? length : null;
+        }
+        finally
+        {
+            inFlight.Remove((this, streamNumber));
+        }
+    }
+
+    /// <summary>
+    /// The next probe window: 4× <paramref name="window"/>, capped at
+    /// <paramref name="remaining"/>. Refuses with <c>PLUME1005</c> rather than overflow when
+    /// that is more than one array can hold.
+    /// </summary>
+    internal static int GrowProbeWindow(int window, long remaining)
+    {
+        var next = Math.Min((long)window * 4, remaining);
+        if (next > Array.MaxLength)
+        {
+            throw new PlumePdfException("PLUME1005", $"An object with no usable /Length did not end within the first {window} bytes, and reading further would need more than one array can hold (~2 GiB).");
+        }
+
+        return (int)next;
+    }
+
+    /// <summary>Best-effort signal that <paramref name="buffer"/> was too small to hold the whole object just probe-parsed out of it — by <see cref="ReadObjectWindow"/>'s probes, or by <c>CrossReferenceReader</c> for a cross-reference stream.</summary>
     internal static bool LooksTruncated(byte[] buffer, PdfObject value, DiagnosticCollection probeDiagnostics)
     {
         // A stream whose raw payload runs right up to (or past) the edge of the window we
@@ -358,11 +517,14 @@ internal sealed class ObjectResolver : IObjectSource
         }
 
         // These all mean the tokenizer ran off the end of the window while still expecting
-        // more of the object (an unclosed array/dict, a stream's /Length or 'endstream'
-        // recovery scan, or 'endobj' itself landing past the edge).
+        // more of the object (an unclosed array/dict, no 'endstream' where the payload ended,
+        // or 'endobj' itself landing past the edge). A stream recovered by scanning for
+        // 'endstream' (PLUME2019) is not by itself a sign: when the scan finds one inside the
+        // window, it is the same first occurrence a read to the end of the source would find,
+        // and when it doesn't, the payload runs to the window's edge (caught above).
         foreach (var diagnostic in probeDiagnostics)
         {
-            if (diagnostic.Code is "PLUME2014" or "PLUME2017" or "PLUME2019" or "PLUME2020" or "PLUME2022")
+            if (diagnostic.Code is "PLUME2014" or "PLUME2017" or "PLUME2020" or "PLUME2022")
             {
                 return true;
             }

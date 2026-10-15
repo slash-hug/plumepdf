@@ -207,6 +207,34 @@ public class ResourceLimitTests
     }
 
     [Fact]
+    public void MemoryMappedByteSource_LargeRead_CopiesThroughAFixedChunkNotAReadSizedBuffer()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"plumepdf-mmap-test-{Guid.NewGuid():N}.bin");
+        try
+        {
+            // 48 MiB rounds to a pool bucket nothing else in the suite rents, so a read-sized
+            // rent would allocate it here.
+            var bytes = new byte[(48 * 1024 * 1024) + 4321];
+            new Random(34).NextBytes(bytes);
+            File.WriteAllBytes(path, bytes);
+            using var source = new MemoryMappedByteSource(path);
+            var destination = new byte[bytes.Length - 1000];
+
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            var read = source.Read(1000, destination);
+            var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            Assert.Equal(destination.Length, read);
+            Assert.True(bytes.AsSpan(1000).SequenceEqual(destination));
+            Assert.True(allocated < 1024 * 1024, $"A {destination.Length}-byte memory-mapped read allocated {allocated} bytes.");
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void MemoryMappedByteSource_MissingFile_ThrowsCodedException()
     {
         var path = Path.Combine(Path.GetTempPath(), $"plumepdf-does-not-exist-{Guid.NewGuid():N}.pdf");
