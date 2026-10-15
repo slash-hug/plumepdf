@@ -37,6 +37,13 @@ internal interface IObjectSource
     /// read for this one use and not kept.
     /// </summary>
     PdfObject ResolveForWrite(IndirectReference reference) => Resolve(reference);
+
+    /// <summary>
+    /// Reads the stream at <paramref name="reference"/> for one pass over its payload (a
+    /// compression planner hashing candidates) without keeping it: a stream nothing else has
+    /// resolved is parsed for this call and not cached. Null when the value isn't a stream.
+    /// </summary>
+    PdfStream? ReadPayloadOnce(IndirectReference reference) => ResolveForWrite(reference) as PdfStream;
 }
 
 /// <summary>
@@ -132,6 +139,9 @@ internal sealed class ObjectResolver : IObjectSource
     internal bool HasLiveEntry(int number) =>
         _table.EntriesByObjectNumber.TryGetValue(number, out var entry) && entry.Kind != CrossReferenceEntryKind.Free;
 
+    /// <summary>How many objects this resolver has cached.</summary>
+    internal int CachedObjectCount => _cache.Count;
+
     /// <summary>Resolves <paramref name="reference"/>, parsing and caching it on first access.</summary>
     public PdfObject Resolve(IndirectReference reference) => _cache.GetOrAdd(reference.Number, _ => ResolveUncached(reference.Number));
 
@@ -200,6 +210,37 @@ internal sealed class ObjectResolver : IObjectSource
         var value = ResolveInFile(number, entry, report: !_reported.ContainsKey(number));
         _reported.TryAdd(number, 0);
         return value;
+    }
+
+    /// <summary>
+    /// For one pass over a stream's payload that must not keep it: the cached value when
+    /// there is one; otherwise the object is parsed for this call alone — including a stream
+    /// whose declared <c>/Length</c> is wrong and is recovered by scanning, which the
+    /// dictionary-only discovery read can't serve — and neither it nor an indirect
+    /// <c>/Length</c> it needed joins the cache. Its deviations are reported the first time
+    /// only. An object inside an object stream (never a stream itself) resolves as usual.
+    /// </summary>
+    public PdfStream? ReadPayloadOnce(IndirectReference reference)
+    {
+        var number = reference.Number;
+        if (_cache.TryGetValue(number, out var cached))
+        {
+            return cached as PdfStream;
+        }
+
+        if (!_table.EntriesByObjectNumber.TryGetValue(number, out var entry) || entry.Kind != CrossReferenceEntryKind.InFile)
+        {
+            return Resolve(reference) as PdfStream;
+        }
+
+        try
+        {
+            return ResolveInFile(number, entry, report: !_reported.ContainsKey(number), cacheLength: false) as PdfStream;
+        }
+        finally
+        {
+            _reported.TryAdd(number, 0);
+        }
     }
 
     // 'head' is the object's first bytes as read here, for the caller to parse from when it
@@ -303,7 +344,7 @@ internal sealed class ObjectResolver : IObjectSource
         }
     }
 
-    private PdfObject? TryResolveViaRecoveryScan(int expectedNumber, CrossReferenceEntry badEntry, DiagnosticCollection? diagnostics)
+    private PdfObject? TryResolveViaRecoveryScan(int expectedNumber, CrossReferenceEntry badEntry, DiagnosticCollection? diagnostics, bool cacheLength)
     {
         void ReportDeviation(string code, string message, long? offset) => ReportDeviationTo(diagnostics, code, message, offset);
 
@@ -323,7 +364,7 @@ internal sealed class ObjectResolver : IObjectSource
 
         try
         {
-            var buffer = ReadObjectWindow(expectedNumber, recovered.ByteOffset, remaining, out var streamLength);
+            var buffer = ReadObjectWindow(expectedNumber, recovered.ByteOffset, remaining, out var streamLength, cacheLength: cacheLength);
             var value = ObjectParser.ParseIndirectObject(buffer, _options, null, out var actual, streamLength);
             if (actual.Number != expectedNumber)
             {
@@ -361,8 +402,9 @@ internal sealed class ObjectResolver : IObjectSource
     private const int InitialResolveWindowBytes = 4096;
 
     // 'report' false parses an object whose deviations an earlier parse already reported
-    // (Strict still throws on them).
-    private PdfObject ResolveInFile(int expectedNumber, CrossReferenceEntry entry, bool report, byte[]? head = null)
+    // (Strict still throws on them); 'cacheLength' false reads an indirect /Length the cache
+    // doesn't already hold without adding it.
+    private PdfObject ResolveInFile(int expectedNumber, CrossReferenceEntry entry, bool report, byte[]? head = null, bool cacheLength = true)
     {
         var diagnostics = report ? _diagnostics : null;
         void ReportDeviation(string code, string message, long? offset) => ReportDeviationTo(diagnostics, code, message, offset);
@@ -378,7 +420,7 @@ internal sealed class ObjectResolver : IObjectSource
         IndirectReference actual;
         try
         {
-            var buffer = ReadObjectWindow(expectedNumber, entry.ByteOffset, remaining, out var streamLength, head);
+            var buffer = ReadObjectWindow(expectedNumber, entry.ByteOffset, remaining, out var streamLength, head, cacheLength);
             value = ObjectParser.ParseIndirectObject(buffer, _options, diagnostics, out actual, streamLength);
         }
         catch (PlumePdfException ex)
@@ -386,7 +428,7 @@ internal sealed class ObjectResolver : IObjectSource
             // The entry's offset lied. Before giving the object up as null, consult the
             // brute-force scan map (built lazily, once) — the "repairable deviation" rung
             // of the recovery ladder for tables that parse but whose offsets are wrong.
-            if (TryResolveViaRecoveryScan(expectedNumber, entry, diagnostics) is { } recoveredValue)
+            if (TryResolveViaRecoveryScan(expectedNumber, entry, diagnostics, cacheLength) is { } recoveredValue)
             {
                 return recoveredValue;
             }
@@ -399,7 +441,7 @@ internal sealed class ObjectResolver : IObjectSource
         {
             // A different object at the claimed offset is the same lie in a subtler form:
             // prefer finding the REAL object via the scan map over using the impostor.
-            if (TryResolveViaRecoveryScan(expectedNumber, entry, diagnostics) is { } recoveredValue)
+            if (TryResolveViaRecoveryScan(expectedNumber, entry, diagnostics, cacheLength) is { } recoveredValue)
             {
                 return recoveredValue;
             }
@@ -459,7 +501,7 @@ internal sealed class ObjectResolver : IObjectSource
     /// everything from <paramref name="offset"/> to the end of the source. <paramref name="head"/>,
     /// when given, is that first window, already read.
     /// </summary>
-    private byte[] ReadObjectWindow(int expectedNumber, long offset, long remaining, out int? streamLength, byte[]? head = null)
+    private byte[] ReadObjectWindow(int expectedNumber, long offset, long remaining, out int? streamLength, byte[]? head = null, bool cacheLength = true)
     {
         streamLength = null;
         var probeOptions = _options.Strict ? _options with { Strict = false } : _options;
@@ -474,7 +516,7 @@ internal sealed class ObjectResolver : IObjectSource
                 && ObjectParser.TryLocateStreamPayload(buffer, _options, out var dictionary, out var payloadStart, out _))
             {
                 declaredLengthTried = true;
-                if (TryReadStreamAtDeclaredLength(expectedNumber, offset, remaining, buffer, dictionary, payloadStart, out var exact, out streamLength))
+                if (TryReadStreamAtDeclaredLength(expectedNumber, offset, remaining, buffer, dictionary, payloadStart, cacheLength, out var exact, out streamLength))
                 {
                     return exact;
                 }
@@ -513,11 +555,11 @@ internal sealed class ObjectResolver : IObjectSource
         }
     }
 
-    private bool TryReadStreamAtDeclaredLength(int expectedNumber, long offset, long remaining, byte[] probed, PdfDictionary dictionary, int payloadStart, out byte[] buffer, out int? streamLength)
+    private bool TryReadStreamAtDeclaredLength(int expectedNumber, long offset, long remaining, byte[] probed, PdfDictionary dictionary, int payloadStart, bool cacheLength, out byte[] buffer, out int? streamLength)
     {
         buffer = probed;
         streamLength = null;
-        if (DeclaredStreamEnd(expectedNumber, remaining, dictionary, payloadStart, out var indirectLength) is not long end)
+        if (DeclaredStreamEnd(expectedNumber, remaining, dictionary, payloadStart, out var indirectLength, cacheLength) is not long end)
         {
             return false;
         }
@@ -549,7 +591,7 @@ internal sealed class ObjectResolver : IObjectSource
     /// <see langword="null"/> when there is no usable length, or it is one the exact read
     /// doesn't trust.
     /// </summary>
-    private long? DeclaredStreamEnd(int expectedNumber, long remaining, PdfDictionary dictionary, int payloadStart, out int? indirectLength)
+    private long? DeclaredStreamEnd(int expectedNumber, long remaining, PdfDictionary dictionary, int payloadStart, out int? indirectLength, bool cacheLength = true)
     {
         indirectLength = null;
         if (!dictionary.TryGetValue(PdfName.Length, out var lengthValue))
@@ -559,7 +601,7 @@ internal sealed class ObjectResolver : IObjectSource
 
         if (lengthValue is PdfReference lengthReference)
         {
-            indirectLength = ResolveIndirectLength(expectedNumber, lengthReference.Target);
+            indirectLength = ResolveIndirectLength(expectedNumber, lengthReference.Target, cacheLength);
             lengthValue = indirectLength is int resolved ? PdfNumber.Get(resolved) : PdfNull.Instance;
         }
 
@@ -611,9 +653,10 @@ internal sealed class ObjectResolver : IObjectSource
     /// be used: no live cross-reference entry (checked first, so a dangling reference never
     /// adds a diagnostic), a reference back to a stream whose length this thread is already
     /// resolving (a cycle), nesting past <see cref="MaxLengthResolutionDepth"/>, or a value
-    /// that isn't a non-negative integer.
+    /// that isn't a non-negative integer. With <paramref name="cache"/> false, a length the
+    /// cache doesn't already hold is parsed for this call and not kept.
     /// </summary>
-    private int? ResolveIndirectLength(int streamNumber, IndirectReference lengthReference)
+    private int? ResolveIndirectLength(int streamNumber, IndirectReference lengthReference, bool cache = true)
     {
         var inFlight = t_lengthsInFlight ??= [];
         if (lengthReference.Number == streamNumber || !HasLiveEntry(lengthReference.Number)
@@ -625,11 +668,25 @@ internal sealed class ObjectResolver : IObjectSource
 
         try
         {
-            return Resolve(lengthReference) is PdfNumber { IsInteger: true } number && number.TryToInt32(out var length) && length >= 0 ? length : null;
+            var value = cache || _cache.TryGetValue(lengthReference.Number, out _) ? Resolve(lengthReference) : ResolveLengthOnce(lengthReference.Number);
+            return value is PdfNumber { IsInteger: true } number && number.TryToInt32(out var length) && length >= 0 ? length : null;
         }
         finally
         {
             inFlight.Remove((this, streamNumber));
+        }
+    }
+
+    // An indirect /Length read without caching it, its deviations reported the first time only.
+    private PdfObject ResolveLengthOnce(int number)
+    {
+        try
+        {
+            return ResolveUncached(number);
+        }
+        finally
+        {
+            _reported.TryAdd(number, 0);
         }
     }
 
