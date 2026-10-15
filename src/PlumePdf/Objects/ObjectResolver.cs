@@ -149,12 +149,28 @@ internal sealed class ObjectResolver : IObjectSource
         if (!_cache.TryGetValue(number, out var value)
             && _securityHandler is null
             && _table.EntriesByObjectNumber.TryGetValue(number, out var entry)
-            && entry.Kind == CrossReferenceEntryKind.InFile
-            && TryReadStreamDictionary(number, entry.ByteOffset, out var dictionary))
+            && entry.Kind == CrossReferenceEntryKind.InFile)
         {
-            _uncachedStreams.TryAdd(number, 0);
-            isStream = true;
-            return dictionary;
+            byte[]? head = null;
+            try
+            {
+                if (TryReadStreamDictionary(number, entry.ByteOffset, out var dictionary, out head))
+                {
+                    _uncachedStreams.TryAdd(number, 0);
+                    isStream = true;
+                    return dictionary;
+                }
+            }
+            catch (PlumePdfException)
+            {
+                // Resolving an indirect /Length refused (Strict); the full resolve below
+                // refuses the same way, reported in this object's own context.
+                head = null;
+            }
+
+            // Not a stream read this way: resolve and cache it as usual, from the bytes
+            // already read rather than reading them again.
+            value = _cache.GetOrAdd(number, n => ResolveInFile(n, entry, report: !_reported.ContainsKey(n), head));
         }
 
         value ??= Resolve(reference);
@@ -176,24 +192,42 @@ internal sealed class ObjectResolver : IObjectSource
             return cached;
         }
 
-        return _uncachedStreams.ContainsKey(number) && _table.EntriesByObjectNumber.TryGetValue(number, out var entry)
-            ? ResolveInFile(number, entry, report: _reported.TryAdd(number, 0))
-            : Resolve(reference);
+        if (!_uncachedStreams.ContainsKey(number) || !_table.EntriesByObjectNumber.TryGetValue(number, out var entry))
+        {
+            return Resolve(reference);
+        }
+
+        var value = ResolveInFile(number, entry, report: !_reported.ContainsKey(number));
+        _reported.TryAdd(number, 0);
+        return value;
     }
 
-    private bool TryReadStreamDictionary(int expectedNumber, long offset, out PdfDictionary dictionary)
+    // 'head' is the object's first bytes as read here, for the caller to parse from when it
+    // turns out not to be a stream read this way.
+    private bool TryReadStreamDictionary(int expectedNumber, long offset, out PdfDictionary dictionary, out byte[]? head)
     {
         dictionary = null!;
+        head = null;
         var remaining = _source.Length - offset;
         if (remaining <= 0)
         {
             return false;
         }
 
-        var head = ReadWindow(offset, (int)Math.Min(InitialResolveWindowBytes, remaining));
-        if (!ObjectParser.TryLocateStreamPayload(head, _options, out dictionary, out var payloadStart, out var number)
+        // Most objects aren't streams; without the 'stream' keyword in the window, the
+        // dictionary-only read can't succeed, so skip parsing for it.
+        head = ReadWindow(offset, (int)Math.Min(InitialResolveWindowBytes, remaining));
+        if (head.AsSpan().IndexOf("stream"u8) < 0
+            || !ObjectParser.TryLocateStreamPayload(head, _options, out dictionary, out var payloadStart, out var number)
             || number != expectedNumber
             || DeclaredStreamEnd(expectedNumber, remaining, dictionary, payloadStart, out _) is not long end)
+        {
+            return false;
+        }
+
+        // A stream whose payload ends inside the bytes already read is small enough to resolve
+        // from them and keep, like any other object.
+        if (end < head.Length)
         {
             return false;
         }
@@ -328,7 +362,7 @@ internal sealed class ObjectResolver : IObjectSource
 
     // 'report' false parses an object whose deviations an earlier parse already reported
     // (Strict still throws on them).
-    private PdfObject ResolveInFile(int expectedNumber, CrossReferenceEntry entry, bool report)
+    private PdfObject ResolveInFile(int expectedNumber, CrossReferenceEntry entry, bool report, byte[]? head = null)
     {
         var diagnostics = report ? _diagnostics : null;
         void ReportDeviation(string code, string message, long? offset) => ReportDeviationTo(diagnostics, code, message, offset);
@@ -344,7 +378,7 @@ internal sealed class ObjectResolver : IObjectSource
         IndirectReference actual;
         try
         {
-            var buffer = ReadObjectWindow(expectedNumber, entry.ByteOffset, remaining, out var streamLength);
+            var buffer = ReadObjectWindow(expectedNumber, entry.ByteOffset, remaining, out var streamLength, head);
             value = ObjectParser.ParseIndirectObject(buffer, _options, diagnostics, out actual, streamLength);
         }
         catch (PlumePdfException ex)
@@ -422,14 +456,15 @@ internal sealed class ObjectResolver : IObjectSource
     /// <c>/Length</c> — missing, unresolvable, or not landing on <c>endstream</c> — does the
     /// probe window keep growing (4× each time) until the object parses without reaching its
     /// edge. The caller's real parse of the returned buffer has the same outcome as parsing
-    /// everything from <paramref name="offset"/> to the end of the source.
+    /// everything from <paramref name="offset"/> to the end of the source. <paramref name="head"/>,
+    /// when given, is that first window, already read.
     /// </summary>
-    private byte[] ReadObjectWindow(int expectedNumber, long offset, long remaining, out int? streamLength)
+    private byte[] ReadObjectWindow(int expectedNumber, long offset, long remaining, out int? streamLength, byte[]? head = null)
     {
         streamLength = null;
         var probeOptions = _options.Strict ? _options with { Strict = false } : _options;
         var window = (int)Math.Min(InitialResolveWindowBytes, remaining);
-        var buffer = ReadWindow(offset, window);
+        var buffer = head ?? ReadWindow(offset, window);
         var declaredLengthTried = false;
 
         while (true)
