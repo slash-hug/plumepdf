@@ -37,6 +37,51 @@ public class NativeImageSamplesTests
         Assert.Equal(original, samples.Samples);
     }
 
+    // A soft mask with /Matte must keep its parent's /Width and /Height; separate
+    // never-larger decisions for the two could resize one and not the other.
+    [Fact]
+    public void SoftMaskWithMatte_IsSkipped()
+    {
+        var dictionary = ImageDictionary(9, 9, ColorSpaceFor(1));
+        dictionary.Set(PdfName.Get("Matte"), new PdfArray([PdfNumber.Get(1), PdfNumber.Get(1), PdfNumber.Get(1)]));
+        var (ok, samples, skip, detail) = Decode(new PdfStream(dictionary, Samples(9, 9, 1)), softMask: true);
+
+        Assert.False(ok);
+        Assert.Null(samples);
+        Assert.Equal(PlannedSkip.MatteSoftMask, skip);
+        Assert.False(string.IsNullOrWhiteSpace(detail));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ImageWhoseSoftMaskHasMatte_IsSkipped(bool matte)
+    {
+        var original = Samples(9, 9, 3);
+        var mask = ImageDictionary(9, 9, ColorSpaceFor(1));
+        if (matte)
+        {
+            mask.Set(PdfName.Get("Matte"), new PdfArray([PdfNumber.Get(1), PdfNumber.Get(1), PdfNumber.Get(1)]));
+        }
+
+        var dictionary = ImageDictionary(9, 9, ColorSpaceFor(3));
+        dictionary.Set(PdfName.SMask, new PdfReference(new IndirectReference(20, 0)));
+        var objects = Registry((20, new PdfStream(mask, Samples(9, 9, 1))));
+
+        var (ok, samples, skip, detail) = Decode(new PdfStream(dictionary, original), objects);
+
+        if (matte)
+        {
+            Assert.False(ok);
+            Assert.Equal(PlannedSkip.MatteSoftMask, skip);
+        }
+        else
+        {
+            Assert.True(ok, detail);
+            Assert.Equal(original, samples!.Samples);
+        }
+    }
+
     [Theory]
     [InlineData(1, 15)]
     [InlineData(3, 15)]

@@ -47,4 +47,10 @@ internal enum PlannedSkip
 
     /// <summary>Not placed on any page.</summary>
     NoPlacement,
+
+    /// <summary>
+    /// A soft mask carrying <c>/Matte</c>, or an image whose soft mask does: the two must keep
+    /// the same size, which separate never-larger decisions can't promise.
+    /// </summary>
+    MatteSoftMask,
 }

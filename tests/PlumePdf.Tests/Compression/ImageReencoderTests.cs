@@ -231,6 +231,25 @@ public class ImageReencoderTests
     }
 
     [Fact]
+    public void MattePair_KeepsBothOriginalsSoTheirSizesStayEqual()
+    {
+        // A /Matte soft mask must match its parent's size; neither side is resized alone.
+        var mask = FlateImage(Samples(64, 64, 1), 64, 64, 1);
+        mask.Dictionary.Set(PdfName.Get("Matte"), new PdfArray([PdfNumber.Get(0), PdfNumber.Get(0), PdfNumber.Get(0)]));
+        var parent = FlateImage(Samples(64, 64, 3), 64, 64, 3);
+        parent.Dictionary.Set(PdfName.SMask, new PdfReference(new IndirectReference(20, 0)));
+        var objects = Registry((20, mask));
+
+        var parentResult = Reencode(parent, 32, 32, objects: objects);
+        var maskResult = Reencode(mask, 32, 32, softMask: true, objects: objects);
+
+        Assert.Equal((ImageReencodeOutcome.Skipped, PlannedSkip.MatteSoftMask), (parentResult.Outcome, parentResult.Skip));
+        Assert.Equal((ImageReencodeOutcome.Skipped, PlannedSkip.MatteSoftMask), (maskResult.Outcome, maskResult.Skip));
+        Assert.Same(parent, parentResult.Stream);
+        Assert.Same(mask, maskResult.Stream);
+    }
+
+    [Fact]
     public void IneligibleImage_IsSkippedWithItsReason()
     {
         var image = new PdfStream(ImageDictionary(64, 64, ColorSpaceFor(1), bitsPerComponent: 1), new byte[64 * 8]);

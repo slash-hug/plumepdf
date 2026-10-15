@@ -27,6 +27,7 @@ internal static class NativeImageSamples
     private static readonly PdfName WidthName = PdfName.Get("Width");
     private static readonly PdfName HeightName = PdfName.Get("Height");
     private static readonly PdfName MaskName = PdfName.Get("Mask");
+    private static readonly PdfName MatteName = PdfName.Get("Matte");
     private static readonly PdfName DeviceGray = PdfName.Get("DeviceGray");
     private static readonly PdfName DeviceRgb = PdfName.Get("DeviceRGB");
     private static readonly PdfName IccBased = PdfName.Get("ICCBased");
@@ -189,6 +190,13 @@ internal static class NativeImageSamples
             return Skip(PlannedSkip.ColorKeyMask, "A colour-key /Mask array.", out skip, out detail);
         }
 
+        // A soft mask with /Matte holds colour pre-blended against it and must keep its
+        // parent's /Width and /Height, so neither side of such a pair is resized alone.
+        if (softMask ? dictionary.ContainsKey(MatteName) : HasMatteSoftMask(dictionary, objects))
+        {
+            return Skip(PlannedSkip.MatteSoftMask, softMask ? "A /Matte soft mask, which must keep its parent's size." : "Its /SMask carries /Matte, which must keep this image's size.", out skip, out detail);
+        }
+
         var colorSpace = Resolve(dictionary, PdfName.ColorSpace, objects);
         channels = softMask && colorSpace is null or PdfNull ? 1 : ComponentCount(colorSpace, objects);
         if (channels == 0 || (softMask && channels != 1))
@@ -204,6 +212,13 @@ internal static class NativeImageSamples
         skip = PlannedSkip.None;
         detail = null;
         return true;
+    }
+
+    private static bool HasMatteSoftMask(PdfDictionary dictionary, ObjectRegistry objects)
+    {
+        var softMask = ResolveDictionaryOnly(dictionary, PdfName.SMask, objects);
+        var maskDictionary = softMask as PdfDictionary ?? (softMask as PdfStream)?.Dictionary;
+        return maskDictionary?.ContainsKey(MatteName) == true;
     }
 
     // 1 or 3 for an eligible colour space, otherwise 0.
