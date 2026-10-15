@@ -114,6 +114,25 @@ internal static class NativeImageSamples
         return true;
     }
 
+    /// <summary>Reads the image's <c>/Width</c> and <c>/Height</c>, resolved through <paramref name="objects"/>; false unless both are positive integers.</summary>
+    public static bool TryReadSize(PdfDictionary dictionary, ObjectRegistry objects, out int width, out int height)
+    {
+        height = 0;
+        return TryGetPositiveInt(dictionary, WidthName, objects, out width) && TryGetPositiveInt(dictionary, HeightName, objects, out height);
+    }
+
+    /// <summary>
+    /// Whether the image's last filter is <c>/DCTDecode</c>, with <paramref name="jpegOnly"/>
+    /// saying it is the only one (so the raw payload is the JPEG itself).
+    /// </summary>
+    public static bool IsDctEncoded(PdfDictionary dictionary, ObjectRegistry objects, out bool jpegOnly)
+    {
+        var filters = FilterNames(dictionary, objects);
+        var isDct = filters.Count > 0 && DctFilters.Contains(filters[^1]);
+        jpegOnly = isDct && filters.Count == 1;
+        return isDct;
+    }
+
     private static bool TryClassify(
         PdfDictionary dictionary,
         ObjectRegistry objects,
@@ -142,7 +161,7 @@ internal static class NativeImageSamples
 
         isDct = filters.Count > 0 && DctFilters.Contains(filters[^1]);
 
-        if (!TryGetPositiveInt(dictionary, WidthName, objects, out width) || !TryGetPositiveInt(dictionary, HeightName, objects, out height))
+        if (!TryReadSize(dictionary, objects, out width, out height))
         {
             return Skip(PlannedSkip.DecodeFailed, "Missing or non-positive /Width or /Height.", out skip, out detail);
         }
