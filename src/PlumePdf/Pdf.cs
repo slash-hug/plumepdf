@@ -163,8 +163,7 @@ public static class Pdf
     /// renders only the first page (index 0); an explicit list renders exactly those pages, in
     /// the order given, as the result's <see cref="RasterImage.Frames"/> (mirroring multi-page
     /// TIFF decode, which <see cref="RasterImage"/> already models). See <c>doc.Pages[i].Rasterize</c>'s
-    /// remarks for exactly what does and does not paint yet (vector paths and a flat
-    /// representative shading color; not text glyphs or images).
+    /// remarks for what paints.
     /// </summary>
     /// <param name="path">The path to the PDF file.</param>
     /// <param name="options">Target size/DPI, page selection, and background. Defaults to <see cref="PdfRasterizeOptions.Default"/> (96 DPI, first page only, opaque white background).</param>
@@ -174,7 +173,7 @@ public static class Pdf
     /// <example>
     /// <code>
     /// var image = Pdf.Rasterize("input.pdf", PdfRasterizeOptions.Default with { Dpi = 150 });
-    /// image.Frames[0].EncodePng("page-0.png");
+    /// File.WriteAllBytes("page-0.png", image.Frames[0].EncodePng());
     /// </code>
     /// </example>
     public static RasterImage Rasterize(string path, PdfRasterizeOptions? options = null)

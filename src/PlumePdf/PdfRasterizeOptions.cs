@@ -73,7 +73,7 @@ public enum ImageResamplingMode
 /// using var document = PdfDocument.Open("input.pdf");
 /// var options = PdfRasterizeOptions.Default with { Dpi = 150 };
 /// var image = document.Pages[0].Rasterize(options);
-/// image.Frames[0].EncodePng("page-0.png");
+/// File.WriteAllBytes("page-0.png", image.Frames[0].EncodePng());
 /// </code>
 /// </example>
 public sealed record PdfRasterizeOptions
@@ -170,9 +170,9 @@ public sealed record PdfRasterizeOptions
     /// Also selects the
     /// <c>/Print</c> usage-dictionary override when resolving optional-content (OCG) visibility
     /// from the document's default <c>/OCProperties</c> <c>/D</c> configuration — a layer marked
-    /// print-only becomes visible, one marked screen-only is suppressed. Has no effect unless
-    /// <see cref="RenderAnnotations"/> is also <see langword="true"/> (there is nothing for
-    /// print-intent to change if annotations aren't being rendered at all). Defaults to
+    /// print-only becomes visible, one marked screen-only is suppressed. The optional-content
+    /// override applies to page content on its own; the annotation flags apply when
+    /// <see cref="RenderAnnotations"/> is also <see langword="true"/>. Defaults to
     /// <see langword="false"/> (view intent).
     /// </summary>
     public bool PrintIntent { get; init; }

@@ -122,11 +122,11 @@ public sealed class PdfPage
     /// <see cref="PdfRasterizeOptions.PageIndices"/> (that property is
     /// <see cref="Pdf.Rasterize(string,PdfRasterizeOptions?)"/>'s own, whole-document concern) —
     /// the returned <see cref="RasterImage"/> always carries exactly one frame,
-    /// <c>Frames[0]</c>. Vector paths render; text glyphs and <c>/Image</c> XObjects do not yet
-    /// (no glyph rasterizer or image-to-RGB decode path is wired into the paint pass yet — see
-    /// <c>Documents.PageRasterAdapter</c>'s remarks) — a page that uses them still renders
-    /// something recognizable (its vector content, plus a flat representative color per
-    /// axial/radial shading) rather than a blank surface. Resource-limit guards
+    /// <c>Frames[0]</c>. Text, vector paths, shadings, images (inline and XObject, every
+    /// built-in filter), transparency and optional content paint; annotations paint when
+    /// <see cref="PdfRasterizeOptions.RenderAnnotations"/> is set. An image that can't be
+    /// decoded paints nothing and records a coded diagnostic rather than failing the page.
+    /// Resource-limit guards
     /// (<see cref="PdfOptions.MaxRasterSurfaceBytes"/>/<see cref="PdfOptions.MaxDisplayListObjects"/>/
     /// <see cref="PdfOptions.MaxShadingSamples"/>) throw a coded <c>PLUME75xx</c> exception
     /// rather than silently degrading — a hostile or pathological page is refused, not
@@ -140,7 +140,7 @@ public sealed class PdfPage
     /// using var document = PdfDocument.Open("input.pdf");
     /// var options = PdfRasterizeOptions.Default with { Dpi = 150 };
     /// var image = document.Pages[0].Rasterize(options);
-    /// image.Frames[0].EncodePng("page-0.png");
+    /// File.WriteAllBytes("page-0.png", image.Frames[0].EncodePng());
     /// </code>
     /// </example>
     public RasterImage Rasterize(PdfRasterizeOptions? options = null)

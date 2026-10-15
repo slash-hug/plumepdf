@@ -35,8 +35,11 @@ document.Save("output/optimized.pdf", PdfOptions.Default with { Optimize = true 
 // the download finishes. Uses classic cross-reference tables; Optimize + Linearize
 // together is a coded refusal (PLUME5018) — pick one per output.
 document.Save("output/linearized.pdf", PdfOptions.Default with { Linearize = true });
+
+// The one-line form for a file on disk: open, linearize, save.
+Pdf.Linearize("samples/three-pages.pdf", "output/linearized-verb.pdf");
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L194-L208' title='Snippet source file'>snippet source</a> | <a href='#snippet-optimize-linearize' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L194-L211' title='Snippet source file'>snippet source</a> | <a href='#snippet-optimize-linearize' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 ## After a linearized save: the de-linearization diagnostic
@@ -70,7 +73,7 @@ catch (PlumePdfException ex)
     refusal = ex; // PLUME5019 — re-run Save with Linearize for a linearized result
 }
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L222-L240' title='Snippet source file'>snippet source</a> | <a href='#snippet-delinearization-diagnostic' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L230-L248' title='Snippet source file'>snippet source</a> | <a href='#snippet-delinearization-diagnostic' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 To keep a result linearized, re-run `Save` with `PdfOptions.Linearize` after making changes —
@@ -85,10 +88,11 @@ Optimized output uses object streams: True
 Linearization dictionary inside the first kilobyte: True
 Optimized reopens with pages: 3
 Linearized reopens with pages: 3
+Pdf.Linearize output reopens with pages: 3
 SaveIncremental after a linearized save records PLUME5019: True
 Strict refusal code: PLUME5019
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.OptimizeAndLinearize.verified.txt#L1-L6' title='Snippet source file'>snippet source</a> | <a href='#snippet-CookbookTests.OptimizeAndLinearize.verified.txt' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.OptimizeAndLinearize.verified.txt#L1-L7' title='Snippet source file'>snippet source</a> | <a href='#snippet-CookbookTests.OptimizeAndLinearize.verified.txt' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 ## Interactions worth knowing

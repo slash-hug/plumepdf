@@ -1,0 +1,3 @@
+﻿Pages: 5
+Images extracted in batches: 5
+Rewritten copy reopens with pages: 5

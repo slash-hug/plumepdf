@@ -10,8 +10,10 @@ Agent-forwardness is a core identity pillar: every phase's exit gate includes ag
 - **Verify snapshot tests** back each recipe: an agent locates the recipe by task name, runs the backing test, and diffs `.received` vs `.verified` as objective proof its usage is correct.
 - **`PdfOptions.Deterministic` — public, documented, forever:** fixed document ID, fixed/omitted timestamps, stable object ordering → byte-identical output. The backbone of agent self-verification and reproducible builds. Every writer feature must respect it — signing (Phase 5) does so by scoping the guarantee precisely (RSA PKCS#1 v1.5, caller-supplied signing time, no TSA/LTV) and coded-refusing every combination outside it, rather than quietly breaking reproducibility.
 - **Coded exceptions as API contract:** `PlumePdfException` base carries a stable, greppable `Code` (`PLUME####`, individually documented, never renumbered) and a `HelpLink` to that code's reference page, with an actionable message. Layout failures add QuestPDF-grade detail: the conflicting constraint in plain language, the element tree with measurements, and the offending call. `[Obsolete("Use X instead.", error: true)]` for hard redirects once replacements stabilize.
-- **In-repo Claude skill** (`.claude/skills/plumepdf/SKILL.md`): trigger-precise description, body under ~5K tokens, updated each phase.
+- **In-repo Claude skill** (`.claude/skills/plumepdf/SKILL.md`): trigger-precise description, body under ~5K tokens, updated in the same change as the surface it describes.
 - **Agent-oriented NuGet README** embedded in the package (renders on nuget.org; sits in every consumer's package cache for offline discovery): entry points, canonical recipes, error-code index, docs links.
+
+- **Coverage is gated, not remembered:** `AgentDocsCoverageTests` (`tests/PlumePdf.CookbookTests/`) fails when a public `Pdf` verb is missing from the skill, `llms.txt` or the NuGet README, when no cookbook recipe names it, or when the skill outgrows its budget; `CookbookIndexTests` fails when a recipe isn't linked from the cookbook index.
 
 ## With the docs site
 

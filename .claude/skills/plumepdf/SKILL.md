@@ -1,6 +1,6 @@
 ---
 name: plumepdf
-description: Use when reading, merging, splitting, reordering, saving, composing, inspecting, extracting text/images/metadata, filling/flattening AcroForms, signing/verifying digital signatures, creating/validating PDF/A, authoring tagged PDF, redacting, optimizing/linearizing, or stamping with the PlumePdf library (namespace PlumePdf), or when a PlumePdfException / PLUME#### error code appears. Covers the Phase 1 (read/manipulate), Phase 2 (creation), Phase 3 (extraction), Phase 4 (AcroForms: fill, flatten, real appearance generation), Phase 5 (digital signatures: sign, verify, LTV), and Phase 6 (compliance: PDF/A create+validate, tagged PDF/PDF-UA, true redaction, optimize/linearize, opened-document stamping) surfaces.
+description: Use when reading, merging, splitting, reordering, saving, composing, inspecting, extracting text/images/metadata, filling/flattening AcroForms, signing/verifying digital signatures, creating/validating PDF/A, authoring tagged PDF, redacting, optimizing/linearizing, stamping, writing Arabic/Devanagari or right-to-left text, decoding PNG/JPEG/TIFF/JPEG 2000 images, building a PDF from images, rasterizing/rendering pages to pixels, or processing very large (multi-gigabyte) PDFs with the PlumePdf library (namespace PlumePdf), or when a PlumePdfException / PLUME#### error code appears. Covers every shipped surface: read/manipulate, creation, extraction, AcroForms, digital signatures, compliance (PDF/A, tagged PDF, redaction, optimize/linearize, stamping), complex-script shaping, raster image codecs and image→PDF, and page rasterization.
 ---
 
 # Using PlumePDF
@@ -8,7 +8,7 @@ description: Use when reading, merging, splitting, reordering, saving, composing
 Two names start most reading/manipulation tasks:
 
 - **`PdfDocument`** — the hub. `PdfDocument.Open(path | Stream | ReadOnlyMemory<byte>, PdfOptions?)` (plus `OpenAsync`); instance surface: `Pages` (count/index/`Move`/`RemoveAt`), `Diagnostics`, `Objects` (raw object-graph escape hatch), `Save`/`SaveAsync`, `SaveIncremental`/`SaveIncrementalAsync`, `HasEncryptedSource`. `PdfDocument.Compose(page => ...)` builds a new document from a fluent lambda.
-- **`Pdf`** — one-line task verbs: `Pdf.Merge(paths… | documents…)`, `Pdf.Split(document)` → `SplitResult.SaveAll("part-{n}.pdf")` (plus `MergeAsync`/`SplitAsync`).
+- **`Pdf`** — one-line task verbs, mostly path-based: `Pdf.Merge(paths… | documents…)`, `Pdf.Split(document)` → `SplitResult.SaveAll("part-{n}.pdf")`, `Pdf.ExtractText`, `Pdf.FillForm`, `Pdf.FlattenForm`, `Pdf.Sign`, `Pdf.Verify`, `Pdf.Redact`, `Pdf.ValidatePdfA`, `Pdf.Linearize`, `Pdf.Stamp`, `Pdf.Rasterize`, `Pdf.FromImages`. `Merge`, `Split`, `ExtractText`, `FillForm`, `Sign` and `Rasterize` also have an `…Async` twin. Each is covered in its section below.
 
 A third name matters once you're *creating* a document as data rather than a one-shot lambda:
 
@@ -29,7 +29,7 @@ Copy-paste recipes with verified expected output: `docs/cookbook/` (one task per
 
 - **`SaveIncremental` is the default choice**: appends changes after a copy of the original bytes; prior revisions stay intact (required for signed files); fastest.
 - **`Save`** is a full rewrite: renumbers objects, garbage-collects unreferenced ones. Output is NOT byte-comparable to the input — only run-to-run reproducible under `Deterministic`.
-- Saving a document whose source was encrypted throws `PLUME5001`/`PLUME5002` (no encryption write in Phase 1); `Pdf.Merge`/`Split` on such a source throws `PLUME6012`.
+- An encrypted source: `Save` (full rewrite) refuses with `PLUME5001`; `SaveIncremental` works and re-encrypts the appended revision with the source's own key; `Pdf.Merge`/`Split` and `Form.Flatten` refuse with `PLUME6012`.
 - **After `Redact`, only `Save` is legal** — `SaveIncremental` refuses (`PLUME5016`): an incremental update preserves the original bytes redaction exists to remove. **After a `Linearize`d save**, `SaveIncremental` de-linearizes and records a `PLUME5019` diagnostic (`Strict` refuses). **Stamping is the additive exception**: `doc.Stamp` works through `SaveIncremental` by design. **After `Pages.RemoveAt`**, only `Save` drops the removed pages: it leaves out everything that belonged only to them (annotations, widgets, fields left with no widget, structure elements) and tidies bookmarks, links, the open action, named destinations and the structure tree that pointed at them, recording a `PLUME5021` Info diagnostic; `SaveIncremental` keeps their bytes. Recipe: `docs/cookbook/reorder-pages.md`.
 
 ## Creation (Phase 2): elements, fonts, layout errors
@@ -39,7 +39,7 @@ Copy-paste recipes with verified expected output: `docs/cookbook/` (one task per
 ## Extraction (Phase 3): text, images, metadata
 
 - **Text** — `Pdf.ExtractText(path)` is the quick door (one flattened string). `document.Pages[i].ExtractText(PdfTextExtractionOptions?)` is the rich door: `ExtractedText.Text`/`Lines`/`Words` (reading order — content-order baseline plus a two-column gutter heuristic) down to the raw `Letters` escape hatch (content-stream order, positioned in page space: points, bottom-left origin, y-up, post-`/Rotate`). An image-only/scanned page returns an empty result, not an error or a throw — PlumePDF does no OCR.
-- **Images** — `document.Pages[i].ExtractImages()`/`ExtractImagesWithDiagnostics()` walk every image XObject reachable from the page (recursing into forms). DCT passes through as intact JPEG bytes; Flate/LZW/RunLength decode to raw samples; CCITT/JBIG2/JPX all decode too (in-house, registered by default); only a filter name PlumePDF has never registered a decoder for degrades to still-encoded bytes plus a `PLUME6023` diagnostic — register your own `IPdfFilter` via `PdfOptions.Filters` to decode it instead (the extension seam; see `docs/cookbook/extract-images.md`).
+- **Images** — `document.Pages[i].ExtractImages()`/`ExtractImagesWithDiagnostics()` walk every image XObject reachable from the page (recursing into forms). DCT passes through as intact JPEG bytes; Flate/LZW/RunLength decode to raw samples; CCITT/JBIG2/JPX all decode too (in-house, registered by default); a filter name PlumePDF has no decoder for (or a JPEG 2000 / pre-DCT filter decode that fails) degrades to still-encoded bytes plus a `PLUME6023` diagnostic — register your own `IPdfFilter` via `PdfOptions.Filters` to decode it instead (the extension seam; see `docs/cookbook/extract-images.md`).
 - **Metadata** — `document.GetInfo()` (typed `/Info` dictionary fields), `document.GetXmpMetadataBytes()`/`GetXmpMetadataText()` (raw XMP packet, no RDF parsing), `document.Permissions` (advisory `/Encrypt` `/P` flags only — never enforced).
 - Extraction diagnostics are **result-scoped**, not `document.Diagnostics` — check `ExtractedText.Diagnostics`/the `ExtractImagesWithDiagnostics` tuple for what THIS call tolerated; `document.Diagnostics` still gets one first-occurrence summary entry per page per extraction call, so a caller who only ever checks `document.Diagnostics` still sees that something happened.
 - Recipes: `docs/cookbook/extract-text.md`, `extract-images.md`, `read-metadata.md`.
@@ -70,12 +70,13 @@ Copy-paste recipes with verified expected output: `docs/cookbook/` (one task per
   — fill-time only, and `Flatten` ignores it since it always needs a real stream to bake in.
   When regeneration genuinely can't produce a stream for a field (e.g. an unencodable
   character in the fill value against the field's `/DA` font), that field's appearance is left
-  stale and a `PLUME6041` diagnostic records it. `doc.Form.Flatten()` bakes each widget's
-  *existing* `/AP` into page content; a widget with no `/AP` at all throws `PLUME6036` rather
-  than silently producing an invisible field. See `docs/errors/PLUME6041.md` and
-  `docs/errors/PLUME6036.md`.
-- **`doc.Form.Flatten()`** — stamps each field's current appearance permanently into page
-  content and removes the AcroForm entirely. Returns a **new, independent `PdfDocument`** —
+  stale and a `PLUME6041` diagnostic records it. See `docs/errors/PLUME6041.md`.
+- **`doc.Form.Flatten()`** / **`Pdf.FlattenForm(path, outputPath?)`** — stamps each field's current appearance permanently into page
+  content and removes the AcroForm entirely. A widget with no `/AP` gets one synthesized from
+  its field value (the fill generator); one with nothing to synthesize (e.g. an unsigned
+  signature field) stays a live annotation with a `PLUME6036` Warning while the rest
+  flattens. `Pdf.FlattenForm` saves back to `path` when `outputPath` is omitted.
+  `doc.Form.Flatten()` returns a **new, independent `PdfDocument`** —
   it never mutates the source document in place (capture the return value; the source still
   has its AcroForm afterward, and `Flatten()`'s own doc comment explains why: no general
   object-number allocator on an already-open document to do it in place with yet). The result
@@ -113,13 +114,31 @@ Copy-paste recipes with verified expected output: `docs/cookbook/` (one task per
 - **Stamp an opened document** — `doc.Stamp(new Stamp { Text = "CONFIDENTIAL" }, pageIndexes?)` or `Pdf.Stamp(path, outputPath, stampOrText)`; same `Stamp` descriptor as `Section.Stamps`. Additive (works through `SaveIncremental`; a signed source's signature stays cryptographically valid). Standard-14 Helvetica-Bold only — non-WinAnsi text throws `PLUME6072`; zero pages throws `PLUME6073`. Recipe: `docs/cookbook/stamp-document.md`.
 - **Metadata write** — `doc.SetInfo(new DocInfoMetadata { ... })` / `doc.SetXmpMetadata(new XmpPacket { ... })` (`PlumePdf.Documents.Metadata`); the two must agree where they overlap (`PLUME6057`).
 
+## Complex scripts (Phase 6.5): Arabic, Devanagari, bidi
+
+No separate mode: set `Text.Direction` (`TextDirection.RightToLeft`/`Auto`) and use a font with the script's OpenType Layout tables (`GSUB`/`GPOS` — Standard-14 fonts and plain Latin fonts can't shape Arabic or Devanagari). `HorizontalAlign.Start`/`End` follow the paragraph direction. Shaping (joining forms, ligatures, mark attachment, reph) is checked against HarfBuzz. Bidi is UAX #9 with stated bounds: explicit isolates (LRI/RLI/FSI/PDI) are a coded refusal (`PLUME9013`); embeddings/overrides are approximate. `PdfOptions.MaxShapingLookupApplications` bounds work against a hostile font (`PLUME8024`). Extraction recovers logical-order text through cluster-driven `/ToUnicode`. Recipe: `docs/cookbook/create-arabic-document.md`.
+
+## Images and pixels (Phases 7–9): decode, image→PDF, rasterize
+
+- **Decode** — `RasterImage.Decode(bytes | path)` sniffs PNG/JPEG/TIFF/JPEG 2000 → `Frames` of `RasterImageFrame` (`Width`/`Height`/`Format` Gray8/Rgb24/Rgba32, `XDpi`/`YDpi`, `Pixels`) with result-scoped `Diagnostics`; a bad TIFF frame is skipped and diagnosed, not fatal. `frame.EncodePng()`/`EncodeJpeg(quality)` re-encode. Recipe: `docs/cookbook/decode-image.md`.
+- **Image → PDF** — `Pdf.FromImages(paths | bytes | RasterImages)` returns an unsaved `PdfDocument` (or `Pdf.FromImages(paths, outputPath)` writes directly; an output path that is also an input refuses, `PLUME3612`): one page per decoded frame (a multi-page TIFF gives several), sized from its DPI. Recipe: `docs/cookbook/from-images.md`.
+- **Rasterize** — `Pdf.Rasterize(path, PdfRasterizeOptions?)` (first page by default; `PageIndices` picks pages) or `doc.Pages[i].Rasterize(options)` → `RasterImage`. Size by `Dpi` (default 96) **or** `PixelWidth`+`PixelHeight`. Annotations and form widgets paint only with `RenderAnnotations = true` (a widget value with no `/AP` is synthesized in memory; the document is never mutated, so parallel rasterization of one open document is safe); `PrintIntent` applies print flags and optional-content print usage; `ImageResampling` (`Auto` = PDFium parity) and `AntiAlias` tune output. Images in every filter (JPEG incl. CMYK, CCITT, JBIG2, JPEG 2000, Flate) paint, except inside tiling patterns (not yet) and JBIG2 Huffman/halftone regions (unsupported); an undecodable or hostile image paints nothing plus a coded diagnostic (`PLUME7744`, `7746`; JPEG 2000 refusals `PLUME3700`–`3718`) rather than failing the page. Non-embedded fonts render with bundled substitutes (CJK has none yet: `PLUME7511`). Recipes: `docs/cookbook/rasterize-page.md`, `rasterize-substitute-fonts.md`, `rasterize-scanned-jpeg2000.md`.
+- Decompression-bomb and render caps are `PdfOptions.Max*` (`MaxImagePixels`, `MaxRasterSurfaceBytes`, …); a trip is a coded refusal (or, for one image during rasterization, a coded skip, `PLUME7746`), never an out-of-memory crash.
+
+## Very large files (multi-gigabyte scans)
+
+- **Open from a path** (memory-mapped; objects read when used) or a seekable `Stream` — not `ReadOnlyMemory<byte>`, which needs the whole file in memory. Files over 2 GiB work; a single object needing more than one array (~2 GiB) resolves as null with `PLUME2061`. A damaged file that needs the full-file recovery scan is bounded by one array (`PLUME1005`).
+- **A full `Save` (plain or `Optimize`) holds one stream at a time** (a 2.67 GB scan saves in under 80 MB of heap); a linearized save (`PdfOptions.Linearize`/`Pdf.Linearize`) and `Form.Flatten`/`Pdf.FlattenForm` still hold every stream.
+- **Write to a different path** — a full `Save`, sign, LTV or timestamp write over the open file first buffers the whole source into memory on every platform, and refuses past 2 GiB (`PLUME1006`).
+- **What you read stays cached until `Dispose`** — `ExtractImages`/`ExtractText`/`Rasterize`/`doc.Objects` over every page of a huge file holds all of it. Process pages in batches and reopen between batches. Recipe: `docs/cookbook/large-files.md`.
+
 ## Options that matter
 
 `PdfOptions.Default with { … }`: `Deterministic = true` (byte-identical output — snapshot-test your PDFs), `UserPassword`/`OwnerPassword` (encrypted files; empty user password is tried automatically), `Strict = true` (every deviation throws instead of recovering — validators only).
 
 ## Diagnostics & errors
 
-Reading is lenient by default: damaged files recover (up to a full-file scan) and every repair lands on `document.Diagnostics` as `{ Code, Severity, Message, ByteOffset?, Subject? }` — triage by `Code`, don't parse messages. Unrecoverable failures throw `PlumePdfException` with a stable `Code` (`PLUME####`) and `HelpLink`. Look any code up at `docs/errors/PLUME####.md` (index: `docs/errors/README.md`). Ranges: 1xxx IO, 2xxx parse/objects, 3xxx filters, 4xxx encryption, 5xxx writer, 6xxx documents/verbs, 7xxx content, 8xxx fonts, 9xxx layout.
+Reading is lenient by default: damaged files recover (up to a full-file scan) and every repair lands on `document.Diagnostics` as `{ Code, Severity, Message, ByteOffset?, Subject? }` — triage by `Code`, don't parse messages. Unrecoverable failures throw `PlumePdfException` with a stable `Code` (`PLUME####`) and `HelpLink`. Look any code up at `docs/errors/PLUME####.md` (index: `docs/errors/README.md`). Ranges: 1xxx IO, 2xxx parse/objects, 3xxx filters, 4xxx encryption, 5xxx writer, 6xxx documents/verbs, 7xxx content (7500–7999 rasterizer), 8xxx fonts, 9xxx layout.
 
 ## Verify a change end-to-end
 

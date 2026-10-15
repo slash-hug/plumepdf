@@ -36,8 +36,11 @@ foreach (var notChecked in result.NotCheckedRules)
 {
     report.AppendLine($"NOT CHECKED [{notChecked.RuleId}]");
 }
+
+// The one-line form for a file on disk: open, validate, dispose.
+var fromPath = Pdf.ValidatePdfA("output/pdfa-candidate.pdf");
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L861-L879' title='Snippet source file'>snippet source</a> | <a href='#snippet-validate-pdfa' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L926-L947' title='Snippet source file'>snippet source</a> | <a href='#snippet-validate-pdfa' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Expected output for a conformant candidate (backing test `CookbookTests.ValidatePdfA` — the
@@ -49,8 +52,9 @@ candidate is created by the [Create a PDF/A document](create-pdfa.md) path):
 Declared: PDF/A-2B
 Conformant (per this self-check): True
 NOT CHECKED [DocInfoXmpAgreement]
+Pdf.ValidatePdfA agrees: True
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.ValidatePdfA.verified.txt#L1-L3' title='Snippet source file'>snippet source</a> | <a href='#snippet-CookbookTests.ValidatePdfA.verified.txt' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.ValidatePdfA.verified.txt#L1-L4' title='Snippet source file'>snippet source</a> | <a href='#snippet-CookbookTests.ValidatePdfA.verified.txt' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 A typical failure for an ordinary document that never went through the PDF/A create path (no
