@@ -100,13 +100,11 @@ internal static class FullRewriteWriter
         var pendingOriginal = new Queue<int>();
         var extraObjects = new List<(int Number, PdfObject Value)>();
         var overrides = SeedOverrides(catalogReference, pages, excluded, replacements);
-        ValidateAliases(aliases, catalogReference, pages, excluded, overrides);
+        ValidateAliases(objects, aliases, catalogReference, pages, excluded, overrides);
 
-        // A duplicate's references land on its canonical original. An excluded number keeps
-        // its own meaning (written as null) whatever it is aliased to, so an alias can never
-        // carry a reference past the exclusion set.
+        // A duplicate's references land on its canonical original.
         int Canonical(int originalNumber) =>
-            aliases is not null && !excluded.Contains(originalNumber) && aliases.TryGetValue(originalNumber, out var canonical) ? canonical : originalNumber;
+            aliases is not null && aliases.TryGetValue(originalNumber, out var canonical) ? canonical : originalNumber;
 
         // References this writer constructs itself, already carrying a final object number
         // (a /Pages node's /Kids entries, every retained page's replacement /Parent, the
@@ -487,11 +485,13 @@ internal static class FullRewriteWriter
     }
 
     // An alias maps a duplicate to the original written in its place, so the canonical side
-    // must itself be written as itself: not excluded, not aliased in turn, not the catalog or a
-    // retained page (which the writer rebuilds itself), and not replaced by a caller override
-    // (whose value is not the content the duplicate was found equal to). The duplicate side
-    // must be an ordinary object too, never the catalog, a retained page or an override.
+    // must itself be written as itself: a stream that exists, not excluded, not aliased in
+    // turn, not the catalog or a retained page (which the writer rebuilds itself), and not
+    // replaced by a caller override (whose value is not the content the duplicate was found
+    // equal to). The duplicate side must be an ordinary object too, never excluded (it is
+    // written as null wherever referenced), the catalog, a retained page or an override.
     private static void ValidateAliases(
+        ObjectRegistry objects,
         IReadOnlyDictionary<int, int>? aliases,
         IndirectReference? catalogReference,
         IReadOnlyList<(IndirectReference Reference, PdfDictionary Dictionary)> pages,
@@ -513,12 +513,14 @@ internal static class FullRewriteWriter
         {
             var problem =
                 duplicate == canonical ? "is aliased to itself"
+                : excluded.Contains(duplicate) ? "is excluded from the output"
                 : reserved.Contains(duplicate) ? "is the catalog or a retained page"
                 : overrides.ContainsKey(duplicate) ? "has a replacement value"
                 : excluded.Contains(canonical) ? $"is aliased to object {canonical}, which is excluded from the output"
                 : aliases.ContainsKey(canonical) ? $"is aliased to object {canonical}, which is itself aliased"
                 : reserved.Contains(canonical) ? $"is aliased to object {canonical}, which is the catalog or a retained page"
                 : overrides.ContainsKey(canonical) ? $"is aliased to object {canonical}, which has a replacement value"
+                : !IsStream(objects, canonical) ? $"is aliased to object {canonical}, which is not a stream"
                 : null;
 
             if (problem is not null)
@@ -526,6 +528,13 @@ internal static class FullRewriteWriter
                 throw new PlumePdfException("PLUME5010", $"Internal writer invariant violated: object {duplicate} {problem}.");
             }
         }
+    }
+
+    // Dictionary-only where the source allows, so validating a canonical never reads its payload.
+    private static bool IsStream(ObjectRegistry objects, int number)
+    {
+        ((IObjectSource)objects).ResolveForDiscovery(new IndirectReference(number, 0), out var isStream);
+        return isStream;
     }
 
     internal static IEnumerable<PdfReference> FindReferences(PdfObject value)

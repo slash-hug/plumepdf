@@ -173,6 +173,40 @@ public class WriterAliasMapTests
     }
 
     [Fact]
+    public void AliasToAMissingObject_IsRefused()
+    {
+        // Written anyway, every reference to the duplicate would silently become null.
+        using var document = PdfDocument.Open(ImagePagesDocument.Build(pageCount: 2, identicalImages: true));
+        var aliases = new Dictionary<int, int> { [ImagePagesDocument.Image(1)] = 500 };
+
+        var ex = Assert.Throws<PlumePdfException>(() => StreamWriteTransformTests.Write(document, PdfOptions.Default, transform: null, aliases: aliases));
+        Assert.Equal("PLUME5010", ex.Code);
+    }
+
+    [Fact]
+    public void AliasToANonStream_IsRefused()
+    {
+        using var document = PdfDocument.Open(ImagePagesDocument.Build(pageCount: 2, identicalImages: true));
+        var aliases = new Dictionary<int, int> { [ImagePagesDocument.Image(1)] = ImagePagesDocument.DecodeParms(0) };
+
+        var ex = Assert.Throws<PlumePdfException>(() => StreamWriteTransformTests.Write(document, PdfOptions.Default, transform: null, aliases: aliases));
+        Assert.Equal("PLUME5010", ex.Code);
+    }
+
+    [Fact]
+    public void AliasOfAnExcludedObject_IsRefused()
+    {
+        // An excluded number is written as null wherever it is referenced; aliasing it would
+        // either change that or do nothing, and a deduplicator offering one has a stale set.
+        using var document = PdfDocument.Open(ImagePagesDocument.Build(pageCount: 2, identicalImages: true));
+        var excluded = new HashSet<int> { ImagePagesDocument.Image(1) };
+        var aliases = new Dictionary<int, int> { [ImagePagesDocument.Image(1)] = ImagePagesDocument.Image(0) };
+
+        var ex = Assert.Throws<PlumePdfException>(() => StreamWriteTransformTests.Write(document, PdfOptions.Default, transform: null, excluded: excluded, aliases: aliases));
+        Assert.Equal("PLUME5010", ex.Code);
+    }
+
+    [Fact]
     public void AliasOfAnOverriddenObject_IsRefused()
     {
         using var document = PdfDocument.Open(ImagePagesDocument.Build(pageCount: 2, identicalImages: true));
