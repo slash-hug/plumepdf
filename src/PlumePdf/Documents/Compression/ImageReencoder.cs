@@ -90,9 +90,21 @@ internal static class ImageReencoder
     public static ImageReencodeResult Reencode(PdfStream image, ObjectRegistry objects, ImageReencodeRequest request, PdfOptions options)
     {
         var dictionary = image.Dictionary;
-        if (!NativeImageSamples.TryReadSize(dictionary, objects, out var width, out var height))
+        int width, height;
+        bool sourceIsJpeg, jpegOnly;
+        try
         {
-            return Unchanged(image, ImageReencodeOutcome.Skipped, PlannedSkip.DecodeFailed, "Missing or non-positive /Width or /Height.", 0, 0, null);
+            if (!NativeImageSamples.TryReadSize(dictionary, objects, out width, out height))
+            {
+                return Unchanged(image, ImageReencodeOutcome.Skipped, PlannedSkip.DecodeFailed, "Missing or non-positive /Width or /Height.", 0, 0, null);
+            }
+
+            sourceIsJpeg = NativeImageSamples.IsDctEncoded(dictionary, objects, out jpegOnly);
+        }
+        catch (PlumePdfException ex)
+        {
+            // A dangling entry under Strict: this image fails to decode, the run carries on.
+            return Unchanged(image, ImageReencodeOutcome.Skipped, PlannedSkip.DecodeFailed, $"{ex.Code}: {ex.Message}", 0, 0, null);
         }
 
         var targetWidth = Math.Clamp(request.TargetWidth, 1, width);
@@ -104,7 +116,6 @@ internal static class ImageReencoder
             return Unchanged(image, ImageReencodeOutcome.Unchanged, PlannedSkip.None, null, width, height, null);
         }
 
-        var sourceIsJpeg = NativeImageSamples.IsDctEncoded(dictionary, objects, out var jpegOnly);
         var estimated = sourceIsJpeg && jpegOnly && JpegQualityEstimator.TryEstimate(image.RawBytes.Span, out var raw)
             ? Math.Clamp(raw, MinEstimatedQuality, MaxEstimatedQuality)
             : (int?)null;

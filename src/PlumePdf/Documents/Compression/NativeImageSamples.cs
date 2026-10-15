@@ -69,9 +69,20 @@ internal static class NativeImageSamples
         samples = null;
         var dictionary = image.Dictionary;
 
-        if (!TryClassify(dictionary, objects, softMask, options, out var width, out var height, out var channels, out var isDct, out skip, out detail))
+        int width, height, channels;
+        bool isDct;
+        try
         {
-            return false;
+            if (!TryClassify(dictionary, objects, softMask, options, out width, out height, out channels, out isDct, out skip, out detail))
+            {
+                return false;
+            }
+        }
+        catch (PlumePdfException ex)
+        {
+            // An entry the document can't produce (a dangling reference under Strict) is this
+            // image failing to decode, not the run failing.
+            return Skip(PlannedSkip.DecodeFailed, $"{ex.Code}: {ex.Message}", out skip, out detail);
         }
 
         var expected = (long)width * height * channels;
@@ -280,7 +291,8 @@ internal static class NativeImageSamples
     private static bool TryGetPositiveInt(PdfDictionary dictionary, PdfName key, ObjectRegistry objects, out int value)
     {
         value = 0;
-        return Resolve(dictionary, key, objects) is PdfNumber { IsInteger: true } number && number.TryToInt32(out value) && value > 0;
+        // A whole-valued real (/Width 8.0) is accepted, as the rasterizer accepts it.
+        return Resolve(dictionary, key, objects) is PdfNumber number && number.TryToInt32(out value) && value == number.Value && value > 0;
     }
 
     private static PdfObject? Resolve(PdfDictionary dictionary, PdfName key, ObjectRegistry objects) =>

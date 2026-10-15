@@ -332,6 +332,26 @@ public class NativeImageSamplesTests
     }
 
     [Fact]
+    public void WholeValuedRealSize_Decodes()
+    {
+        // /Width 8.0 is a size the rasterizer paints; compression reads it the same way.
+        var image = FlateImage(Samples(8, 8, 1), 8, 8, 1);
+        image.Dictionary.Set(PdfName.Get("Width"), PdfNumber.Get(8.0));
+        var (ok, samples, _, detail) = Decode(image);
+
+        Assert.True(ok, detail);
+        Assert.Equal(8, samples!.Width);
+    }
+
+    [Fact]
+    public void FractionalSize_IsADecodeFailure()
+    {
+        var image = FlateImage(Samples(8, 8, 1), 8, 8, 1);
+        image.Dictionary.Set(PdfName.Get("Width"), PdfNumber.Get(8.5));
+        AssertSkip(image, PlannedSkip.DecodeFailed);
+    }
+
+    [Fact]
     public void MorePixelsThanTheCap_IsAResourceLimit() =>
         AssertSkip(FlateImage(Samples(32, 32, 1), 32, 32, 1), PlannedSkip.ResourceLimit, options: PdfOptions.Default with { MaxImagePixels = 1000 });
 
