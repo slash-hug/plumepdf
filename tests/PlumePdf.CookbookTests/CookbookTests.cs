@@ -205,6 +205,9 @@ public partial class CookbookTests
         // the download finishes. Uses classic cross-reference tables; Optimize + Linearize
         // together is a coded refusal (PLUME5018) — pick one per output.
         document.Save("output/linearized.pdf", PdfOptions.Default with { Linearize = true });
+
+        // The one-line form for a file on disk: open, linearize, save.
+        Pdf.Linearize("samples/three-pages.pdf", "output/linearized-verb.pdf");
         // end-snippet
 
         var optimizedBytes = File.ReadAllBytes("output/optimized.pdf");
@@ -217,6 +220,11 @@ public partial class CookbookTests
         {
             report.AppendLine($"Optimized reopens with pages: {optimized.Pages.Count}");
             report.AppendLine($"Linearized reopens with pages: {linearized.Pages.Count}");
+        }
+
+        using (var linearizedByVerb = PdfDocument.Open("output/linearized-verb.pdf"))
+        {
+            report.AppendLine($"Pdf.Linearize output reopens with pages: {linearizedByVerb.Pages.Count}");
         }
 
         // begin-snippet: delinearization-diagnostic
@@ -554,6 +562,63 @@ public partial class CookbookTests
     }
 
     [Fact]
+    public Task LargeFiles()
+    {
+        var report = new StringBuilder();
+
+        // A five-page stand-in for a scanned document: one image per page.
+        byte[] pixels = [255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 0]; // 2x2 RGB
+        using (var page = PdfDocument.Compose(p => p.Content().Image(new Image(pixels, pixelWidth: 2, pixelHeight: 2))))
+        {
+            page.Save("output/large-files-page.pdf");
+        }
+
+        using (var scan = Pdf.Merge(Enumerable.Repeat("output/large-files-page.pdf", 5).ToArray()))
+        {
+            scan.Save("output/large-files-scan.pdf");
+        }
+
+        // begin-snippet: large-files
+        const string path = "output/large-files-scan.pdf";
+
+        // Open from a path: the file is memory-mapped and objects are read only when used,
+        // so opening a multi-gigabyte file costs little memory. Files over 2 GiB work.
+        int pageCount;
+        using (var document = PdfDocument.Open(path))
+        {
+            pageCount = document.Pages.Count;
+
+            // A full rewrite holds one stream at a time, not the whole document. Write to a
+            // different path: saving over the file you opened first loads all of it into memory.
+            document.Save("output/large-files-rewritten.pdf", PdfOptions.Default with { Optimize = true });
+        }
+
+        // Everything you read (ExtractImages, ExtractText, Rasterize, doc.Objects) stays cached
+        // until the document is disposed. To walk every image of a very large file, work in
+        // batches of pages and reopen between batches, so memory holds one batch at a time.
+        const int pagesPerBatch = 2;
+        var imageCount = 0;
+        for (var first = 0; first < pageCount; first += pagesPerBatch)
+        {
+            using var batch = PdfDocument.Open(path);
+            for (var i = first; i < Math.Min(first + pagesPerBatch, pageCount); i++)
+            {
+                imageCount += batch.Pages[i].ExtractImages().Count;
+            }
+        }
+        // end-snippet
+
+        report.AppendLine($"Pages: {pageCount}");
+        report.AppendLine($"Images extracted in batches: {imageCount}");
+        using (var rewritten = PdfDocument.Open("output/large-files-rewritten.pdf"))
+        {
+            report.AppendLine($"Rewritten copy reopens with pages: {rewritten.Pages.Count}");
+        }
+
+        return Verifier.Verify(report.ToString());
+    }
+
+    [Fact]
     public Task ExtractImages()
     {
         var report = new StringBuilder();
@@ -876,7 +941,11 @@ public partial class CookbookTests
         {
             report.AppendLine($"NOT CHECKED [{notChecked.RuleId}]");
         }
+
+        // The one-line form for a file on disk: open, validate, dispose.
+        var fromPath = Pdf.ValidatePdfA("output/pdfa-candidate.pdf");
         // end-snippet
+        report.AppendLine($"Pdf.ValidatePdfA agrees: {fromPath.IsConformant == result.IsConformant}");
 
         return Verifier.Verify(report.ToString());
     }

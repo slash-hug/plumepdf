@@ -1,3 +1,4 @@
 ﻿Declared: PDF/A-2B
 Conformant (per this self-check): True
 NOT CHECKED [DocInfoXmpAgreement]
+Pdf.ValidatePdfA agrees: True

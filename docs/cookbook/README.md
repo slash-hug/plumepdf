@@ -10,6 +10,7 @@ One task per file; every snippet is embedded from a compiling, CI-run test in `t
 - [Deterministic, byte-identical output](deterministic-output.md)
 - [Optimize and linearize output](optimize-linearize.md)
 - [Handle a damaged PDF](handle-damaged-pdf.md)
+- [Work with very large files](large-files.md)
 - [Fill a form](fill-form.md)
 - [Flatten a form](flatten-form.md)
 - [Create an invoice](create-invoice.md)
