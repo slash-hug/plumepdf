@@ -120,6 +120,41 @@ public class CompressionPlannerTests
         Assert.Equal(PlannedSkip.UnmeasuredPlacement, Assert.Single(plan.Images).Value.Skip);
     }
 
+    [Fact]
+    public void UnplacedImage_IsPlannedAsNoPlacement()
+    {
+        var pdf = new ScanTestPdf()
+            .Stream(10, Rgb, Payload(1))
+            .Stream(11, Rgb, Payload(2))
+            .Page(3, "q 72 0 0 72 0 0 cm /A Do Q", xobjects: "/A 10 0 R /B 11 0 R");
+        using var document = PdfDocument.Open(pdf.Build());
+
+        var plan = CompressionPlanner.Plan(document, new CompressionSettings(true, 100, 80), PdfOptions.Default, CancellationToken.None);
+
+        Assert.Equal(PlannedImageAction.DownsampleAndReencode, plan.Images[10].Action);
+        Assert.Equal((PlannedImageAction.Keep, PlannedSkip.NoPlacement), (plan.Images[11].Action, plan.Images[11].Skip));
+    }
+
+    // The canonical copy is listed on page 0 but never drawn; its duplicate is drawn at 300 DPI.
+    // The unplaced listing doesn't constrain the written copy, so the drawn placement sizes it.
+    [Fact]
+    public void UnplacedCanonical_TakesItsDrawnDuplicatesPlacement()
+    {
+        var pdf = new ScanTestPdf()
+            .Stream(10, Rgb, Payload(1))
+            .Stream(12, Rgb, Payload(1))
+            .Page(3, "0 0 10 10 re f", xobjects: "/Im0 10 0 R")
+            .Page(5, "q 72 0 0 72 0 0 cm /Im0 Do Q", xobjects: "/Im0 12 0 R");
+        using var document = PdfDocument.Open(pdf.Build());
+
+        var plan = CompressionPlanner.Plan(document, new CompressionSettings(true, 100, null), PdfOptions.Default, CancellationToken.None);
+
+        Assert.Equal(10, plan.Aliases[12]);
+        var image = Assert.Single(plan.Images).Value;
+        Assert.Equal((PlannedImageAction.Downsample, PlannedSkip.None, 100), (image.Action, image.Skip, image.TargetWidth));
+        Assert.Equal(1, image.PageIndex);
+    }
+
     // Two different images whose soft masks are byte-identical: one is drawn at 300 DPI and
     // downsampled, so its mask is too; the other, at 75 DPI, keeps its size and so does its mask.
     // Writing one mask for both would size one of them wrongly, so the masks stay apart.

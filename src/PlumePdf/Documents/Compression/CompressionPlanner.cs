@@ -75,9 +75,16 @@ internal static class CompressionPlanner
 
     // Two placement summaries as one image's: the lower DPI per axis, with the page of the lower
     // min(DpiX, DpiY) (the earlier page on a tie); measured only when both are, and drawn only in
-    // tiling patterns only when both are.
+    // tiling patterns only when both are. A copy only listed, never drawn, adds nothing.
     private static ImagePlacementSummary Merge(ImagePlacementSummary a, ImagePlacementSummary b)
     {
+        if (a.Kind == PlacementKind.NotPlaced || b.Kind == PlacementKind.NotPlaced)
+        {
+            return a.Kind != PlacementKind.NotPlaced ? a
+                : b.Kind != PlacementKind.NotPlaced ? b
+                : a with { PageIndex = Math.Min(a.PageIndex, b.PageIndex) };
+        }
+
         if (a is { Kind: PlacementKind.Measured, DpiX: double ax, DpiY: double ay }
             && b is { Kind: PlacementKind.Measured, DpiX: double bx, DpiY: double by })
         {

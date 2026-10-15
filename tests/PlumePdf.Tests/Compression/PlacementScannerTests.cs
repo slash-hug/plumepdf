@@ -245,11 +245,40 @@ public class PlacementScannerTests
     }
 
     [Fact]
-    public void UnplacedImage_IsAbsent()
+    public void UnplacedImage_IsRecordedAsNotPlaced()
     {
-        var pdf = new ScanTestPdf().Image(Image, 300, 300).Page(3, "0 0 10 10 re f", xobjects: $"/Im0 {Image} 0 R");
+        var pdf = new ScanTestPdf()
+            .Image(Image, 300, 300)
+            .Page(3, "0 0 10 10 re f")
+            .Page(5, "0 0 10 10 re f", xobjects: $"/Im0 {Image} 0 R");
 
-        Assert.Empty(Scan(pdf).Images);
+        var placement = Assert.Single(Scan(pdf).Images);
+
+        Assert.Equal(Image, placement.Key);
+        Assert.Equal(new ImagePlacementSummary(null, null, 1, PlacementKind.NotPlaced), placement.Value);
+    }
+
+    [Fact]
+    public void ImageInAnUndrawnFormsResources_IsRecordedAsNotPlaced()
+    {
+        // The form is drawn but never draws the image its resources list.
+        var pdf = new ScanTestPdf()
+            .Image(Image, 300, 300)
+            .Stream(11, $"/Type /XObject /Subtype /Form /BBox [0 0 1 1] /Resources << /XObject << /Im0 {Image} 0 R >> >>", "0 0 1 1 re f")
+            .Page(3, "/Fm0 Do", xobjects: "/Fm0 11 0 R");
+
+        Assert.Equal(PlacementKind.NotPlaced, Scan(pdf).Images[Image].Kind);
+    }
+
+    [Fact]
+    public void ImageDrawnOnALaterPage_IsMeasuredNotNotPlaced()
+    {
+        var pdf = new ScanTestPdf()
+            .Image(Image, 300, 300)
+            .Page(3, "0 0 10 10 re f", xobjects: $"/Im0 {Image} 0 R")
+            .Page(5, "q 72 0 0 72 0 0 cm /Im0 Do Q", xobjects: $"/Im0 {Image} 0 R");
+
+        AssertMeasured(Scan(pdf).Images[Image], 300, 300, page: 1);
     }
 
     [Fact]

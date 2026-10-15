@@ -187,6 +187,65 @@ public class ImageClassifierTests
     }
 
     [Fact]
+    public void NotPlacedImage_IsKeptAsNoPlacement_EvenWhenOtherwiseIneligible()
+    {
+        var bilevel = ImageDictionary(600, 600, PdfName.Get("DeviceGray"), bitsPerComponent: 1);
+        var plan = Plan(
+            [(Image, RgbImage(600, 600)), (12, bilevel)],
+            Scan((Image, NotPlaced(page: 2)), (12, NotPlaced())),
+            new CompressionSettings(true, 150, 70));
+
+        foreach (var number in new[] { Image, 12 })
+        {
+            Assert.Equal((PlannedImageAction.Keep, PlannedSkip.NoPlacement), (plan[number].Action, plan[number].Skip));
+            Assert.Null(plan[number].PageIndex);
+            Assert.Null(plan[number].DpiX);
+            Assert.False(string.IsNullOrEmpty(plan[number].SkipDetail));
+        }
+
+        Assert.Equal((600, 600), (plan[Image].TargetWidth, plan[Image].TargetHeight));
+    }
+
+    [Fact]
+    public void SoftMaskOfOnlyNotPlacedParents_IsKeptAsNoPlacement()
+    {
+        var plan = Plan(
+            [(Image, WithSoftMask(RgbImage(600, 600))), (Mask, GrayMask(600, 600))],
+            Scan((Image, NotPlaced())),
+            Downsample150);
+
+        Assert.Equal((PlannedImageAction.Keep, PlannedSkip.NoPlacement), (plan[Mask].Action, plan[Mask].Skip));
+        Assert.True(plan[Mask].IsSoftMask);
+        Assert.Null(plan[Mask].PageIndex);
+    }
+
+    [Fact]
+    public void SoftMaskSharedWithANotPlacedParent_FollowsTheDrawnParent()
+    {
+        var plan = Plan(
+            [(Image, WithSoftMask(RgbImage(600, 600))), (12, WithSoftMask(RgbImage(600, 600))), (Mask, GrayMask(600, 600))],
+            Scan((Image, Measured(600, 600, page: 1)), (12, NotPlaced())),
+            Downsample150);
+
+        Assert.Equal(PlannedSkip.NoPlacement, plan[12].Skip);
+        Assert.Equal((PlannedImageAction.Downsample, 150, 150), (plan[Mask].Action, plan[Mask].TargetWidth, plan[Mask].TargetHeight));
+        Assert.Equal(1, plan[Mask].PageIndex);
+    }
+
+    [Fact]
+    public void NotPlacedImageAlsoUsedAsASoftMask_IsPlannedAsTheMask()
+    {
+        // Listed in resources but never drawn: only its use as a mask counts.
+        var plan = Plan(
+            [(Image, WithSoftMask(RgbImage(600, 600))), (Mask, GrayMask(600, 600))],
+            Scan((Image, Measured(600, 600)), (Mask, NotPlaced())),
+            Downsample150);
+
+        Assert.Equal((PlannedImageAction.Downsample, PlannedSkip.None, 150, 150), (plan[Mask].Action, plan[Mask].Skip, plan[Mask].TargetWidth, plan[Mask].TargetHeight));
+        Assert.True(plan[Mask].IsSoftMask);
+    }
+
+    [Fact]
     public void SoftMask_FollowsItsParentsPlannedSize()
     {
         var plan = Plan(
@@ -316,6 +375,8 @@ public class ImageClassifierTests
     }
 
     private static ImagePlacementSummary Measured(double dpiX, double dpiY, int page = 0) => new(dpiX, dpiY, page, PlacementKind.Measured);
+
+    private static ImagePlacementSummary NotPlaced(int page = 0) => new(null, null, page, PlacementKind.NotPlaced);
 
     private static PlacementScan Scan(params (int Number, ImagePlacementSummary Placement)[] images) =>
         new(images.ToDictionary(static i => i.Number, static i => i.Placement), [], new DiagnosticCollection());

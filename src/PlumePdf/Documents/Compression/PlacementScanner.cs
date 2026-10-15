@@ -23,7 +23,9 @@ namespace PlumePdf.Documents.Compression;
 /// Type 3 glyph at the text size. A walk that stops early (a form cycle, the nesting or operator
 /// caps, malformed content refused under <see cref="PdfOptions.Strict"/>) may have missed a
 /// larger placement, so every image the page's resources can reach is then marked unmeasured
-/// too. A degenerate placement (a zero-area or non-finite CTM) is unmeasured as well.
+/// too. A degenerate placement (a zero-area or non-finite CTM) is unmeasured as well. An image
+/// a page's resources reach but nothing draws is recorded as not placed, so every image a
+/// retained page lists has a fate in the plan.
 /// </para>
 /// <para>
 /// Only stream dictionaries are taken from the registry (<see cref="IObjectSource.ResolveForDiscovery"/>),
@@ -97,12 +99,16 @@ internal static class PlacementScanner
         if (walk.Truncated)
         {
             // The walk may have missed a placement, so nothing this page can reach is measured.
-            MarkReachableUnmeasured(walk, page, resources);
+            VisitReachableImages(scan, page, resources, new Reach(), number => scan.Placements(number).AddUnmeasured(pageIndex));
             foreach (var number in walk.ImagesMet)
             {
                 scan.Placements(number).AddUnmeasured(pageIndex);
             }
         }
+
+        // An image the page can reach but nothing draws is still listed, so the plan accounts
+        // for it; a placement met on any page outranks this.
+        VisitReachableImages(scan, page, resources, scan.Listed, number => scan.Placements(number).AddListed(pageIndex));
     }
 
     // The page's /Contents, read uncached: each content stream's payload is read for this pass
@@ -446,19 +452,17 @@ internal static class PlacementScanner
         }
     }
 
-    // After a walk cut short: every image the page's resources and annotation appearances
-    // reach, through forms, patterns, soft-mask groups and Type 3 fonts, from dictionaries
-    // alone. Iterative and visited-guarded, so neither a deep chain nor a cycle can run away.
-    private static void MarkReachableUnmeasured(PageWalk walk, PdfDictionary page, PdfDictionary? resources)
+    // Every image the page's resources and annotation appearances reach, through forms,
+    // patterns, soft-mask groups and Type 3 fonts, from dictionaries alone, each passed to
+    // onImage once. Iterative and guarded by 'reach', so neither a deep chain nor a cycle can
+    // run away; a 'reach' shared across pages visits each object once per scan.
+    private static void VisitReachableImages(ScanState scan, PdfDictionary page, PdfDictionary? resources, Reach reach, Action<int> onImage)
     {
-        var scan = walk.Scan;
-        var numbers = new HashSet<int>();
-        var dictionaries = new HashSet<PdfDictionary>(ReferenceEqualityComparer.Instance);
         var pending = new Stack<PdfDictionary>();
 
         void Push(PdfDictionary? dictionary)
         {
-            if (dictionary is not null && dictionaries.Add(dictionary))
+            if (dictionary is not null && reach.Dictionaries.Add(dictionary))
             {
                 pending.Push(dictionary);
             }
@@ -466,7 +470,7 @@ internal static class PlacementScanner
 
         void Follow(PdfObject? value)
         {
-            if (value is not PdfReference reference || !numbers.Add(reference.Target.Number))
+            if (value is not PdfReference reference || !reach.Numbers.Add(reference.Target.Number))
             {
                 return;
             }
@@ -480,7 +484,7 @@ internal static class PlacementScanner
 
             if (scan.Resolve(dictionary.TryGetValue(PdfName.Subtype, out var subtype) ? subtype : null) is PdfName name && name.Equals(PdfName.Image))
             {
-                scan.Placements(reference.Target.Number).AddUnmeasured(walk.PageIndex);
+                onImage(reference.Target.Number);
                 return;
             }
 
@@ -629,6 +633,9 @@ internal static class PlacementScanner
         public HashSet<(int Number, WalkMode Mode)> WalkedOnce { get; } = [];
 
         public HashSet<object> WalkedFonts { get; } = [];
+
+        /// <summary>What the listing sweep has visited, across every page.</summary>
+        public Reach Listed { get; } = new();
 
         public ImagePlacements Placements(int number)
         {
@@ -786,6 +793,14 @@ internal static class PlacementScanner
         }
     }
 
+    /// <summary>The objects and dictionaries a reachability sweep has visited.</summary>
+    private sealed class Reach
+    {
+        public HashSet<int> Numbers { get; } = [];
+
+        public HashSet<PdfDictionary> Dictionaries { get; } = new(ReferenceEqualityComparer.Instance);
+    }
+
     /// <summary>One image's placements, folded as they are met.</summary>
     private sealed class ImagePlacements
     {
@@ -794,6 +809,7 @@ internal static class PlacementScanner
         private double _lowest = double.PositiveInfinity;
         private int _lowestPage = -1;
         private int _firstPage = -1;
+        private int _listedPage = -1;
         private bool _measured;
         private bool _tiling;
         private bool _unmeasured;
@@ -825,8 +841,22 @@ internal static class PlacementScanner
             }
         }
 
+        // Reachable from a page's resources; counts only when nothing draws the image.
+        public void AddListed(int page)
+        {
+            if (_listedPage < 0)
+            {
+                _listedPage = page;
+            }
+        }
+
         public ImagePlacementSummary Summarize()
         {
+            if (!_measured && !_tiling && !_unmeasured)
+            {
+                return new ImagePlacementSummary(null, null, _listedPage, PlacementKind.NotPlaced);
+            }
+
             if (_unmeasured || (_tiling && _measured))
             {
                 return new ImagePlacementSummary(null, null, _firstPage, PlacementKind.Unmeasured);

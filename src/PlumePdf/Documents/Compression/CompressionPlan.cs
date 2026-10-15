@@ -52,7 +52,11 @@ internal sealed record PlannedImage(
 /// The planning pass's output: every image's plan and the duplicate-stream alias map.
 /// Built before writing so the writer reads each payload once; holds numbers only.
 /// </summary>
-/// <param name="Images">Each image XObject's plan, keyed by original object number, soft masks included.</param>
+/// <param name="Images">
+/// Each image XObject's plan, keyed by original object number, soft masks included: every image a
+/// retained page draws or lists (one listed but never drawn is kept as <see cref="PlannedSkip.NoPlacement"/>),
+/// less any duplicate folded into its canonical copy. An image no retained page reaches is absent and written unchanged.
+/// </param>
 /// <param name="Aliases">Duplicate original number → canonical original number, for <c>PdfDocument.SaveWithWriteHooks</c>.</param>
 /// <param name="InlineImagePages">The page index of every inline image met, one entry per occurrence, in page order.</param>
 /// <param name="Diagnostics">What the scan recorded (cycles, depth caps, unreadable content); result-scoped.</param>

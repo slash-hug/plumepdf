@@ -22,11 +22,17 @@ namespace PlumePdf.Documents.Compression;
 /// its ratio), and when parents disagree the larger target wins on each axis. A mask is never
 /// re-encoded as JPEG, and one also drawn as a plain image is left alone.
 /// </para>
+/// <para>
+/// An image a page lists but nothing draws is kept with <see cref="PlannedSkip.NoPlacement"/>
+/// before anything else is considered, and as a parent it sizes no soft mask.
+/// </para>
 /// </remarks>
 internal static class ImageClassifier
 {
     /// <summary>The downsample trigger's margin over the maximum DPI.</summary>
     private const double TriggerFactor = 1.5;
+
+    private const string NotPlacedDetail = "Listed in a page's resources but never drawn, so no placement sizes it.";
 
     /// <summary>
     /// Plans every image in <paramref name="scan"/> plus every soft mask those images
@@ -64,7 +70,8 @@ internal static class ImageClassifier
         foreach (var (mask, parents) in parentsOfMask)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (plans.TryGetValue(mask, out var plain))
+            // A plain image the pages only list, never draw, is planned as the mask it is.
+            if (plans.TryGetValue(mask, out var plain) && plain.Skip != PlannedSkip.NoPlacement)
             {
                 plans[mask] = plain with
                 {
@@ -112,7 +119,14 @@ internal static class ImageClassifier
         PlannedImage Keep(int width, int height, PlannedSkip skip, string? detail) =>
             new(number, placement.PageIndex, dpiX, dpiY, width, height, width, height, PlannedImageAction.Keep, skip, detail, softMask, IsSoftMask: false);
 
-        if (!TryClassify(dictionary, objects, softMask: false, options, out var width, out var height, out var skip, out var detail))
+        var eligible = TryClassify(dictionary, objects, softMask: false, options, out var width, out var height, out var skip, out var detail);
+        if (placement.Kind == PlacementKind.NotPlaced)
+        {
+            // Nothing draws it, so no placement sizes it and its encoding doesn't matter.
+            return new PlannedImage(number, null, null, null, width, height, width, height, PlannedImageAction.Keep, PlannedSkip.NoPlacement, NotPlacedDetail, softMask, IsSoftMask: false);
+        }
+
+        if (!eligible)
         {
             return Keep(width, height, skip, detail);
         }
@@ -147,9 +161,16 @@ internal static class ImageClassifier
     private static PlannedImage PlanSoftMask(int number, PdfDictionary? dictionary, List<PlannedImage> parents, ObjectRegistry objects, PdfOptions options)
     {
         // The parents are in object-number order; the lowest DPI a parent implies per mask axis
-        // is the mask's own, and its page goes with it.
+        // is the mask's own, and its page goes with it. A parent nothing draws sizes nothing.
+        var eligible = TryClassify(dictionary, objects, softMask: true, options, out var width, out var height, out var skip, out var detail);
+        parents = parents.Where(static p => p.Skip != PlannedSkip.NoPlacement).ToList();
+        if (parents.Count == 0)
+        {
+            return new PlannedImage(number, null, null, null, width, height, width, height, PlannedImageAction.Keep, PlannedSkip.NoPlacement, NotPlacedDetail, null, IsSoftMask: true);
+        }
+
         var first = parents[0];
-        if (!TryClassify(dictionary, objects, softMask: true, options, out var width, out var height, out var skip, out var detail))
+        if (!eligible)
         {
             return new PlannedImage(number, first.PageIndex, null, null, width, height, width, height, PlannedImageAction.Keep, skip, detail, null, IsSoftMask: true);
         }
