@@ -609,7 +609,19 @@ public sealed class PdfDocument : IDisposable
     /// document.Save("output.pdf", new PdfOptions { Deterministic = true });
     /// </code>
     /// </example>
-    public void Save(string path, PdfOptions? options = null)
+    public void Save(string path, PdfOptions? options = null) => SaveWithWriteHooks(path, options, transform: null, aliases: null);
+
+    /// <summary>
+    /// <see cref="Save(string, PdfOptions?)"/> with the full-rewrite writer's two write-time
+    /// hooks: <paramref name="transform"/> may replace individual streams as they are written,
+    /// and <paramref name="aliases"/> writes duplicate objects as their canonical original
+    /// (see <see cref="FullRewriteWriter.Write"/>). Both compose with the removed-page
+    /// exclusion set and the save-time clean-up replacements, which take precedence; the
+    /// temp-file-then-replace write and the same-path detach are unchanged. The linearized
+    /// writer takes neither hook, so a linearized save with one is refused. Named apart from
+    /// <c>Save</c> so the many documentation references to the public overload stay unambiguous.
+    /// </summary>
+    internal void SaveWithWriteHooks(string path, PdfOptions? options, IStreamWriteTransform? transform, IReadOnlyDictionary<int, int>? aliases)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -644,6 +656,11 @@ public sealed class PdfDocument : IDisposable
         if (effectiveOptions.Optimize)
         {
             EnsureVersionSupportsOptimization(effectiveOptions);
+        }
+
+        if (effectiveOptions.Linearize && (transform is not null || aliases is { Count: > 0 }))
+        {
+            throw new PlumePdfException("PLUME5010", "Internal invariant violated: a linearized save was given a write-time stream transform or alias map, which only the full-rewrite writer applies.");
         }
 
         if (effectiveOptions.Linearize && Pages.Count == 0)
@@ -723,7 +740,7 @@ public sealed class PdfDocument : IDisposable
                 }
                 else
                 {
-                    FullRewriteWriter.Write(tempStream, Objects, Catalog?.Reference, cleanup.Catalog, pages, effectiveOptions, cleanup.Excluded, cleanup.Replacements);
+                    FullRewriteWriter.Write(tempStream, Objects, Catalog?.Reference, cleanup.Catalog, pages, effectiveOptions, cleanup.Excluded, cleanup.Replacements, transform, aliases);
                 }
             }
 
