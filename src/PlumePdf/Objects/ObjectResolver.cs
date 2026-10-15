@@ -37,6 +37,13 @@ internal interface IObjectSource
     /// read for this one use and not kept.
     /// </summary>
     PdfObject ResolveForWrite(IndirectReference reference) => Resolve(reference);
+
+    /// <summary>
+    /// Reads the stream at <paramref name="reference"/> for one pass over its payload (a
+    /// compression planner hashing candidates) without keeping it: a stream nothing else has
+    /// resolved is parsed for this call and not cached. Null when the value isn't a stream.
+    /// </summary>
+    PdfStream? ReadPayloadOnce(IndirectReference reference) => ResolveForWrite(reference) as PdfStream;
 }
 
 /// <summary>
