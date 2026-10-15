@@ -237,11 +237,13 @@ internal static class ObjectParser
     /// that follows the <c>stream</c> keyword. False when the buffer doesn't hold a complete
     /// stream dictionary followed by <c>stream</c>, so a caller can read a stream at its
     /// declared length instead of probing ever-larger windows for its end.
+    /// <paramref name="objectNumber"/> is the <c>N</c> the framing names.
     /// </summary>
-    public static bool TryLocateStreamPayload(ReadOnlySpan<byte> buffer, PdfOptions options, out PdfDictionary dictionary, out int payloadStart)
+    public static bool TryLocateStreamPayload(ReadOnlySpan<byte> buffer, PdfOptions options, out PdfDictionary dictionary, out int payloadStart, out int objectNumber)
     {
         dictionary = null!;
         payloadStart = 0;
+        objectNumber = 0;
         var lenient = options.Strict ? options with { Strict = false } : options;
         var probeDiagnostics = new DiagnosticCollection();
         var tokenizer = new PdfTokenizer(buffer);
@@ -253,6 +255,16 @@ internal static class ObjectParser
                 if (!tokenizer.Read() || tokenizer.TokenType != (i < 2 ? PdfTokenType.Integer : PdfTokenType.Keyword))
                 {
                     return false;
+                }
+
+                if (i == 0)
+                {
+                    if (tokenizer.IntegerValue is < 0 or > int.MaxValue)
+                    {
+                        return false;
+                    }
+
+                    objectNumber = (int)tokenizer.IntegerValue;
                 }
             }
 

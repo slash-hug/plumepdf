@@ -19,6 +19,15 @@ only by diffing output. Entries land in the same change as the behavior they des
   `PLUME2061`, citing the limit, instead of an `OverflowException` failing the whole read. The
   same 7.5 MB image now allocates about 15 MB. Memory-mapped reads also copy through a fixed
   64 KiB buffer instead of renting a pooled buffer the size of each read.
+- **`Save` kept every stream it wrote in memory.** A full-rewrite `Save` resolved every
+  reachable object through the open document's cache, so each stream payload it wrote stayed
+  in memory for the document's lifetime — saving a 2.67 GB file peaked at over 3 GB of managed
+  heap and left 2.5 GB retained afterwards, with or without `PdfOptions.Optimize`. `Save` now
+  finds a stream's references from its dictionary alone, reads its payload only to write it,
+  and lets it go; streams the caller has already resolved, and may have edited in place, are
+  still written from that same instance. The same save now peaks under 80 MB of heap and
+  retains 2 MB, and its output is byte-for-byte the same as before. A stream's parse deviations
+  are still reported once, however many times it is read.
 
 ### Changed
 

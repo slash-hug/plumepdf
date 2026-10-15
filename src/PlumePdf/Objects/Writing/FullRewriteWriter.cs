@@ -175,11 +175,21 @@ internal static class FullRewriteWriter
         //    time it is seen. Synthetic replacement references (found inside an override's
         //    content) are skipped — they already carry a final number and were never original
         //    content to begin with. Cycle-safe: AssignOriginal registers before recursing.
+        //    A stream is walked by its dictionary alone where the source allows it, and its
+        //    payload read only when it's written (ValueToWrite), so the save holds one
+        //    payload at a time rather than every stream it reaches.
+        var streams = new HashSet<int>();
         while (pendingOriginal.Count > 0)
         {
             var originalNumber = pendingOriginal.Dequeue();
-            var value = ValueFor(objects, overrides, originalNumber);
-            foreach (var reference in FindReferences(value))
+            var value = ValueToWalk(objects, overrides, originalNumber, out var isStream);
+            if (isStream)
+            {
+                streams.Add(originalNumber);
+            }
+
+            var references = value is PdfDictionary streamDictionary && isStream ? FindStreamDictionaryReferences(streamDictionary) : FindReferences(value);
+            foreach (var reference in references)
             {
                 if (!syntheticReferences.Contains(reference) && !excluded.Contains(reference.Target.Number))
                 {
@@ -207,7 +217,7 @@ internal static class FullRewriteWriter
 
         if (options.Optimize)
         {
-            WriteOptimizedBody(output, objects, overrides, extraObjects, originalNumberToNew, nextNumber, catalogNumber, infoNumber, Translate, options);
+            WriteOptimizedBody(output, objects, overrides, extraObjects, originalNumberToNew, streams, nextNumber, catalogNumber, infoNumber, Translate, options);
             return;
         }
 
@@ -220,7 +230,7 @@ internal static class FullRewriteWriter
 
         foreach (var (originalNumber, newNumber) in originalNumberToNew.OrderBy(static kv => kv.Value))
         {
-            var value = ValueFor(objects, overrides, originalNumber);
+            var value = ValueToWrite(objects, overrides, originalNumber);
             offsets[newNumber] = output.Position;
             ObjectSerializer.WriteIndirectObject(output, newNumber, 0, value, Translate);
         }
@@ -240,14 +250,17 @@ internal static class FullRewriteWriter
         Dictionary<int, PdfObject> overrides,
         List<(int Number, PdfObject Value)> extraObjects,
         Dictionary<int, int> originalNumberToNew,
+        IReadOnlySet<int> streams,
         int nextNumber,
         int catalogNumber,
         int? infoNumber,
         Func<PdfReference, IndirectReference?> translate,
         PdfOptions options)
     {
-        // Every final object in assignment order, indexed by its final number.
+        // Every final non-stream object, indexed by its final number; a stream is resolved
+        // only when it's written, after the object streams, so it is never held alongside the rest.
         var finalValues = new PdfObject?[nextNumber];
+        var streamOriginals = new int?[nextNumber];
         foreach (var (number, value) in extraObjects)
         {
             finalValues[number] = value;
@@ -255,13 +268,20 @@ internal static class FullRewriteWriter
 
         foreach (var (originalNumber, newNumber) in originalNumberToNew)
         {
-            finalValues[newNumber] = ValueFor(objects, overrides, originalNumber);
+            if (streams.Contains(originalNumber))
+            {
+                streamOriginals[newNumber] = originalNumber;
+            }
+            else
+            {
+                finalValues[newNumber] = ValueToWrite(objects, overrides, originalNumber);
+            }
         }
 
         var compressible = new List<int>();
         for (var number = 1; number < nextNumber; number++)
         {
-            if (finalValues[number] is not PdfStream)
+            if (streamOriginals[number] is null && finalValues[number] is not PdfStream)
             {
                 compressible.Add(number);
             }
@@ -295,7 +315,8 @@ internal static class FullRewriteWriter
 
         for (var number = 1; number < nextNumber; number++)
         {
-            if (finalValues[number] is PdfStream stream)
+            var value = streamOriginals[number] is int originalNumber ? ValueToWrite(objects, overrides, originalNumber) : finalValues[number];
+            if (value is PdfStream stream)
             {
                 entries[number] = new XRefStreamWriter.Entry(1, output.Position, 0);
                 ObjectSerializer.WriteIndirectObject(output, number, 0, stream, translate);
@@ -390,8 +411,19 @@ internal static class FullRewriteWriter
         return overrides;
     }
 
-    private static PdfObject ValueFor(ObjectRegistry objects, Dictionary<int, PdfObject> overrides, int originalNumber) =>
-        overrides.TryGetValue(originalNumber, out var overridden) ? overridden : objects[new IndirectReference(originalNumber, 0)];
+    private static PdfObject ValueToWalk(ObjectRegistry objects, Dictionary<int, PdfObject> overrides, int originalNumber, out bool isStream)
+    {
+        if (overrides.TryGetValue(originalNumber, out var overridden))
+        {
+            isStream = overridden is PdfStream;
+            return overridden;
+        }
+
+        return ((IObjectSource)objects).ResolveForDiscovery(new IndirectReference(originalNumber, 0), out isStream);
+    }
+
+    private static PdfObject ValueToWrite(ObjectRegistry objects, Dictionary<int, PdfObject> overrides, int originalNumber) =>
+        overrides.TryGetValue(originalNumber, out var overridden) ? overridden : ((IObjectSource)objects).ResolveForWrite(new IndirectReference(originalNumber, 0));
 
     internal static IEnumerable<PdfReference> FindReferences(PdfObject value)
     {
@@ -424,26 +456,35 @@ internal static class FullRewriteWriter
                 break;
 
             case PdfStream stream:
-                foreach (var (key, item) in stream.Dictionary)
+                foreach (var nested in FindStreamDictionaryReferences(stream.Dictionary))
                 {
-                    // A stream's /Length is never carried over as a reference —
-                    // ObjectSerializer.WriteStream always recomputes it from the actual
-                    // payload and writes it direct — so a source's indirect-/Length integer
-                    // object is unreferenced in the output and following it here would only
-                    // resurrect it as garbage (found via the qpdf linearization oracle, which
-                    // flags the orphan as an unattributable object).
-                    if (ReferenceEquals(key, PdfName.Length))
-                    {
-                        continue;
-                    }
-
-                    foreach (var nested in FindReferences(item))
-                    {
-                        yield return nested;
-                    }
+                    yield return nested;
                 }
 
                 break;
+        }
+    }
+
+    /// <summary>The references a stream with this dictionary carries into the output.</summary>
+    internal static IEnumerable<PdfReference> FindStreamDictionaryReferences(PdfDictionary dictionary)
+    {
+        foreach (var (key, item) in dictionary)
+        {
+            // A stream's /Length is never carried over as a reference —
+            // ObjectSerializer.WriteStream always recomputes it from the actual
+            // payload and writes it direct — so a source's indirect-/Length integer
+            // object is unreferenced in the output and following it here would only
+            // resurrect it as garbage (found via the qpdf linearization oracle, which
+            // flags the orphan as an unattributable object).
+            if (ReferenceEquals(key, PdfName.Length))
+            {
+                continue;
+            }
+
+            foreach (var nested in FindReferences(item))
+            {
+                yield return nested;
+            }
         }
     }
 
