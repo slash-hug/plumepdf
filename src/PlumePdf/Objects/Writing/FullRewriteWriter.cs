@@ -487,10 +487,10 @@ internal static class FullRewriteWriter
     }
 
     // An alias maps a duplicate to the original written in its place, so the canonical side
-    // must itself be written: not excluded, not aliased in turn, and not replaced by a caller
-    // override (whose value is not the content the duplicate was found equal to). The
-    // duplicate side must be an ordinary object, never the catalog or a retained page (which
-    // the writer rebuilds itself) or an override.
+    // must itself be written as itself: not excluded, not aliased in turn, not the catalog or a
+    // retained page (which the writer rebuilds itself), and not replaced by a caller override
+    // (whose value is not the content the duplicate was found equal to). The duplicate side
+    // must be an ordinary object too, never the catalog, a retained page or an override.
     private static void ValidateAliases(
         IReadOnlyDictionary<int, int>? aliases,
         IndirectReference? catalogReference,
@@ -517,6 +517,7 @@ internal static class FullRewriteWriter
                 : overrides.ContainsKey(duplicate) ? "has a replacement value"
                 : excluded.Contains(canonical) ? $"is aliased to object {canonical}, which is excluded from the output"
                 : aliases.ContainsKey(canonical) ? $"is aliased to object {canonical}, which is itself aliased"
+                : reserved.Contains(canonical) ? $"is aliased to object {canonical}, which is the catalog or a retained page"
                 : overrides.ContainsKey(canonical) ? $"is aliased to object {canonical}, which has a replacement value"
                 : null;
 

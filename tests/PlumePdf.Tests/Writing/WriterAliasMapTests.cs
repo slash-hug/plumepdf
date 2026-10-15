@@ -107,6 +107,28 @@ public class WriterAliasMapTests
     }
 
     [Fact]
+    public void AliasToARetainedPage_IsRefused()
+    {
+        // The writer rebuilds a retained page itself, so the page object is never the content
+        // an image was found equal to.
+        using var document = PdfDocument.Open(ImagePagesDocument.Build(pageCount: 2));
+        var aliases = new Dictionary<int, int> { [ImagePagesDocument.Image(1)] = ImagePagesDocument.Page(0) };
+
+        var ex = Assert.Throws<PlumePdfException>(() => StreamWriteTransformTests.Write(document, PdfOptions.Default, transform: null, aliases: aliases));
+        Assert.Equal("PLUME5010", ex.Code);
+    }
+
+    [Fact]
+    public void AliasToTheCatalog_IsRefused()
+    {
+        using var document = PdfDocument.Open(ImagePagesDocument.Build(pageCount: 2));
+        var aliases = new Dictionary<int, int> { [ImagePagesDocument.Image(1)] = 1 };
+
+        var ex = Assert.Throws<PlumePdfException>(() => StreamWriteTransformTests.Write(document, PdfOptions.Default, transform: null, aliases: aliases));
+        Assert.Equal("PLUME5010", ex.Code);
+    }
+
+    [Fact]
     public void AliasOfAnOverriddenObject_IsRefused()
     {
         using var document = PdfDocument.Open(ImagePagesDocument.Build(pageCount: 2, identicalImages: true));
