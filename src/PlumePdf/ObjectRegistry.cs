@@ -356,4 +356,20 @@ public sealed class ObjectRegistry : IObjectSource
     PdfDictionary IObjectSource.Trailer => Trailer;
 
     PdfObject IObjectSource.Resolve(IndirectReference reference) => this[reference];
+
+    // A registered-new object is always held here, so only the underlying source can hand a
+    // save a stream it doesn't keep.
+    PdfObject IObjectSource.ResolveForDiscovery(IndirectReference reference, out bool isStream)
+    {
+        if (_newObjects.TryGetValue(reference.Number, out var registered))
+        {
+            isStream = registered is PdfStream;
+            return registered;
+        }
+
+        return _resolver.ResolveForDiscovery(reference, out isStream);
+    }
+
+    PdfObject IObjectSource.ResolveForWrite(IndirectReference reference) =>
+        _newObjects.TryGetValue(reference.Number, out var registered) ? registered : _resolver.ResolveForWrite(reference);
 }

@@ -18,6 +18,25 @@ internal interface IObjectSource
 
     /// <summary>Resolves <paramref name="reference"/> to its value.</summary>
     PdfObject Resolve(IndirectReference reference);
+
+    /// <summary>
+    /// What a full-rewrite save walks for <paramref name="reference"/>'s outgoing references:
+    /// its value, or — for a stream this source can hand back without its payload — just the
+    /// stream's dictionary, with <paramref name="isStream"/> saying which.
+    /// </summary>
+    PdfObject ResolveForDiscovery(IndirectReference reference, out bool isStream)
+    {
+        var value = Resolve(reference);
+        isStream = value is PdfStream;
+        return value;
+    }
+
+    /// <summary>
+    /// The value a full-rewrite save writes for <paramref name="reference"/> — the same value
+    /// <see cref="Resolve"/> returns, except that a stream nothing else has resolved may be
+    /// read for this one use and not kept.
+    /// </summary>
+    PdfObject ResolveForWrite(IndirectReference reference) => Resolve(reference);
 }
 
 /// <summary>
@@ -37,6 +56,12 @@ internal sealed class ObjectResolver : IObjectSource
     private readonly DiagnosticCollection? _diagnostics;
     private readonly ObjectStreamReader _objectStreams = new();
     private readonly ConcurrentDictionary<int, PdfObject> _cache = new();
+
+    // Streams a save found by their dictionary alone (ResolveForDiscovery) and reads for
+    // writing without caching (ResolveForWrite); and the object numbers whose parse has already
+    // reported its deviations to _diagnostics, so reading such a stream again doesn't repeat them.
+    private readonly ConcurrentDictionary<int, byte> _uncachedStreams = new();
+    private readonly ConcurrentDictionary<int, byte> _reported = new();
     private ISecurityHandler? _securityHandler;
     private bool _encryptMetadataFalse;
 
@@ -110,6 +135,73 @@ internal sealed class ObjectResolver : IObjectSource
     /// <summary>Resolves <paramref name="reference"/>, parsing and caching it on first access.</summary>
     public PdfObject Resolve(IndirectReference reference) => _cache.GetOrAdd(reference.Number, _ => ResolveUncached(reference.Number));
 
+    /// <summary>
+    /// For a save's reference walk: a stream that isn't cached comes back as its dictionary
+    /// only, read from the object's first bytes, when its declared <c>/Length</c> lands on
+    /// <c>endstream</c> — the shape a full parse reads at that exact length, so the dictionary
+    /// is the one <see cref="ResolveForWrite"/> later parses. Anything else (a non-stream, an
+    /// object in an object stream, an encrypted document, a stream needing recovery) resolves
+    /// and caches as usual.
+    /// </summary>
+    public PdfObject ResolveForDiscovery(IndirectReference reference, out bool isStream)
+    {
+        var number = reference.Number;
+        if (!_cache.TryGetValue(number, out var value)
+            && _securityHandler is null
+            && _table.EntriesByObjectNumber.TryGetValue(number, out var entry)
+            && entry.Kind == CrossReferenceEntryKind.InFile
+            && TryReadStreamDictionary(number, entry.ByteOffset, out var dictionary))
+        {
+            _uncachedStreams.TryAdd(number, 0);
+            isStream = true;
+            return dictionary;
+        }
+
+        value ??= Resolve(reference);
+        isStream = value is PdfStream;
+        return value;
+    }
+
+    /// <summary>
+    /// For a save's write pass: the cached value when there is one; a stream
+    /// <see cref="ResolveForDiscovery"/> found by its dictionary is parsed for this one write
+    /// and not kept (its deviations reported the first time only); everything else resolves
+    /// and caches as usual.
+    /// </summary>
+    public PdfObject ResolveForWrite(IndirectReference reference)
+    {
+        var number = reference.Number;
+        if (_cache.TryGetValue(number, out var cached))
+        {
+            return cached;
+        }
+
+        return _uncachedStreams.ContainsKey(number) && _table.EntriesByObjectNumber.TryGetValue(number, out var entry)
+            ? ResolveInFile(number, entry, report: _reported.TryAdd(number, 0))
+            : Resolve(reference);
+    }
+
+    private bool TryReadStreamDictionary(int expectedNumber, long offset, out PdfDictionary dictionary)
+    {
+        dictionary = null!;
+        var remaining = _source.Length - offset;
+        if (remaining <= 0)
+        {
+            return false;
+        }
+
+        var head = ReadWindow(offset, (int)Math.Min(InitialResolveWindowBytes, remaining));
+        if (!ObjectParser.TryLocateStreamPayload(head, _options, out dictionary, out var payloadStart, out var number)
+            || number != expectedNumber
+            || DeclaredStreamEnd(expectedNumber, remaining, dictionary, payloadStart, out _) is not long end)
+        {
+            return false;
+        }
+
+        var tail = ReadWindow(offset + end, (int)Math.Min(StreamTrailerSlackBytes, remaining - end));
+        return ClosingAfterPayload(tail, 0) != StreamClosing.None;
+    }
+
     private PdfObject ResolveUncached(int number)
     {
         if (!_table.EntriesByObjectNumber.TryGetValue(number, out var entry) || entry.Kind == CrossReferenceEntryKind.Free)
@@ -120,7 +212,7 @@ internal sealed class ObjectResolver : IObjectSource
 
         return entry.Kind switch
         {
-            CrossReferenceEntryKind.InFile => ResolveInFile(number, entry),
+            CrossReferenceEntryKind.InFile => ResolveInFile(number, entry, report: !_reported.ContainsKey(number)),
             CrossReferenceEntryKind.InObjectStream => ResolveInObjectStream(number, entry),
             _ => PdfNull.Instance,
         };
@@ -177,8 +269,10 @@ internal sealed class ObjectResolver : IObjectSource
         }
     }
 
-    private PdfObject? TryResolveViaRecoveryScan(int expectedNumber, CrossReferenceEntry badEntry)
+    private PdfObject? TryResolveViaRecoveryScan(int expectedNumber, CrossReferenceEntry badEntry, DiagnosticCollection? diagnostics)
     {
+        void ReportDeviation(string code, string message, long? offset) => ReportDeviationTo(diagnostics, code, message, offset);
+
         if (RecoveryTable is not { } recoveryTable
             || !recoveryTable.EntriesByObjectNumber.TryGetValue(expectedNumber, out var recovered)
             || recovered.Kind != CrossReferenceEntryKind.InFile
@@ -232,8 +326,13 @@ internal sealed class ObjectResolver : IObjectSource
     // each copy a large fraction of the file the way reading offset-to-EOF did.
     private const int InitialResolveWindowBytes = 4096;
 
-    private PdfObject ResolveInFile(int expectedNumber, CrossReferenceEntry entry)
+    // 'report' false parses an object whose deviations an earlier parse already reported
+    // (Strict still throws on them).
+    private PdfObject ResolveInFile(int expectedNumber, CrossReferenceEntry entry, bool report)
     {
+        var diagnostics = report ? _diagnostics : null;
+        void ReportDeviation(string code, string message, long? offset) => ReportDeviationTo(diagnostics, code, message, offset);
+
         var remaining = _source.Length - entry.ByteOffset;
         if (remaining <= 0)
         {
@@ -246,14 +345,14 @@ internal sealed class ObjectResolver : IObjectSource
         try
         {
             var buffer = ReadObjectWindow(expectedNumber, entry.ByteOffset, remaining, out var streamLength);
-            value = ObjectParser.ParseIndirectObject(buffer, _options, _diagnostics, out actual, streamLength);
+            value = ObjectParser.ParseIndirectObject(buffer, _options, diagnostics, out actual, streamLength);
         }
         catch (PlumePdfException ex)
         {
             // The entry's offset lied. Before giving the object up as null, consult the
             // brute-force scan map (built lazily, once) — the "repairable deviation" rung
             // of the recovery ladder for tables that parse but whose offsets are wrong.
-            if (TryResolveViaRecoveryScan(expectedNumber, entry) is { } recoveredValue)
+            if (TryResolveViaRecoveryScan(expectedNumber, entry, diagnostics) is { } recoveredValue)
             {
                 return recoveredValue;
             }
@@ -266,7 +365,7 @@ internal sealed class ObjectResolver : IObjectSource
         {
             // A different object at the claimed offset is the same lie in a subtler form:
             // prefer finding the REAL object via the scan map over using the impostor.
-            if (TryResolveViaRecoveryScan(expectedNumber, entry) is { } recoveredValue)
+            if (TryResolveViaRecoveryScan(expectedNumber, entry, diagnostics) is { } recoveredValue)
             {
                 return recoveredValue;
             }
@@ -337,7 +436,7 @@ internal sealed class ObjectResolver : IObjectSource
         {
             var fits = FitsWindow(buffer, probeOptions, out var scannedForEndstream);
             if (scannedForEndstream && !declaredLengthTried
-                && ObjectParser.TryLocateStreamPayload(buffer, _options, out var dictionary, out var payloadStart))
+                && ObjectParser.TryLocateStreamPayload(buffer, _options, out var dictionary, out var payloadStart, out _))
             {
                 declaredLengthTried = true;
                 if (TryReadStreamAtDeclaredLength(expectedNumber, offset, remaining, buffer, dictionary, payloadStart, out var exact, out streamLength))
@@ -383,28 +482,7 @@ internal sealed class ObjectResolver : IObjectSource
     {
         buffer = probed;
         streamLength = null;
-        if (!dictionary.TryGetValue(PdfName.Length, out var lengthValue))
-        {
-            return false;
-        }
-
-        int? indirectLength = null;
-        if (lengthValue is PdfReference lengthReference)
-        {
-            indirectLength = ResolveIndirectLength(expectedNumber, lengthReference.Target);
-            lengthValue = indirectLength is int resolved ? PdfNumber.Get(resolved) : PdfNull.Instance;
-        }
-
-        if (lengthValue is not PdfNumber { IsInteger: true } number || !number.TryToInt32(out var length) || length < 0)
-        {
-            return false;
-        }
-
-        // A declared length past the end of the source, or too large for one array, is more
-        // likely wrong than real: leave it to the probe, which finds the real 'endstream' (or
-        // refuses once its window would exceed one array).
-        var end = (long)payloadStart + length;
-        if (end >= remaining || end + WideStreamTrailerSlackBytes > Array.MaxLength)
+        if (DeclaredStreamEnd(expectedNumber, remaining, dictionary, payloadStart, out var indirectLength) is not long end)
         {
             return false;
         }
@@ -428,6 +506,38 @@ internal sealed class ObjectResolver : IObjectSource
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Where the payload of the stream at the start of the object ends, by its declared
+    /// <c>/Length</c> (an indirect one resolved, and returned in <paramref name="indirectLength"/>);
+    /// <see langword="null"/> when there is no usable length, or it is one the exact read
+    /// doesn't trust.
+    /// </summary>
+    private long? DeclaredStreamEnd(int expectedNumber, long remaining, PdfDictionary dictionary, int payloadStart, out int? indirectLength)
+    {
+        indirectLength = null;
+        if (!dictionary.TryGetValue(PdfName.Length, out var lengthValue))
+        {
+            return null;
+        }
+
+        if (lengthValue is PdfReference lengthReference)
+        {
+            indirectLength = ResolveIndirectLength(expectedNumber, lengthReference.Target);
+            lengthValue = indirectLength is int resolved ? PdfNumber.Get(resolved) : PdfNull.Instance;
+        }
+
+        if (lengthValue is not PdfNumber { IsInteger: true } number || !number.TryToInt32(out var length) || length < 0)
+        {
+            return null;
+        }
+
+        // A declared length past the end of the source, or too large for one array, is more
+        // likely wrong than real: leave it to the probe, which finds the real 'endstream' (or
+        // refuses once its window would exceed one array).
+        var end = (long)payloadStart + length;
+        return end >= remaining || end + WideStreamTrailerSlackBytes > Array.MaxLength ? null : end;
     }
 
     private enum StreamClosing
@@ -624,13 +734,15 @@ internal sealed class ObjectResolver : IObjectSource
     private static bool IsSignatureOrTimestampDictionary(PdfDictionary dict) =>
         dict.TryGetValue(PdfName.Type, out var type) && (PdfName.Sig.Equals(type) || PdfName.DocTimeStamp.Equals(type));
 
-    private void ReportDeviation(string code, string message, long? offset)
+    private void ReportDeviation(string code, string message, long? offset) => ReportDeviationTo(_diagnostics, code, message, offset);
+
+    private void ReportDeviationTo(DiagnosticCollection? diagnostics, string code, string message, long? offset)
     {
         if (_options.Strict)
         {
             throw new PlumePdfException(code, message);
         }
 
-        _diagnostics?.Add(new PdfDiagnostic(code, DiagnosticSeverity.Warning, message, offset));
+        diagnostics?.Add(new PdfDiagnostic(code, DiagnosticSeverity.Warning, message, offset));
     }
 }

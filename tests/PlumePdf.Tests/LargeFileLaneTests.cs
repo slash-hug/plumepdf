@@ -1,25 +1,28 @@
-using System.Globalization;
-using System.Text;
-using PlumePdf.Documents;
 using Xunit;
 
 namespace PlumePdf.Tests;
 
 /// <summary>
 /// The opt-in large-file lane: a generated document over 2 GiB on disk, opened from its path
-/// (memory-mapped), every image extracted, saved, and the saved copy read back. Writes about
-/// 4.5 GB to the temp directory and needs several GB of memory, so it self-skips unless
-/// <c>PLUMEPDF_LARGE_FILE_TESTS=1</c>.
+/// (memory-mapped), saved with bounded memory, every image extracted, and the saved copy read
+/// back. Writes about 4.5 GB to the temp directory and needs several GB of memory, so it
+/// self-skips unless <c>PLUMEPDF_LARGE_FILE_TESTS=1</c>. Run it on its own
+/// (<c>--filter LargeFileLaneTests</c>): the memory assertions read the whole process's heap.
 /// </summary>
 public class LargeFileLaneTests
 {
     private const int PageCount = 280;
     private const int ImageBytes = 8 * 1024 * 1024; // 280 x 8 MiB ~ 2.2 GiB
 
+    // Save holds one stream at a time, so its heap peaks at a few payloads plus garbage not
+    // yet collected, not the 2.2 GiB document every stream it wrote used to be kept in.
+    private const long MaxSavePeakBytes = 1L << 30;
+    private const long MaxRetainedAfterSaveBytes = 256L << 20;
+
     private static bool Enabled => Environment.GetEnvironmentVariable("PLUMEPDF_LARGE_FILE_TESTS") == "1";
 
     [Fact]
-    public void IndirectLengthImagesPast2GiB_ExtractSaveAndReadBack()
+    public void IndirectLengthImagesPast2GiB_SaveWithBoundedMemoryThenExtractAndReadBack()
     {
         if (!Enabled)
         {
@@ -30,23 +33,30 @@ public class LargeFileLaneTests
         var output = Path.Combine(Path.GetTempPath(), $"plumepdf-large-saved-{Guid.NewGuid():N}.pdf");
         try
         {
-            WriteIndirectLengthImageDocument(input);
+            using (var file = new FileStream(input, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 20))
+            {
+                ImageDocumentFixture.Write(file, PageCount, ImageBytes, indirectLength: true);
+            }
+
             Assert.True(new FileInfo(input).Length > int.MaxValue);
 
             using (var document = PdfDocument.Open(input))
             {
+                var peak = PeakManagedBytes(() => document.Save(output));
+                var retained = GC.GetTotalMemory(forceFullCollection: true);
+                Assert.True(peak < MaxSavePeakBytes, $"Saving the {PageCount}-page document peaked at {peak} bytes of managed heap.");
+                Assert.True(retained < MaxRetainedAfterSaveBytes, $"The open document retained {retained} bytes after Save.");
+
                 for (var i = 0; i < PageCount; i++)
                 {
-                    AssertImageIsPage(document.Pages[i].ExtractImages(), i);
+                    ImageDocumentFixture.AssertImageIsPage(document.Pages[i].ExtractImages(), i, ImageBytes);
                 }
-
-                document.Save(output);
             }
 
             using var saved = PdfDocument.Open(output);
             Assert.Equal(PageCount, saved.Pages.Count);
-            AssertImageIsPage(saved.Pages[0].ExtractImages(), 0);
-            AssertImageIsPage(saved.Pages[PageCount - 1].ExtractImages(), PageCount - 1);
+            ImageDocumentFixture.AssertImageIsPage(saved.Pages[0].ExtractImages(), 0, ImageBytes);
+            ImageDocumentFixture.AssertImageIsPage(saved.Pages[PageCount - 1].ExtractImages(), PageCount - 1, ImageBytes);
         }
         finally
         {
@@ -55,68 +65,37 @@ public class LargeFileLaneTests
         }
     }
 
-    private static void AssertImageIsPage(IReadOnlyList<ExtractedImage> images, int page)
+    // The managed heap's high-water mark across 'action', sampled every millisecond. Resident
+    // memory would count the memory-mapped source's pages, which Save reads through once and
+    // the OS reclaims; the heap is what the document and the save actually hold.
+    private static long PeakManagedBytes(Action action)
     {
-        var image = Assert.Single(images);
-        Assert.Equal(ImageBytes, image.Data.Length);
-        Assert.Equal(page, BitConverter.ToInt32(image.Data.Span[..4]));
-        Assert.Equal(page, BitConverter.ToInt32(image.Data.Span[^4..]));
-    }
-
-    /// <summary>
-    /// One <c>/DCTDecode</c> image per page, every stream's <c>/Length</c> an indirect object
-    /// written after the stream (the Ghostscript shape), and a classic cross-reference table
-    /// whose later offsets are past 2 GiB. The payloads aren't real JPEG data; extraction
-    /// passes JPEG bytes through undecoded, so each is tagged with its page index at both ends.
-    /// </summary>
-    private static void WriteIndirectLengthImageDocument(string path)
-    {
-        var objectCount = 3 + (4 * PageCount);
-        var offsets = new long[objectCount];
-        var payload = new byte[ImageBytes];
-        new Random(34).NextBytes(payload);
-
-        using var file = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 20);
-        void Write(string text) => file.Write(Encoding.ASCII.GetBytes(text));
-        void Begin(int number)
+        GC.Collect();
+        long peak = GC.GetTotalMemory(forceFullCollection: true);
+        using var done = new ManualResetEventSlim();
+        var sampler = new Thread(() =>
         {
-            offsets[number] = file.Position;
-            Write($"{number} 0 obj\n");
+            while (!done.Wait(1))
+            {
+                var now = GC.GetTotalMemory(forceFullCollection: false);
+                if (now > Volatile.Read(ref peak))
+                {
+                    Volatile.Write(ref peak, now);
+                }
+            }
+        })
+        { IsBackground = true };
+        sampler.Start();
+        try
+        {
+            action();
+        }
+        finally
+        {
+            done.Set();
+            sampler.Join();
         }
 
-        Write("%PDF-1.7\n");
-        Begin(1);
-        Write("<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
-        Begin(2);
-        var kids = string.Join(' ', Enumerable.Range(0, PageCount).Select(i => $"{3 + (4 * i)} 0 R"));
-        Write($"<< /Type /Pages /Kids [{kids}] /Count {PageCount} >>\nendobj\n");
-
-        for (var i = 0; i < PageCount; i++)
-        {
-            int page = 3 + (4 * i), content = page + 1, image = page + 2, length = page + 3;
-            const string drawing = "q 612 0 0 792 0 0 cm /Im0 Do Q";
-            Begin(page);
-            Write($"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents {content} 0 R /Resources << /XObject << /Im0 {image} 0 R >> >> >>\nendobj\n");
-            Begin(content);
-            Write($"<< /Length {drawing.Length} >>\nstream\n{drawing}\nendstream\nendobj\n");
-            Begin(image);
-            Write($"<< /Type /XObject /Subtype /Image /Width 2000 /Height 2000 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length {length} 0 R >>\nstream\n");
-            BitConverter.TryWriteBytes(payload.AsSpan(0, 4), i);
-            BitConverter.TryWriteBytes(payload.AsSpan(ImageBytes - 4), i);
-            file.Write(payload);
-            Write("\nendstream\nendobj\n");
-            Begin(length);
-            Write($"{ImageBytes}\nendobj\n");
-        }
-
-        var xref = file.Position;
-        var table = new StringBuilder($"xref\n0 {objectCount}\n0000000000 65535 f \n");
-        for (var n = 1; n < objectCount; n++)
-        {
-            table.Append(CultureInfo.InvariantCulture, $"{offsets[n]:D10} 00000 n \n");
-        }
-
-        table.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size {objectCount} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n");
-        Write(table.ToString());
+        return Volatile.Read(ref peak);
     }
 }
