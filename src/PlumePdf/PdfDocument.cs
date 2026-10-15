@@ -767,6 +767,15 @@ public sealed class PdfDocument : IDisposable
         }
     }
 
+    /// <summary>
+    /// The object numbers a full-rewrite save with <paramref name="options"/> would leave out
+    /// for the current pages: what only removed pages reached, plus what the save-time clean-up
+    /// drops. A caller building an alias map for <see cref="SaveWithWriteHooks"/> picks
+    /// canonicals outside this set, because the writer refuses an alias onto any member of it.
+    /// </summary>
+    /// <param name="options">The options the save will run with; <see langword="null"/> means this document's own.</param>
+    internal IReadOnlySet<int> ExcludedForSave(PdfOptions? options) => PrepareFullRewrite(options ?? _options).Excluded;
+
     // The exclusion set and the clean-up copies for one full rewrite of the current pages.
     private SaveCleanupContext PrepareFullRewrite(PdfOptions options)
     {

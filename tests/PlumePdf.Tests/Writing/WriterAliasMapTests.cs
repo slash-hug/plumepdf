@@ -82,6 +82,50 @@ public class WriterAliasMapTests
         Assert.Equal("PLUME5010", ex.Code);
     }
 
+    // A deduplicator must choose canonicals the save will actually write: the exclusion set it
+    // reads is the one the save uses, and an alias onto any member of it is refused. A stream
+    // only a removed page reached is not excluded (it is merely unreferenced), so it may still
+    // serve as a canonical and is written once for the kept page.
+    [Fact]
+    public void ExcludedForSave_IsTheSetTheSaveRefusesToAliasOnto()
+    {
+        using var document = PdfDocument.Open(ImagePagesDocument.Build(pageCount: 2, identicalImages: true));
+        var pageTreeRoot = document.Catalog!.Dictionary.TryGetValue(PdfName.Get("Pages"), out var root) && root is PdfReference rootReference
+            ? rootReference.Target.Number
+            : throw new InvalidOperationException("The fixture's catalog has no /Pages reference.");
+        document.Pages.RemoveAt(0);
+
+        var excluded = document.ExcludedForSave(PdfOptions.Default);
+
+        Assert.Contains(ImagePagesDocument.Page(0), excluded);
+        Assert.Contains(pageTreeRoot, excluded);
+        Assert.DoesNotContain(ImagePagesDocument.Page(1), excluded);
+        Assert.DoesNotContain(ImagePagesDocument.Image(0), excluded);
+        Assert.DoesNotContain(ImagePagesDocument.Image(1), excluded);
+
+        var path = Path.Combine(Path.GetTempPath(), $"plumepdf-alias-{Guid.NewGuid():N}.pdf");
+        try
+        {
+            var refused = new Dictionary<int, int> { [ImagePagesDocument.Image(1)] = pageTreeRoot };
+            var ex = Assert.Throws<PlumePdfException>(() => document.SaveWithWriteHooks(path, PdfOptions.Default, transform: null, refused));
+            Assert.Equal("PLUME5010", ex.Code);
+            Assert.Contains("excluded", ex.Message, StringComparison.Ordinal);
+            Assert.False(File.Exists(path));
+
+            var accepted = new Dictionary<int, int> { [ImagePagesDocument.Image(1)] = ImagePagesDocument.Image(0) };
+            document.SaveWithWriteHooks(path, PdfOptions.Default, transform: null, accepted);
+
+            var bytes = File.ReadAllBytes(path);
+            using var saved = PdfDocument.Open(bytes);
+            Assert.Equal("PIXELS-SAME", Encoding.ASCII.GetString(ImagePagesDocument.PageImage(saved, 0, "Im0").RawBytes.Span));
+            Assert.Equal(1, CountOccurrences(bytes, "PIXELS-SAME"));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     [Fact]
     public void AliasChain_IsRefused()
     {
