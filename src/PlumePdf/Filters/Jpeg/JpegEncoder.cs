@@ -15,8 +15,11 @@ internal static class JpegEncoder
 {
     // Annex K.1's base ("quality 50") luminance/chrominance quantization tables, natural
     // (row-major) order - functional numeric constants reproduced identically by every
-    // baseline JPEG encoder, not spec prose (the clean-room policy in AGENTS.md).
-    private static readonly ushort[] BaseLuminanceQuant =
+    // baseline JPEG encoder, not spec prose (the clean-room policy in AGENTS.md). Internal so
+    // JpegQualityEstimator inverts exactly the tables this encoder scales.
+
+    /// <summary>Annex K.1's base luminance quantization table, natural order.</summary>
+    internal static readonly ushort[] BaseLuminanceQuant =
     [
         16, 11, 10, 16, 24, 40, 51, 61,
         12, 12, 14, 19, 26, 58, 60, 55,
@@ -28,7 +31,8 @@ internal static class JpegEncoder
         72, 92, 95, 98, 112, 100, 103, 99,
     ];
 
-    private static readonly ushort[] BaseChrominanceQuant =
+    /// <summary>Annex K.1's base chrominance quantization table, natural order.</summary>
+    internal static readonly ushort[] BaseChrominanceQuant =
     [
         17, 18, 24, 47, 99, 99, 99, 99,
         18, 21, 26, 66, 99, 99, 99, 99,
@@ -93,7 +97,8 @@ internal static class JpegEncoder
         return writer.ToArray();
     }
 
-    private static ushort[] ScaleQuantTable(ushort[] baseTable, int quality)
+    /// <summary>Scales a base table to IJG <paramref name="quality"/> (1–100), each entry clamped to the baseline range 1–255.</summary>
+    internal static ushort[] ScaleQuantTable(ushort[] baseTable, int quality)
     {
         // The standard IJG quality->scale-factor formula (jcparam.c jpeg_quality_scaling),
         // widely reproduced (a numeric formula, not copyrighted prose).
