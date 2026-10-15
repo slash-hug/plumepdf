@@ -217,6 +217,30 @@ public class NativeImageSamplesTests
     }
 
     [Fact]
+    public void IndirectColorKeyMask_IsSkipped()
+    {
+        var dictionary = ImageDictionary(4, 4, ColorSpaceFor(3));
+        dictionary.Set(PdfName.Get("Mask"), new PdfReference(new IndirectReference(20, 0)));
+        var objects = Registry((20, new PdfArray([PdfNumber.Get(0), PdfNumber.Get(10), PdfNumber.Get(0), PdfNumber.Get(10), PdfNumber.Get(0), PdfNumber.Get(10)])));
+        AssertSkip(new PdfStream(dictionary, new byte[4 * 4 * 3]), PlannedSkip.ColorKeyMask, objects);
+    }
+
+    [Fact]
+    public void StencilMaskStream_IsNotAColorKeyMask()
+    {
+        var original = Samples(4, 4, 3);
+        var mask = new PdfDictionary();
+        mask.Set(PdfName.ImageMask, PdfBoolean.True);
+        var dictionary = ImageDictionary(4, 4, ColorSpaceFor(3));
+        dictionary.Set(PdfName.Get("Mask"), new PdfReference(new IndirectReference(20, 0)));
+
+        var (ok, samples, _, detail) = Decode(new PdfStream(dictionary, original), Registry((20, new PdfStream(mask, new byte[4]))));
+
+        Assert.True(ok, detail);
+        Assert.Equal(original, samples!.Samples);
+    }
+
+    [Fact]
     public void TruncatedJpeg_UnderStrict_IsADecodeFailureNotAThrow()
     {
         var image = DctImage(Samples(64, 64, 3), 64, 64, 3);

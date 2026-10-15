@@ -19,8 +19,8 @@ internal sealed record NativeSamples(int Width, int Height, int Channels, byte[]
 /// The samples are the filter chain's output and nothing more; the colour space, its ICC
 /// profile and any <c>/Decode</c> array stay on the dictionary for the re-encoded stream to
 /// carry over unchanged. Every dictionary entry is resolved through the registry before its
-/// type is checked, and an ICC profile is read for its dictionary only, so classifying an image
-/// never keeps a profile's payload.
+/// type is checked, and an ICC profile or a stencil <c>/Mask</c> is read for its dictionary
+/// only, so classifying an image never keeps another stream's payload.
 /// </remarks>
 internal static class NativeImageSamples
 {
@@ -184,7 +184,7 @@ internal static class NativeImageSamples
                 return Skip(PlannedSkip.DecodeFailed, "Missing or invalid /BitsPerComponent.", out skip, out detail);
         }
 
-        if (Resolve(dictionary, MaskName, objects) is PdfArray)
+        if (ResolveDictionaryOnly(dictionary, MaskName, objects) is PdfArray)
         {
             return Skip(PlannedSkip.ColorKeyMask, "A colour-key /Mask array.", out skip, out detail);
         }
@@ -267,6 +267,14 @@ internal static class NativeImageSamples
 
     private static PdfObject? ResolveValue(PdfObject? value, ObjectRegistry objects) =>
         value is PdfReference reference ? objects[reference.Target] : value;
+
+    // An entry that may name a stream whose payload is never needed here (a stencil /Mask, an
+    // /SMask): a referenced stream resolves to its dictionary alone, so classifying the image
+    // never caches the stream.
+    private static PdfObject? ResolveDictionaryOnly(PdfDictionary dictionary, PdfName key, ObjectRegistry objects) =>
+        !dictionary.TryGetValue(key, out var value) ? null
+        : value is PdfReference reference ? ((IObjectSource)objects).ResolveForDiscovery(reference.Target, out _)
+        : value;
 
     private static string Describe(PdfObject? colorSpace) => colorSpace switch
     {
