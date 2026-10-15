@@ -776,8 +776,12 @@ public sealed class PdfDocument : IDisposable
     /// <param name="options">The options the save will run with; <see langword="null"/> means this document's own.</param>
     internal IReadOnlySet<int> ExcludedForSave(PdfOptions? options) => PrepareFullRewrite(options ?? _options).Excluded;
 
-    // The exclusion set and the clean-up copies for one full rewrite of the current pages.
-    private SaveCleanupContext PrepareFullRewrite(PdfOptions options)
+    /// <summary>
+    /// The exclusion set and the clean-up copies (catalog, pages, replacements) for one full
+    /// rewrite of the current pages with <paramref name="options"/> — exactly what a save hands
+    /// the writer, so a planning pass can walk the graph that save will write.
+    /// </summary>
+    internal SaveCleanupContext PrepareFullRewrite(PdfOptions options)
     {
         var pages = Pages.Select(static p => (p.Reference, p.Dictionary)).ToList();
         var (excluded, removedPages, removedFields) = RemovedSetBuilder.Build(Objects, Catalog?.Reference, Catalog?.Dictionary, _openTimePageTree, _openTimePages, pages, options);
