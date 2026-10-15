@@ -4,19 +4,24 @@ Multi-gigabyte documents, typically long scans, open and save with bounded memor
 you pick the right doors:
 
 - **Open from a path.** `PdfDocument.Open(path)` memory-maps the file and reads objects only
-  when they are used; opening costs the cross-reference table, not the file. `Open(Stream)`
-  reads a seekable stream through a small buffer and never loads it whole.
-  `Open(ReadOnlyMemory<byte>)` works on the buffer you already hold, so the whole file is in
-  memory by definition. Files over 2 GiB are supported. A single object needing more than one
-  .NET array (~2 GiB) can't be read; that object alone resolves as null with `PLUME2061` on
+  when they are used; opening an intact file costs its cross-reference data, not the file. A
+  damaged file whose cross-reference data must be rebuilt by scanning the whole file is bounded
+  by one .NET array (`PLUME1005`). `Open(Stream)` reads a seekable stream through a small buffer
+  and never loads it whole; `OpenAsync` on a non-seekable stream, or with
+  `PdfOptions.PreferStreamIo`, buffers the whole file. `Open(ReadOnlyMemory<byte>)` works on the
+  buffer you already hold. Files over 2 GiB are supported. A single object needing more than one
+  array (~2 GiB) can't be read; that object alone resolves as null with `PLUME2061` on
   `doc.Diagnostics`, and the rest of the document still opens.
 - **`Save` holds one stream at a time.** A full rewrite reads each stream's payload once,
   writes it, and lets it go. Streams you have already read, and possibly edited in place, are
   written from your instance. Measured on a 2.67 GB scanned document: under 80 MB of managed
   heap, with or without `Optimize`. `SaveIncremental` copies the original bytes through a small
-  buffer.
-- **Write to a different path.** A full `Save` over the file you opened first loads the whole
-  source into memory (Windows can't replace a file that is still mapped).
+  buffer. Not yet bounded: a linearized save (`PdfOptions.Linearize`, `Pdf.Linearize`) and form
+  flattening (`Form.Flatten`, `Pdf.FlattenForm`) still hold every stream they write.
+- **Write to a different path.** A full `Save`, or a sign, LTV or timestamp write, over the file
+  you opened first buffers the whole source into memory, on every platform (a mapped file can't
+  be replaced on Windows, so the mapping is always released first), and refuses past 2 GiB with
+  `PLUME1006`.
 - **What you read stays cached until you dispose the document.** `ExtractImages`,
   `ExtractText`, `Rasterize` and `doc.Objects` all cache what they resolve, image payloads
   included, so walking every image of a 2 GB scan holds all of it. Work in batches of pages
