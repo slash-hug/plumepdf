@@ -145,7 +145,14 @@ internal static class NativeImageSamples
         return isDct;
     }
 
-    private static bool TryClassify(
+    /// <summary>
+    /// Classifies an image from its dictionary alone, resolving entries through
+    /// <paramref name="objects"/> and reading any ICC profile, <c>/Mask</c> or <c>/SMask</c>
+    /// for its dictionary only: false, with <paramref name="skip"/> and <paramref name="detail"/>
+    /// set, when compression must leave the image alone. A dangling entry under
+    /// <see cref="PdfOptions.Strict"/> throws its <see cref="PlumePdfException"/>.
+    /// </summary>
+    internal static bool TryClassify(
         PdfDictionary dictionary,
         ObjectRegistry objects,
         bool softMask,
