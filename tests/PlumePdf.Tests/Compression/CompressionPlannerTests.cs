@@ -174,7 +174,39 @@ public class CompressionPlannerTests
         var plan = PlanMaskedPair(secondEdge: 72);
 
         Assert.Equal(20, plan.Aliases[21]);
-        Assert.Equal(plan.Images[20].TargetWidth, plan.Images[21].TargetWidth);
+        Assert.Equal((PlannedImageAction.Downsample, 100), (plan.Images[20].Action, plan.Images[20].TargetWidth));
+    }
+
+    // Only the canonical copy is written, so a merged-away mask carries no plan of its own and
+    // its parent names the copy that is written.
+    [Fact]
+    public void MergedSoftMask_IsAbsentFromThePlan_AndItsParentNamesTheCanonical()
+    {
+        var plan = PlanMaskedPair(secondEdge: 72);
+
+        Assert.Equal([10, 11, 20], plan.Images.Keys.Order());
+        Assert.Equal(20, plan.Images[10].SoftMaskNumber);
+        Assert.Equal(20, plan.Images[11].SoftMaskNumber);
+    }
+
+    // A plain image and a soft mask with the same bytes, both downsampled to the same size: the
+    // plans agree on everything but being a mask, and a mask is written as one (never as a
+    // plain image), so they stay apart.
+    [Fact]
+    public void PlainImage_IdenticalToASoftMask_PlannedTheSame_IsStillNotMerged()
+    {
+        var pdf = new ScanTestPdf()
+            .Stream(10, Gray, Payload(3))
+            .Stream(11, $"{Rgb} /SMask 20 0 R", Payload(1))
+            .Stream(20, Gray, Payload(3))
+            .Page(3, "q 72 0 0 72 0 0 cm /A Do Q q 72 0 0 72 0 0 cm /B Do Q", xobjects: "/A 10 0 R /B 11 0 R");
+        using var document = PdfDocument.Open(pdf.Build());
+
+        var plan = CompressionPlanner.Plan(document, new CompressionSettings(true, 100, null), PdfOptions.Default, CancellationToken.None);
+
+        Assert.False(plan.Aliases.ContainsKey(20));
+        Assert.Equal((PlannedImageAction.Downsample, 100, 100, false), (plan.Images[10].Action, plan.Images[10].TargetWidth, plan.Images[10].TargetHeight, plan.Images[10].IsSoftMask));
+        Assert.Equal((PlannedImageAction.Downsample, 100, 100, true), (plan.Images[20].Action, plan.Images[20].TargetWidth, plan.Images[20].TargetHeight, plan.Images[20].IsSoftMask));
     }
 
     // A plain image that is byte-identical to another image's soft mask: the plain copy is
@@ -211,6 +243,27 @@ public class CompressionPlannerTests
         var plan = CompressionPlanner.Plan(document, LosslessOnly, PdfOptions.Default, CancellationToken.None);
 
         Assert.Equal(10, plan.Aliases[20]);
+        Assert.False(plan.Images.ContainsKey(20));
+        Assert.Equal(10, plan.Images[11].SoftMaskNumber);
+    }
+
+    // Under Strict a dangling /SMask is this image failing to classify, not the run failing.
+    // (The duplicate finder walks the same references the save writes, so with the lossless
+    // levers on it refuses the document as the save itself would; this isolates the classifier.)
+    [Fact]
+    public void DanglingSoftMaskUnderStrict_IsADecodeFailureNotAThrow()
+    {
+        var pdf = new ScanTestPdf()
+            .Stream(10, $"{Rgb} /SMask 99 0 R", Payload(1))
+            .Page(3, "q 72 0 0 72 0 0 cm /A Do Q", xobjects: "/A 10 0 R");
+        var strict = PdfOptions.Default with { Strict = true };
+        using var document = PdfDocument.Open(pdf.Build(), strict);
+
+        var plan = CompressionPlanner.Plan(document, new CompressionSettings(Lossless: false, MaxDpi: 100, JpegQuality: null), strict, CancellationToken.None);
+
+        var image = Assert.Single(plan.Images).Value;
+        Assert.Equal((PlannedImageAction.Keep, PlannedSkip.DecodeFailed), (image.Action, image.Skip));
+        Assert.Null(image.SoftMaskNumber);
     }
 
     private static CompressionPlan PlanMaskedPair(int secondEdge)

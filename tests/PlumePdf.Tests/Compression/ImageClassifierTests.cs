@@ -327,6 +327,28 @@ public class ImageClassifierTests
         Assert.Equal(PlannedImageAction.Downsample, plan[Image].Action);
     }
 
+    // An image that is drawn, has a soft mask, and is itself another image's soft mask is kept
+    // as shared; its own mask then follows that kept size rather than the reduction it would
+    // have had, whichever of the two masks has the lower object number.
+    [Theory]
+    [InlineData(10, 11, 12)]
+    [InlineData(20, 5, 30)]
+    public void SoftMaskOfAParentKeptAsShared_FollowsTheKeptSize(int sharedImage, int itsMask, int outerImage)
+    {
+        var shared = ImageDictionary(600, 600, PdfName.Get("DeviceGray"));
+        shared.Set(PdfName.SMask, new PdfReference(new IndirectReference(itsMask, 0)));
+        var outer = RgbImage(600, 600);
+        outer.Set(PdfName.SMask, new PdfReference(new IndirectReference(sharedImage, 0)));
+
+        var plan = Plan(
+            [(sharedImage, shared), (itsMask, GrayMask(600, 600)), (outerImage, outer)],
+            Scan((sharedImage, Measured(600, 600)), (outerImage, Measured(600, 600))),
+            Downsample150);
+
+        Assert.Equal((PlannedImageAction.Keep, PlannedSkip.SharedAsMask), (plan[sharedImage].Action, plan[sharedImage].Skip));
+        Assert.Equal((PlannedImageAction.Keep, 600, 600), (plan[itsMask].Action, plan[itsMask].TargetWidth, plan[itsMask].TargetHeight));
+    }
+
     [Fact]
     public void IneligibleSoftMask_IsSkippedWithItsOwnReason()
     {

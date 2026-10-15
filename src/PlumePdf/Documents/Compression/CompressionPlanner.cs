@@ -48,7 +48,7 @@ internal static class CompressionPlanner
                 .ToList();
             if (conflicts.Count == 0)
             {
-                return new CompressionPlan(images, aliases, scan.InlineImagePages, scan.Diagnostics);
+                return new CompressionPlan(WrittenOnly(images, aliases), aliases, scan.InlineImagePages, scan.Diagnostics);
             }
 
             foreach (var duplicate in conflicts)
@@ -56,6 +56,29 @@ internal static class CompressionPlanner
                 aliases.Remove(duplicate);
             }
         }
+    }
+
+    // The plans of the streams that are written: a merged-away copy (only a soft mask can still
+    // be here, since placed duplicates were folded) is dropped, and a parent naming one names
+    // its canonical instead, as the written reference will.
+    private static Dictionary<int, PlannedImage> WrittenOnly(
+        IReadOnlyDictionary<int, PlannedImage> images,
+        Dictionary<int, int> aliases)
+    {
+        var written = new Dictionary<int, PlannedImage>(images.Count);
+        foreach (var (number, plan) in images)
+        {
+            if (aliases.ContainsKey(number))
+            {
+                continue;
+            }
+
+            written[number] = plan.SoftMaskNumber is int mask && aliases.TryGetValue(mask, out var canonical)
+                ? plan with { SoftMaskNumber = canonical }
+                : plan;
+        }
+
+        return written;
     }
 
     // The scan's placements with every aliased image's folded into its canonical's.

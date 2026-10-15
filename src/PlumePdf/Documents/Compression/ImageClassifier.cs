@@ -20,7 +20,8 @@ namespace PlumePdf.Documents.Compression;
 /// A soft mask is planned on its own, after its parents: its size follows each parent's
 /// planned reduction (scaled by the parent's factor, so a mask at a different resolution keeps
 /// its ratio), and when parents disagree the larger target wins on each axis. A mask is never
-/// re-encoded as JPEG, and one also drawn as a plain image is left alone.
+/// re-encoded as JPEG, and one also drawn as a plain image is left alone (so its own mask, if it
+/// has one, follows that kept size).
 /// </para>
 /// <para>
 /// An image a page lists but nothing draws is kept with <see cref="PlannedSkip.NoPlacement"/>
@@ -46,15 +47,14 @@ internal static class ImageClassifier
         CancellationToken cancellationToken)
     {
         var plans = new SortedDictionary<int, PlannedImage>();
-        var parentsOfMask = new SortedDictionary<int, List<PlannedImage>>();
+        var parentsOfMask = new SortedDictionary<int, List<int>>();
 
         foreach (var (number, placement) in scan.Images.OrderBy(static i => i.Key))
         {
             cancellationToken.ThrowIfCancellationRequested();
             var dictionary = DictionaryOf(objects, number);
             var softMask = dictionary is null ? null : SoftMaskNumber(dictionary, objects);
-            var plan = PlanImage(number, dictionary, placement, settings, objects, options, softMask);
-            plans[number] = plan;
+            plans[number] = PlanImage(number, dictionary, placement, settings, objects, options, softMask);
             if (softMask is int mask)
             {
                 if (!parentsOfMask.TryGetValue(mask, out var parents))
@@ -63,13 +63,14 @@ internal static class ImageClassifier
                     parentsOfMask[mask] = parents;
                 }
 
-                parents.Add(plan);
+                parents.Add(number);
             }
         }
 
-        foreach (var (mask, parents) in parentsOfMask)
+        // Every plain image that is also a mask is kept first, so a mask whose parent is one of
+        // them follows the kept size, whichever object number comes first.
+        foreach (var mask in parentsOfMask.Keys)
         {
-            cancellationToken.ThrowIfCancellationRequested();
             // A plain image the pages only list, never draw, is planned as the mask it is.
             if (plans.TryGetValue(mask, out var plain) && plain.Skip != PlannedSkip.NoPlacement)
             {
@@ -82,10 +83,18 @@ internal static class ImageClassifier
                     SkipDetail = "Drawn as an image of its own and also used as another image's /SMask.",
                     IsSoftMask = true,
                 };
+            }
+        }
+
+        foreach (var (mask, parents) in parentsOfMask)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (plans.TryGetValue(mask, out var planned) && planned.Skip == PlannedSkip.SharedAsMask)
+            {
                 continue;
             }
 
-            plans[mask] = PlanSoftMask(mask, DictionaryOf(objects, mask), parents, objects, options);
+            plans[mask] = PlanSoftMask(mask, DictionaryOf(objects, mask), [.. parents.Select(p => plans[p])], objects, options);
         }
 
         return new Dictionary<int, PlannedImage>(plans);
@@ -239,10 +248,22 @@ internal static class ImageClassifier
         return isStream ? resolved as PdfDictionary ?? (resolved as PdfStream)?.Dictionary : null;
     }
 
-    private static int? SoftMaskNumber(PdfDictionary dictionary, ObjectRegistry objects) =>
-        dictionary.TryGetValue(PdfName.SMask, out var value)
-        && value is PdfReference reference
-        && DictionaryOf(objects, reference.Target.Number) is not null
-            ? reference.Target.Number
-            : null;
+    // The /SMask a stream dictionary names. One the document can't produce (dangling under
+    // Strict) pairs with nothing; classifying the image itself then reports it as a decode failure.
+    private static int? SoftMaskNumber(PdfDictionary dictionary, ObjectRegistry objects)
+    {
+        if (!dictionary.TryGetValue(PdfName.SMask, out var value) || value is not PdfReference reference)
+        {
+            return null;
+        }
+
+        try
+        {
+            return DictionaryOf(objects, reference.Target.Number) is not null ? reference.Target.Number : null;
+        }
+        catch (PlumePdfException)
+        {
+            return null;
+        }
+    }
 }
