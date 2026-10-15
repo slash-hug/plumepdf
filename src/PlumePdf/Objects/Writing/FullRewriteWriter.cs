@@ -65,6 +65,19 @@ internal static class FullRewriteWriter
     /// and values for numbers above the registry's range that the caller allocated for this save
     /// only. Consulted before <paramref name="objects"/> during discovery and serialization.
     /// </param>
+    /// <param name="transform">
+    /// A write-time replacement for individual streams, offered every original stream as it
+    /// is written that <paramref name="replacements"/> does not already replace (an excluded
+    /// number is never written, so never offered). Its result may reference only a subset of
+    /// what the original references (<c>PLUME5010</c> otherwise). <see langword="null"/>
+    /// writes every stream as resolved.
+    /// </param>
+    /// <param name="aliases">
+    /// Original object numbers to write as another original object (a duplicate's number
+    /// mapped to its canonical, never-aliased, non-excluded original): every reference to a
+    /// duplicate is written as one to its canonical, and the duplicate itself is never
+    /// numbered, walked or written. <see langword="null"/> aliases nothing.
+    /// </param>
     public static void Write(
         Stream output,
         ObjectRegistry objects,
@@ -73,7 +86,9 @@ internal static class FullRewriteWriter
         IReadOnlyList<(IndirectReference Reference, PdfDictionary Dictionary)> pages,
         PdfOptions options,
         IReadOnlySet<int>? excluded = null,
-        IReadOnlyDictionary<int, PdfObject>? replacements = null)
+        IReadOnlyDictionary<int, PdfObject>? replacements = null,
+        IStreamWriteTransform? transform = null,
+        IReadOnlyDictionary<int, int>? aliases = null)
     {
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(objects);
@@ -85,6 +100,13 @@ internal static class FullRewriteWriter
         var pendingOriginal = new Queue<int>();
         var extraObjects = new List<(int Number, PdfObject Value)>();
         var overrides = SeedOverrides(catalogReference, pages, excluded, replacements);
+        ValidateAliases(aliases, catalogReference, pages, excluded, overrides);
+
+        // A duplicate's references land on its canonical original. An excluded number keeps
+        // its own meaning (written as null) whatever it is aliased to, so an alias can never
+        // carry a reference past the exclusion set.
+        int Canonical(int originalNumber) =>
+            aliases is not null && !excluded.Contains(originalNumber) && aliases.TryGetValue(originalNumber, out var canonical) ? canonical : originalNumber;
 
         // References this writer constructs itself, already carrying a final object number
         // (a /Pages node's /Kids entries, every retained page's replacement /Parent, the
@@ -98,6 +120,7 @@ internal static class FullRewriteWriter
 
         int AssignOriginal(int originalNumber)
         {
+            originalNumber = Canonical(originalNumber);
             if (originalNumberToNew.TryGetValue(originalNumber, out var existing))
             {
                 return existing;
@@ -201,7 +224,7 @@ internal static class FullRewriteWriter
         IndirectReference? Translate(PdfReference reference) =>
             syntheticReferences.Contains(reference)
                 ? reference.Target
-                : originalNumberToNew.TryGetValue(reference.Target.Number, out var newNumber)
+                : originalNumberToNew.TryGetValue(Canonical(reference.Target.Number), out var newNumber)
                     ? new IndirectReference(newNumber, 0)
                     : excluded.Contains(reference.Target.Number)
                         ? null
@@ -217,7 +240,7 @@ internal static class FullRewriteWriter
 
         if (options.Optimize)
         {
-            WriteOptimizedBody(output, objects, overrides, extraObjects, originalNumberToNew, streams, nextNumber, catalogNumber, infoNumber, Translate, options);
+            WriteOptimizedBody(output, objects, overrides, transform, extraObjects, originalNumberToNew, streams, nextNumber, catalogNumber, infoNumber, Translate, options);
             return;
         }
 
@@ -230,7 +253,7 @@ internal static class FullRewriteWriter
 
         foreach (var (originalNumber, newNumber) in originalNumberToNew.OrderBy(static kv => kv.Value))
         {
-            var value = ValueToWrite(objects, overrides, originalNumber);
+            var value = ValueToWrite(objects, overrides, transform, originalNumber);
             offsets[newNumber] = output.Position;
             ObjectSerializer.WriteIndirectObject(output, newNumber, 0, value, Translate);
         }
@@ -248,6 +271,7 @@ internal static class FullRewriteWriter
         Stream output,
         ObjectRegistry objects,
         Dictionary<int, PdfObject> overrides,
+        IStreamWriteTransform? transform,
         List<(int Number, PdfObject Value)> extraObjects,
         Dictionary<int, int> originalNumberToNew,
         IReadOnlySet<int> streams,
@@ -274,7 +298,7 @@ internal static class FullRewriteWriter
             }
             else
             {
-                finalValues[newNumber] = ValueToWrite(objects, overrides, originalNumber);
+                finalValues[newNumber] = ValueToWrite(objects, overrides, transform, originalNumber);
             }
         }
 
@@ -315,7 +339,7 @@ internal static class FullRewriteWriter
 
         for (var number = 1; number < nextNumber; number++)
         {
-            var value = streamOriginals[number] is int originalNumber ? ValueToWrite(objects, overrides, originalNumber) : finalValues[number];
+            var value = streamOriginals[number] is int originalNumber ? ValueToWrite(objects, overrides, transform, originalNumber) : finalValues[number];
             if (value is PdfStream stream)
             {
                 entries[number] = new XRefStreamWriter.Entry(1, output.Position, 0);
@@ -422,8 +446,86 @@ internal static class FullRewriteWriter
         return ((IObjectSource)objects).ResolveForDiscovery(new IndirectReference(originalNumber, 0), out isStream);
     }
 
-    private static PdfObject ValueToWrite(ObjectRegistry objects, Dictionary<int, PdfObject> overrides, int originalNumber) =>
-        overrides.TryGetValue(originalNumber, out var overridden) ? overridden : ((IObjectSource)objects).ResolveForWrite(new IndirectReference(originalNumber, 0));
+    // The single point every original object's written value comes from: a caller override
+    // when there is one, otherwise the resolved value, which a transform may replace when it
+    // is a stream. Called once per object, so the transform's result is written and let go.
+    private static PdfObject ValueToWrite(ObjectRegistry objects, Dictionary<int, PdfObject> overrides, IStreamWriteTransform? transform, int originalNumber)
+    {
+        if (overrides.TryGetValue(originalNumber, out var overridden))
+        {
+            return overridden;
+        }
+
+        var value = ((IObjectSource)objects).ResolveForWrite(new IndirectReference(originalNumber, 0));
+        return transform is not null && value is PdfStream stream && transform.Handles(originalNumber)
+            ? Transformed(transform, originalNumber, stream)
+            : value;
+    }
+
+    // Discovery numbered what the original stream's dictionary references, so a replacement
+    // may keep or drop those references but not add one: a new target would either have no
+    // output number or silently gain a reference the original never carried.
+    private static PdfStream Transformed(IStreamWriteTransform transform, int originalNumber, PdfStream original)
+    {
+        var replacement = transform.Transform(originalNumber, original);
+        if (ReferenceEquals(replacement, original))
+        {
+            return original;
+        }
+
+        HashSet<int>? allowed = null;
+        foreach (var reference in FindStreamDictionaryReferences(replacement.Dictionary))
+        {
+            allowed ??= [.. FindStreamDictionaryReferences(original.Dictionary).Select(static r => r.Target.Number)];
+            if (!allowed.Contains(reference.Target.Number))
+            {
+                throw new PlumePdfException("PLUME5010", $"Internal writer invariant violated: the write-time replacement for object {originalNumber} references object {reference.Target.Number}, which the original stream does not.");
+            }
+        }
+
+        return replacement;
+    }
+
+    // An alias maps a duplicate to the original written in its place, so the canonical side
+    // must itself be written: not excluded, not aliased in turn, and not replaced by a caller
+    // override (whose value is not the content the duplicate was found equal to). The
+    // duplicate side must be an ordinary object, never the catalog or a retained page (which
+    // the writer rebuilds itself) or an override.
+    private static void ValidateAliases(
+        IReadOnlyDictionary<int, int>? aliases,
+        IndirectReference? catalogReference,
+        IReadOnlyList<(IndirectReference Reference, PdfDictionary Dictionary)> pages,
+        IReadOnlySet<int> excluded,
+        Dictionary<int, PdfObject> overrides)
+    {
+        if (aliases is null || aliases.Count == 0)
+        {
+            return;
+        }
+
+        var reserved = new HashSet<int>(pages.Select(static p => p.Reference.Number));
+        if (catalogReference is { } catalog)
+        {
+            reserved.Add(catalog.Number);
+        }
+
+        foreach (var (duplicate, canonical) in aliases)
+        {
+            var problem =
+                duplicate == canonical ? "is aliased to itself"
+                : reserved.Contains(duplicate) ? "is the catalog or a retained page"
+                : overrides.ContainsKey(duplicate) ? "has a replacement value"
+                : excluded.Contains(canonical) ? $"is aliased to object {canonical}, which is excluded from the output"
+                : aliases.ContainsKey(canonical) ? $"is aliased to object {canonical}, which is itself aliased"
+                : overrides.ContainsKey(canonical) ? $"is aliased to object {canonical}, which has a replacement value"
+                : null;
+
+            if (problem is not null)
+            {
+                throw new PlumePdfException("PLUME5010", $"Internal writer invariant violated: object {duplicate} {problem}.");
+            }
+        }
+    }
 
     internal static IEnumerable<PdfReference> FindReferences(PdfObject value)
     {

@@ -344,6 +344,13 @@ public sealed class ObjectRegistry : IObjectSource
         || _resolver is not ObjectResolver fileResolver // an in-memory source never diagnoses — resolve normally
         || fileResolver.HasLiveEntry(reference.Number);
 
+    /// <summary>
+    /// How many objects the underlying source holds in its resolution cache — what a reading
+    /// pass that promises not to retain payloads is measured against. Zero for an in-memory
+    /// source, which holds every object anyway.
+    /// </summary>
+    internal int CachedObjectCount => _resolver is ObjectResolver fileResolver ? fileResolver.CachedObjectCount : 0;
+
     /// <summary>Pairs with <see cref="EnterExternalMutation"/>.</summary>
     internal void ExitExternalMutation() => Interlocked.Decrement(ref _mutating);
 
@@ -372,4 +379,7 @@ public sealed class ObjectRegistry : IObjectSource
 
     PdfObject IObjectSource.ResolveForWrite(IndirectReference reference) =>
         _newObjects.TryGetValue(reference.Number, out var registered) ? registered : _resolver.ResolveForWrite(reference);
+
+    PdfStream? IObjectSource.ReadPayloadOnce(IndirectReference reference) =>
+        _newObjects.TryGetValue(reference.Number, out var registered) ? registered as PdfStream : _resolver.ReadPayloadOnce(reference);
 }
