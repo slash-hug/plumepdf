@@ -211,6 +211,19 @@ public class CompressOptionsTests
     }
 
     [Fact]
+    public void Linearize_RefusalPointsAtLinearizingTheOutput_EvenWhenLossyOnly()
+    {
+        // The refusal is unconditional, so its advice can't suggest an option that would lift it.
+        var output = TempPath();
+
+        var ex = Assert.Throws<PlumePdfException>(() => Pdf.Compress("does-not-exist.pdf", output, new PdfCompressOptions { Lossless = false }, PdfOptions.Default with { Linearize = true }));
+
+        Assert.Equal("PLUME5018", ex.Code);
+        Assert.Contains("Pdf.Linearize", ex.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("Lossless", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void EncryptedSource_IsRefusedBeforePlanning()
     {
         var source = Path.Combine(RepoRoot(), "tests", "PlumePdf.CorpusTests", "Fixtures", "AES-128.pdf");

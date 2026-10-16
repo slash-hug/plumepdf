@@ -185,7 +185,7 @@ internal static class CompressionEngine
     {
         if (options.Linearize)
         {
-            throw new PlumePdfException("PLUME5018", "Compress cannot write linearized output: it packs objects into object streams (PdfOptions.Optimize), which PlumePDF's linearized writer does not combine with, and its write-time image changes go through the full-rewrite writer only. Drop PdfOptions.Linearize, or linearize the compressed file in a second step with Lossless = false.");
+            throw new PlumePdfException("PLUME5018", "Compress cannot write linearized output: it packs objects into object streams (PdfOptions.Optimize), which PlumePDF's linearized writer does not combine with, and its write-time image changes go through the full-rewrite writer only. Drop PdfOptions.Linearize, or run Pdf.Linearize on the compressed output as a second step (object-stream packing does not survive linearization).");
         }
     }
 
