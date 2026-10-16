@@ -55,6 +55,13 @@ only by diffing output. Entries land in the same change as the behavior they des
 
 ### Fixed
 
+- **Opening a PDF through a symbolic link reads the file it points to.** The default
+  memory-mapped open took its length from the path's `FileInfo`, which for a link is the
+  link's own few bytes, so the document failed to open or recover. The length now comes from
+  the opened file. A link whose target is missing is now `PLUME1002`; it used to escape as an
+  uncoded `FileNotFoundException`. `Pdf.Compress` also reported a link's own size as
+  `InputBytes`; it now reports the opened file's size.
+
 - **3-component JPEGs marked "no colour transform" decoded as YCbCr.** A JPEG whose Adobe
   `APP14` marker says transform 0, or whose PDF `/DecodeParms` say `/ColorTransform 0`, stores
   its samples as RGB, but PlumePDF read them as RGB only when the component ids were also

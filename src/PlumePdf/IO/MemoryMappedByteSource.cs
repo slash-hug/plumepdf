@@ -55,19 +55,30 @@ internal sealed class MemoryMappedByteSource : ByteSource
             throw new PlumePdfException("PLUME1002", $"File not found: '{path}'.");
         }
 
-        _length = info.Length;
-        if (_length == 0)
-        {
-            throw new PlumePdfException("PLUME1003", $"'{path}' is empty; there is nothing to memory-map. Retry with PdfOptions.PreferStreamIo if the file is expected to grow.");
-        }
-
         FileStream? fileStream = null;
         try
         {
             // Opened directly (rather than via MemoryMappedFile.CreateFromFile(path, ...),
             // which only shares FileShare.Read) so this mapping doesn't itself block a later
             // Save/SaveIncremental to the same path from opening its own handle (see remarks).
-            fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            try
+            {
+                fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            }
+            catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+            {
+                // A symbolic link whose target is gone exists as a link but opens nothing.
+                throw new PlumePdfException("PLUME1002", $"File not found: '{path}'.", ex);
+            }
+
+            // The length comes from the open handle, not from the FileInfo: for a symbolic
+            // link, FileInfo.Length is the link's own size, while the handle is the target's.
+            _length = fileStream.Length;
+            if (_length == 0)
+            {
+                throw new PlumePdfException("PLUME1003", $"'{path}' is empty; there is nothing to memory-map. Retry with PdfOptions.PreferStreamIo if the file is expected to grow.");
+            }
+
             _file = MemoryMappedFile.CreateFromFile(fileStream, mapName: null, capacity: 0, MemoryMappedFileAccess.Read, HandleInheritability.None, leaveOpen: false);
             fileStream = null; // ownership transferred - the MemoryMappedFile now disposes it
         }
