@@ -356,6 +356,91 @@ public class CompressTests
     }
 
     [Fact]
+    public void FlateImageWithDecodeArray_ReencodedAsJpeg_RendersTheSame()
+    {
+        // An inverting /Decode on a Flate image: re-encoded as JPEG, the output must still
+        // render as the source did, here and in any other conforming renderer.
+        var pdf = OneImage(Image(extra: "/Decode [1 0 1 0 1 0]"), FlateSamples());
+        var source = pdf.Build();
+
+        var (result, output) = Compress(pdf, new PdfCompressOptions { Images = new PdfImageCompression { JpegQuality = 90 } });
+
+        Assert.Equal(ImageCompressionAction.Reencoded, Decision(result, 10).Action);
+        Assert.True(MeanImageDifference(source, output) < 4, $"Mean difference {MeanImageDifference(source, output)} over the image.");
+    }
+
+    [Fact]
+    public void SmallStream_WhoseFlateSavesLessThanTheFilterEntryAdds_StaysUnfiltered()
+    {
+        var content = $"{Draw()} q 1 0 0 1 9 9 cm /Im0 Do Q";
+        var raw = System.Text.Encoding.Latin1.GetBytes(content);
+        var flated = CompressionTestImages.Flate(raw);
+        Assert.InRange(raw.Length - flated.Length, 1, " /Filter /FlateDecode".Length);
+
+        var (_, output) = Compress(new ScanTestPdf().Stream(10, Image(), FlateSamples()).Page(3, content, xobjects: "/Im0 10 0 R"));
+
+        using var document = PdfDocument.Open(output);
+        var written = PageContent(document, 0);
+        Assert.Null(FilterOf(written));
+        Assert.Equal(raw, written.RawBytes.ToArray());
+    }
+
+    [Fact]
+    public void JpegWrittenAtTheFallbackQuality_IsSummarizedWithACount()
+    {
+        // A JPEG behind Flate: its own quality can't be read from the raw payload, so a
+        // downsample keeps it JPEG at the fallback quality.
+        var pdf = new ScanTestPdf()
+            .Stream(10, Image(filter: "[/FlateDecode /DCTDecode]"), CompressionTestImages.Flate(JpegSamples(quality: 75)))
+            .Stream(11, Image(filter: "[/FlateDecode /DCTDecode]"), CompressionTestImages.Flate(JpegSamples(quality: 70)))
+            .Stream(12, Image(filter: "/DCTDecode"), JpegSamples(quality: 75))
+            .Page(3, $"{Draw("A")} {Draw("B")} {Draw("C")}", xobjects: "/A 10 0 R /B 11 0 R /C 12 0 R");
+
+        var (result, _) = Compress(pdf, new PdfCompressOptions { Images = new PdfImageCompression { MaxDpi = 100 } });
+
+        Assert.Equal(ImageCompressionAction.Downsampled, Decision(result, 10).Action);
+        Assert.Null(Decision(result, 10).EstimatedSourceQuality);
+        var note = Assert.Single(result.Diagnostics, static d => d.Code == "PLUME6091");
+        Assert.Equal(DiagnosticSeverity.Info, note.Severity);
+        Assert.Contains("2 JPEG image", note.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void JpegQualityRequested_NeverReportsTheFallback()
+    {
+        var pdf = OneImage(Image(filter: "[/FlateDecode /DCTDecode]"), CompressionTestImages.Flate(JpegSamples(quality: 75)));
+
+        var (result, _) = Compress(pdf, AllLevers);
+
+        Assert.Equal(ImageCompressionAction.DownsampledAndReencoded, Decision(result, 10).Action);
+        Assert.DoesNotContain(result.Diagnostics, static d => d.Code == "PLUME6091");
+    }
+
+    // The mean absolute per-byte difference between two one-page files' renderings, over the
+    // 72-point square the image is drawn on (the rest of the page is white in both).
+    private static double MeanImageDifference(byte[] first, byte[] second)
+    {
+        static RasterImageFrame Render(byte[] pdf)
+        {
+            using var document = PdfDocument.Open(pdf);
+            return document.Pages[0].Rasterize(new PdfRasterizeOptions { Dpi = 144 }).Frames[0];
+        }
+
+        var a = Render(first);
+        var b = Render(second);
+        var x = a.Pixels.Span;
+        var y = b.Pixels.Span;
+        long total = 0;
+        for (var i = 0; i < x.Length; i++)
+        {
+            total += Math.Abs(x[i] - y[i]);
+        }
+
+        var side = Edge * 2;
+        return (double)total / (side * side * RasterImageFrame.BytesPerPixel(a.Format));
+    }
+
+    [Fact]
     public void XmpMetadataStream_IsNeverFlated()
     {
         var source = TempPath("source");

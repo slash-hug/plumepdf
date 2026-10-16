@@ -15,10 +15,12 @@ only by diffing output. Entries land in the same change as the behavior they des
   only when asked: `PdfCompressOptions.Images` with `MaxDpi` downsamples images whose effective
   DPI is above 1.5 × `MaxDpi` to `MaxDpi` (box filter, per axis, never upsampling), and
   `JpegQuality` re-encodes 8-bit gray and RGB images (ICC profiles kept) as baseline JPEG.
-  With only `MaxDpi`, a JPEG keeps its own estimated quality. Every rewritten stream follows
+  With only `MaxDpi`, a JPEG keeps its own estimated quality (85 when it can't be estimated,
+  `PLUME6091`). A Flate image's `/Decode` array is applied to its samples when it becomes a
+  JPEG, so it renders the same in every viewer. Every rewritten stream follows
   the never-larger rule. The returned `CompressionResult` gives input and output sizes and one
   `ImageCompressionDecision` per image (`Action`, `SkipReason`, sizes, effective DPI before and
-  after), plus result-scoped summary diagnostics with counts (`PLUME6085`–`PLUME6090`), never
+  after), plus result-scoped summary diagnostics with counts (`PLUME6085`–`PLUME6091`), never
   one entry per image and nothing on `doc.Diagnostics`. Bilevel and stencil images, 2/4/16-bit
   images, colour spaces other than gray and RGB, JPEG 2000/JBIG2/CCITT, inline,
   tiling-pattern-only, colour-key masked and `/Matte` soft-mask images are skipped with a
@@ -29,7 +31,7 @@ only by diffing output. Entries land in the same change as the behavior they des
   unless `AllowInvalidatingSignatures` strips it (new `PLUME6084`), an encrypted source
   (`PLUME5001`), `PdfOptions.Linearize` (`PLUME5018`), and same-path output over 2 GiB
   (`PLUME1006`). A version below 1.5 is raised to 1.5 for packing (`PLUME6088`); a PDF/A-1
-  source is not packed (`PLUME6089`). Path-only for now: a `Stream` overload and progress
+  source is not packed (`PLUME6089`) and keeps a 1.4 header unless the caller sets the version. Path-only for now: a `Stream` overload and progress
   reporting are not yet available. Recipe: `docs/cookbook/compress.md`.
 
 ### Fixed

@@ -41,7 +41,9 @@ internal sealed class CompressionHooks
 /// The effective options: with the lossless levers on, objects are packed
 /// (<see cref="PdfOptions.Optimize"/>) and a version below 1.5 is raised to "1.5"
 /// (<c>PLUME6088</c>), except for a PDF/A-1 source or output, which PDF/A-1 forbids object
-/// streams in (<c>PLUME6089</c>). With them off, packing is off whatever the caller set. An
+/// streams in (<c>PLUME6089</c>). With them off, packing is off whatever the caller set. A
+/// PDF/A-1 source is written with a 1.4 header, PDF/A-1's ceiling, unless the caller set
+/// <see cref="PdfOptions.PdfVersion"/> or <see cref="PdfOptions.PdfAConformance"/>. An
 /// unparseable version is not repaired: the save refuses it as it would any other.
 /// </para>
 /// <para>
@@ -187,12 +189,20 @@ internal static class CompressionEngine
 
     private static PdfOptions EffectiveOptions(PdfDocument document, PdfOptions options, CompressionSettings settings, DiagnosticCollection diagnostics)
     {
+        // A PDF/A-1 source keeps PDF/A-1's 1.4 header ceiling unless the caller chose a
+        // version; the default "1.7" would make the output fail its own conformance check.
+        var sourceIsPdfA1 = DeclaresPdfA1(document);
+        if (sourceIsPdfA1 && options.PdfAConformance == PdfAConformance.None && options.PdfVersion == PdfOptions.Default.PdfVersion)
+        {
+            options = options with { PdfVersion = "1.4" };
+        }
+
         if (!settings.Lossless)
         {
             return options.Optimize ? options with { Optimize = false } : options;
         }
 
-        if (options.PdfAConformance == PdfAConformance.A1b || DeclaresPdfA1(document))
+        if (options.PdfAConformance == PdfAConformance.A1b || sourceIsPdfA1)
         {
             diagnostics.Add(new PdfDiagnostic("PLUME6089", DiagnosticSeverity.Info, "Compress did not pack objects into object streams: the source or output is PDF/A-1, which forbids them. The other lossless levers still applied."));
             return options with { Optimize = false };
@@ -347,7 +357,8 @@ internal static class CompressionEngine
 
     // One summary per kind of outcome, with a count: per skip reason (PLUME6085, or PLUME6086
     // for decode failures, with the first failure's reason), images kept under the
-    // never-larger rule (PLUME6087), and the no-lossy-lever hint (PLUME6090).
+    // never-larger rule (PLUME6087), JPEGs written at the fallback quality (PLUME6091), and
+    // the no-lossy-lever hint (PLUME6090).
     private static void Summarize(List<ImageCompressionDecision> images, IReadOnlyDictionary<int, WrittenImage> written, CompressionSettings settings, DiagnosticCollection diagnostics)
     {
         foreach (var group in images.Where(static i => i.SkipReason is not null).GroupBy(static i => i.SkipReason!.Value).OrderBy(static g => g.Key))
@@ -369,6 +380,12 @@ internal static class CompressionEngine
         if (kept > 0)
         {
             diagnostics.Add(new PdfDiagnostic("PLUME6087", DiagnosticSeverity.Info, $"Compress kept the original encoding of {kept} image(s): the new encoding was not smaller."));
+        }
+
+        var fallback = written.Values.Count(static w => w.UsedFallbackQuality);
+        if (fallback > 0)
+        {
+            diagnostics.Add(new PdfDiagnostic("PLUME6091", DiagnosticSeverity.Info, $"Compress wrote {fallback} JPEG image(s) at quality {ImageReencoder.FallbackJpegQuality}: their own quality couldn't be estimated (non-standard quantization tables, or a JPEG behind another filter). Set PdfImageCompression.JpegQuality to choose the quality."));
         }
 
         if (settings.MaxDpi is null && settings.JpegQuality is null)

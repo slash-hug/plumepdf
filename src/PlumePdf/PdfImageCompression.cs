@@ -40,8 +40,10 @@ public sealed record PdfImageCompression
     /// included, or <see langword="null"/> (the default) to keep each image's encoding
     /// family. With only <see cref="MaxDpi"/> set, a downsampled JPEG is re-encoded at the
     /// quality estimated from its own quantization tables (clamped to 50–95; 85 when the
-    /// tables aren't IJG-scaled), so downsampling alone never also lowers its quality. Soft
-    /// masks are never JPEG-encoded.
+    /// tables aren't IJG-scaled or the JPEG sits behind another filter, counted in one
+    /// <c>PLUME6091</c> summary), so downsampling alone never also lowers its quality. A Flate
+    /// image with a <c>/Decode</c> array has the array applied to its samples when it becomes a
+    /// JPEG, so it renders the same in every viewer. Soft masks are never JPEG-encoded.
     /// </summary>
     /// <example>
     /// <code>

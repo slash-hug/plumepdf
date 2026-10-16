@@ -29,7 +29,10 @@ To make images smaller, opt in to the image levers. `MaxDpi` downsamples images 
 `MaxDpi`, with a box filter, never upsampling. `JpegQuality` re-encodes every eligible image
 (8-bit gray or RGB, ICC profiles kept) as baseline JPEG at that quality. With only `MaxDpi`
 set, a Flate image stays Flate and a JPEG stays JPEG at its own estimated quality
-(`EstimatedSourceQuality`). Every rewritten image follows the never-larger rule: a new
+(`EstimatedSourceQuality`); when that can't be estimated (non-standard quantization tables,
+or a JPEG behind another filter) it is written at quality 85, counted in one `PLUME6091`
+note. A Flate image with a `/Decode` array that becomes a JPEG has the array applied to its
+samples, so it renders the same in every viewer. Every rewritten image follows the never-larger rule: a new
 encoding that isn't smaller is dropped (`KeptOriginal`). Group `result.Images` by `Action`
 and `SkipReason` to tune:
 
@@ -195,7 +198,10 @@ Declared: PDF/A-2B, conformant (self-check): True
 
 The XMP metadata stream is never Flate-compressed. A PDF/A-1 source (or
 `PdfAConformance.A1b`) is not packed into object streams, which PDF/A-1 forbids
-(`PLUME6089`); the other levers still apply.
+(`PLUME6089`); the other levers still apply. A PDF/A-1 source is also written with a 1.4
+header, PDF/A-1's ceiling, unless you set `PdfOptions.PdfVersion` or
+`PdfOptions.PdfAConformance` yourself; an explicitly chosen higher version makes the output
+fail the PDF/A-1 self-check.
 
 ## Refusals
 

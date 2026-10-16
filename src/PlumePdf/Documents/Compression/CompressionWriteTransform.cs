@@ -12,6 +12,7 @@ namespace PlumePdf.Documents.Compression;
 /// <param name="WidthAfter">The written width.</param>
 /// <param name="HeightAfter">The written height.</param>
 /// <param name="EstimatedSourceQuality">A decoded JPEG source's estimated quality, clamped, or null.</param>
+/// <param name="UsedFallbackQuality">The written JPEG used <see cref="ImageReencoder.FallbackJpegQuality"/> because the source's quality couldn't be estimated.</param>
 internal sealed record WrittenImage(
     ImageReencodeOutcome Outcome,
     PlannedSkip Skip,
@@ -20,7 +21,8 @@ internal sealed record WrittenImage(
     long BytesAfter,
     int WidthAfter,
     int HeightAfter,
-    int? EstimatedSourceQuality);
+    int? EstimatedSourceQuality,
+    bool UsedFallbackQuality = false);
 
 /// <summary>
 /// The write-time half of a compressing save: offered each stream as the full-rewrite writer
@@ -43,6 +45,9 @@ internal sealed class CompressionWriteTransform : IStreamWriteTransform
     private static readonly PdfName XRefName = PdfName.Get("XRef");
     private static readonly PdfName ObjStmName = PdfName.Get("ObjStm");
     private static readonly PdfName FlateDecodeName = PdfName.Get("FlateDecode");
+
+    // What the written dictionary grows by: the " /Filter /FlateDecode" entry.
+    private static readonly int FilterEntryBytes = " /Filter /FlateDecode".Length;
 
     private readonly ObjectRegistry _objects;
     private readonly CompressionPlan _plan;
@@ -107,7 +112,8 @@ internal sealed class CompressionWriteTransform : IStreamWriteTransform
             written.RawBytes.Length,
             reencoded.Width,
             reencoded.Height,
-            reencoded.EstimatedSourceQuality);
+            reencoded.EstimatedSourceQuality,
+            reencoded.UsedFallbackQuality);
         return written;
     }
 
@@ -135,7 +141,8 @@ internal sealed class CompressionWriteTransform : IStreamWriteTransform
         }
     }
 
-    // The lossless lever: an unfiltered stream written FlateDecode when that is smaller. XMP
+    // The lossless lever: an unfiltered stream written FlateDecode when that is smaller once
+    // the /Filter entry it adds is counted, so a tiny stream never grows the object. XMP
     // metadata stays readable as plain text (PDF/A requires it unfiltered), an external-file
     // stream's data isn't in the file, and cross-reference and object streams are the writer's.
     private PdfStream FlateIfSmaller(PdfStream original)
@@ -150,7 +157,7 @@ internal sealed class CompressionWriteTransform : IStreamWriteTransform
         }
 
         var encoded = FlateEncoder.Encode(original.RawBytes, _options);
-        if (encoded.Length >= original.RawBytes.Length)
+        if (encoded.Length + FilterEntryBytes >= original.RawBytes.Length)
         {
             return original;
         }

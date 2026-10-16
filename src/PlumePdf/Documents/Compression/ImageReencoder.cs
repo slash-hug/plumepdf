@@ -63,9 +63,13 @@ internal sealed record ImageReencodeResult(
 /// when the new encoding is not smaller than the original stream's encoded bytes, the original
 /// is kept. The rewritten dictionary differs from the original only in <c>/Width</c>,
 /// <c>/Height</c> and <c>/Filter</c>, and drops <c>/DecodeParms</c> and <c>/Length</c>;
-/// <c>/ColorSpace</c> (an ICC profile reference included), <c>/Decode</c>, <c>/Intent</c>,
+/// <c>/ColorSpace</c> (an ICC profile reference included), <c>/Intent</c>,
 /// <c>/Interpolate</c>, <c>/SMask</c>, <c>/OC</c> and every other entry carry over unchanged,
-/// so it references a subset of what the original did.
+/// so it references a subset of what the original did. <c>/Decode</c> carries over too, except
+/// when a non-JPEG image becomes a JPEG: renderers don't all apply a JPEG's <c>/Decode</c>
+/// array (PlumePDF's rasterizer reads it only for CMYK polarity), so its mapping is applied to
+/// the samples before encoding and the entry is dropped, and the image looks the same
+/// everywhere.
 /// </remarks>
 internal static class ImageReencoder
 {
@@ -92,6 +96,7 @@ internal static class ImageReencoder
         var dictionary = image.Dictionary;
         int width, height;
         bool sourceIsJpeg, jpegOnly;
+        PdfArray? decodeArray;
         try
         {
             if (!NativeImageSamples.TryReadSize(dictionary, objects, out width, out height))
@@ -100,6 +105,9 @@ internal static class ImageReencoder
             }
 
             sourceIsJpeg = NativeImageSamples.IsDctEncoded(dictionary, objects, out jpegOnly);
+            decodeArray = dictionary.TryGetValue(PdfName.Decode, out var decode)
+                ? (decode is PdfReference reference ? objects[reference.Target] : decode) as PdfArray
+                : null;
         }
         catch (PlumePdfException ex)
         {
@@ -134,6 +142,7 @@ internal static class ImageReencoder
         decoded = null;
 
         var writeJpeg = toJpeg || (!request.SoftMask && sourceIsJpeg);
+        var bakeDecode = writeJpeg && !sourceIsJpeg && decodeArray is not null && TryApplyDecode(samples, channels, decodeArray);
         var usedFallback = false;
         byte[] encoded;
         if (writeJpeg)
@@ -164,19 +173,53 @@ internal static class ImageReencoder
             _ => ImageReencodeOutcome.Reencoded,
         };
 
-        var rewritten = Rewrite(dictionary, targetWidth, targetHeight, PdfName.Get(writeJpeg ? "DCTDecode" : "FlateDecode"));
+        var rewritten = Rewrite(dictionary, targetWidth, targetHeight, PdfName.Get(writeJpeg ? "DCTDecode" : "FlateDecode"), dropDecode: bakeDecode);
         return new ImageReencodeResult(new PdfStream(rewritten, encoded), outcome, PlannedSkip.None, null, targetWidth, targetHeight, estimated, usedFallback);
+    }
+
+    // Applies a /Decode array (one Dmin Dmax pair per channel, over 8-bit samples) in place,
+    // as a renderer would: v maps to Dmin + v * (Dmax - Dmin) / 255, rounded and clamped back
+    // to a byte. False, with the samples untouched, for an array that isn't 2 numbers per
+    // channel, which renderers ignore, so the entry stays as it was.
+    private static bool TryApplyDecode(byte[] samples, int channels, PdfArray decode)
+    {
+        if (decode.Count != 2 * channels || decode.Any(static v => v is not PdfNumber))
+        {
+            return false;
+        }
+
+        var tables = new byte[channels][];
+        for (var c = 0; c < channels; c++)
+        {
+            var min = ((PdfNumber)decode[2 * c]).Value;
+            var max = ((PdfNumber)decode[(2 * c) + 1]).Value;
+            var table = new byte[256];
+            for (var v = 0; v < 256; v++)
+            {
+                table[v] = (byte)Math.Clamp(Math.Round((min + (v * (max - min) / 255.0)) * 255.0, MidpointRounding.AwayFromZero), 0, 255);
+            }
+
+            tables[c] = table;
+        }
+
+        for (var i = 0; i < samples.Length; i++)
+        {
+            samples[i] = tables[i % channels][samples[i]];
+        }
+
+        return true;
     }
 
     // The original entries in their original order, with /Width, /Height and /Filter replaced
     // in place (/Filter appended when the source had none) and the entries that described the
-    // old encoding dropped. /Length is the writer's to set.
-    private static PdfDictionary Rewrite(PdfDictionary original, int width, int height, PdfName filter)
+    // old encoding dropped (and /Decode, when it was applied to the samples). /Length is the
+    // writer's to set.
+    private static PdfDictionary Rewrite(PdfDictionary original, int width, int height, PdfName filter, bool dropDecode)
     {
         var rewritten = new PdfDictionary();
         foreach (var (key, value) in original)
         {
-            if (ReferenceEquals(key, PdfName.DecodeParms) || ReferenceEquals(key, PdfName.Length))
+            if (ReferenceEquals(key, PdfName.DecodeParms) || ReferenceEquals(key, PdfName.Length) || (dropDecode && ReferenceEquals(key, PdfName.Decode)))
             {
                 continue;
             }

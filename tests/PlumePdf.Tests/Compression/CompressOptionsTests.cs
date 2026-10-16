@@ -141,6 +141,64 @@ public class CompressOptionsTests
         }
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void PdfA1bSource_StaysSelfCheckConformant(bool lossless)
+    {
+        var source = TempPath("source");
+        var output = TempPath();
+        try
+        {
+            var manuscript = new Manuscript
+            {
+                Title = "PDF/A-1b compress fixture",
+                CreateDate = new DateTimeOffset(2026, 10, 15, 12, 0, 0, TimeSpan.Zero),
+                ModifyDate = new DateTimeOffset(2026, 10, 15, 12, 0, 0, TimeSpan.Zero),
+                Sections = [new PlumePdf.Elements.Section { Body = new PlumePdf.Elements.Image(Enumerable.Range(0, 48).Select(static i => (byte)(i * 5)).ToArray(), 4, 4) }],
+            };
+            using (var document = manuscript.Render(new PdfOptions { PdfAConformance = PdfAConformance.A1b }))
+            {
+                document.Save(source);
+            }
+
+            Assert.True(Pdf.ValidatePdfA(source).IsConformant);
+
+            Pdf.Compress(source, output, new PdfCompressOptions { Lossless = lossless });
+
+            Assert.StartsWith("%PDF-1.4", Encoding.ASCII.GetString(File.ReadAllBytes(output), 0, 8), StringComparison.Ordinal);
+            var check = Pdf.ValidatePdfA(output);
+            Assert.True(check.IsConformant, string.Join("; ", check.Failures.Select(static f => $"{f.RuleId}: {f.Message}")));
+        }
+        finally
+        {
+            Delete(source, output);
+        }
+    }
+
+    [Fact]
+    public void PdfA1Source_KeepsAnExplicitlyChosenVersion()
+    {
+        var source = TempPath("source");
+        var output = TempPath();
+        try
+        {
+            using (var document = PdfDocument.Open(OneImage(Image(), FlateSamples()).Build()))
+            {
+                document.SetXmpMetadata(new XmpPacket { Conformance = PdfAConformance.A1b });
+                document.Save(source);
+            }
+
+            Pdf.Compress(source, output, options: PdfOptions.Default with { PdfVersion = "1.6" });
+
+            Assert.StartsWith("%PDF-1.6", Encoding.ASCII.GetString(File.ReadAllBytes(output), 0, 8), StringComparison.Ordinal);
+        }
+        finally
+        {
+            Delete(source, output);
+        }
+    }
+
     [Fact]
     public void Linearize_IsRefusedBeforeAnythingIsRead()
     {
