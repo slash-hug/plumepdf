@@ -17,7 +17,7 @@ Important conventions: `SaveIncremental` is the default save (append-only, signa
 ## Quick reference
 
 - Open/inspect: `PdfDocument.Open(path)` → `doc.Pages`, `doc.Diagnostics`, `doc.Objects`
-- Verbs: `Pdf.Merge`, `Pdf.Split`, `Pdf.ExtractText`, `Pdf.FillForm`, `Pdf.FlattenForm`, `Pdf.Sign`, `Pdf.Verify`, `Pdf.Redact`, `Pdf.ValidatePdfA`, `Pdf.Linearize`, `Pdf.Stamp`, `Pdf.Rasterize`, `Pdf.FromImages`
+- Verbs: `Pdf.Merge`, `Pdf.Split`, `Pdf.ExtractText`, `Pdf.FillForm`, `Pdf.FlattenForm`, `Pdf.Sign`, `Pdf.Verify`, `Pdf.Redact`, `Pdf.Compress`, `Pdf.ValidatePdfA`, `Pdf.Linearize`, `Pdf.Stamp`, `Pdf.Rasterize`, `Pdf.FromImages`
 - Create: `PdfDocument.Compose(page => ...)` or `new Manuscript { ... }.Render(options)`
 - PDF/A: `PdfOptions.PdfAConformance = PdfAConformance.A2b`; validate with `Pdf.ValidatePdfA`
 - Render: `Pdf.Rasterize(path, new PdfRasterizeOptions { Dpi = 150 })` or `doc.Pages[i].Rasterize()` → `RasterImage`; decode images with `RasterImage.Decode(bytes)`

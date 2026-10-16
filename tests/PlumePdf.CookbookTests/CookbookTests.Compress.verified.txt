@@ -1,0 +1,6 @@
+﻿Lossless smaller: False
+Lossless image actions: Unchanged
+No-lever hint (PLUME6090): True
+Saved bytes: True
+DownsampledAndReencoded : 1
+900x900 at 450 DPI -> 400x400 at 200 DPI
