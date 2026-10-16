@@ -208,7 +208,9 @@ fail the PDF/A-1 self-check.
 ## Refusals
 
 - A signed source is refused (`PLUME6084`) unless `AllowInvalidatingSignatures = true`, which
-  strips the signatures so the output is honestly unsigned.
+  strips the signatures so the output is honestly unsigned: the signature fields and their
+  widgets go, and so do the form's `/SigFlags` (once no signature field is left), `/Perms` and
+  `/DSS`. `result.SignaturesStripped` says how many were removed.
 - An encrypted source is refused (`PLUME5001`), and so is `PdfOptions.Linearize`
   (`PLUME5018`): compress first, then linearize the result if you need fast web view.
 - `outputPath` may equal `path`, but the source is then buffered into memory first, and a

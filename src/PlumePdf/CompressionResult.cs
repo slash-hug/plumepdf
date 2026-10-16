@@ -26,12 +26,13 @@ namespace PlumePdf;
 /// </example>
 public sealed class CompressionResult
 {
-    internal CompressionResult(long inputBytes, long outputBytes, IReadOnlyList<ImageCompressionDecision> images, DiagnosticCollection diagnostics)
+    internal CompressionResult(long inputBytes, long outputBytes, IReadOnlyList<ImageCompressionDecision> images, DiagnosticCollection diagnostics, int signaturesStripped)
     {
         InputBytes = inputBytes;
         OutputBytes = outputBytes;
         Images = images;
         Diagnostics = diagnostics;
+        SignaturesStripped = signaturesStripped;
     }
 
     /// <summary>The input file's size, in bytes.</summary>
@@ -48,6 +49,16 @@ public sealed class CompressionResult
     /// in page order.
     /// </summary>
     public IReadOnlyList<ImageCompressionDecision> Images { get; }
+
+    /// <summary>
+    /// The number of existing signature and document-timestamp dictionaries stripped (non-zero
+    /// only when <see cref="PdfCompressOptions.AllowInvalidatingSignatures"/> was set and the
+    /// source was signed): the signature fields are removed from the AcroForm <c>/Fields</c>
+    /// tree, their widget annotations from page <c>/Annots</c>, the form's <c>/SigFlags</c>
+    /// once no signature field is left, and the catalog's <c>/Perms</c> and <c>/DSS</c>, leaving
+    /// the output honestly unsigned.
+    /// </summary>
+    public int SignaturesStripped { get; }
 
     /// <summary>The call's result-scoped diagnostics: summaries with counts (see this type's remarks), plus anything the placement scan reported.</summary>
     public DiagnosticCollection Diagnostics { get; }

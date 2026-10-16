@@ -123,10 +123,7 @@ internal static class CompressionEngine
         var settings = new CompressionSettings(compress.Lossless, compress.Images?.MaxDpi, compress.Images?.JpegQuality);
         var effective = EffectiveOptions(document, saveOptions, settings, diagnostics);
 
-        if (signatures.Count > 0)
-        {
-            SignatureStripper.Strip(document, signatures);
-        }
+        var signaturesStripped = signatures.Count > 0 ? SignatureStripper.Strip(document, signatures) : 0;
 
         hooks?.Planning?.Invoke();
         var plan = CompressionPlanner.Plan(document, settings, effective, cancellationToken);
@@ -140,7 +137,7 @@ internal static class CompressionEngine
 
         var images = Decisions(document.Objects, plan, transform.Written);
         Summarize(images, transform.Written, settings, diagnostics);
-        return new CompressionResult(inputBytes, new FileInfo(outputPath).Length, images, diagnostics);
+        return new CompressionResult(inputBytes, new FileInfo(outputPath).Length, images, diagnostics, signaturesStripped);
     }
 
     /// <summary>The public skip reason for a planned one; every reason but <see cref="PlannedSkip.None"/> has one of the same name.</summary>

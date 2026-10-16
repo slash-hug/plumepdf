@@ -55,6 +55,7 @@ public class CompressSignatureTests
 
             var result = CompressionEngine.Run(document, signed, output, new PdfCompressOptions { AllowInvalidatingSignatures = true }, PdfOptions.Default, CancellationToken.None);
 
+            Assert.Equal(1, result.SignaturesStripped);
             using var compressed = PdfDocument.Open(output);
             Assert.Empty(compressed.Signatures);
             Assert.False(compressed.Catalog!.Dictionary.ContainsKey(PdfName.Perms));
@@ -66,6 +67,14 @@ public class CompressSignatureTests
         {
             Delete(signed, output);
         }
+    }
+
+    [Fact]
+    public void UnsignedSource_StripsNothing()
+    {
+        var (result, _) = Compress(OneImage(Image(), FlateSamples()), new PdfCompressOptions { AllowInvalidatingSignatures = true });
+
+        Assert.Equal(0, result.SignaturesStripped);
     }
 
     [Fact]

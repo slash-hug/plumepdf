@@ -29,7 +29,8 @@ only by diffing output. Entries land in the same change as the behavior they des
   refusal, even under `PdfOptions.Strict`. Memory is bounded by the largest image (about five
   times its decoded size), and output goes through the usual temp-file-then-move save, so a
   failure or cancellation leaves no partial file. Refused before any work: a signed source
-  unless `AllowInvalidatingSignatures` strips it (new `PLUME6084`), an encrypted source
+  unless `AllowInvalidatingSignatures` strips it (new `PLUME6084`; the count is
+  `CompressionResult.SignaturesStripped`), an encrypted source
   (`PLUME5001`), `PdfOptions.Linearize` (`PLUME5018`), and same-path output over 2 GiB
   (`PLUME1006`); under `PdfOptions.Strict`, a reference the document can't resolve refuses the
   save with `PLUME2060`, as `Save` does. A version below 1.5 is raised to 1.5 for packing (`PLUME6088`); a PDF/A-1
