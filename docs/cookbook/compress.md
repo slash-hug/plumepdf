@@ -136,9 +136,11 @@ byte-identical to what the path overload writes for the same input.
 - **Input:** a seekable stream is read in place from position 0, through a small window — it
   is never buffered whole. A non-seekable one (an HTTP response body, a blob download) is
   first copied to a temporary file in `Path.GetTempPath()`, never into memory, and that file is
-  deleted when the call returns or throws, cancellation included. Leave room in the temporary
-  directory for a copy of the input. `result.InputBytes` is the stream's length, or the bytes
-  copied.
+  deleted when the call returns or throws, cancellation included. On Linux and macOS that copy
+  is readable by its owner only. Leave room in the temporary directory for a copy of the input.
+  `result.InputBytes` is the stream's length, or the bytes copied. If the input is already a
+  file, pass its path instead: the path overloads memory-map the file, which is faster than
+  reading a `FileStream` through the window.
 - **Output:** need not be seekable. Writing starts at the stream's current position and the
   PDF's offsets count from there, so a stream already positioned past 0 holds a valid PDF from
   that point on. The output is flushed at the end; `result.OutputBytes` is the bytes written.

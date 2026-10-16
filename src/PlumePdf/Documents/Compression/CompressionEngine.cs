@@ -304,8 +304,18 @@ internal static class CompressionEngine
         return path;
     }
 
-    private static FileStream CreateSpool(string path, bool asynchronous = false) =>
-        new(path, new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None, BufferSize = 0, Options = asynchronous ? FileOptions.Asynchronous : FileOptions.None });
+    // The spool holds the caller's whole document in a shared temp directory, so on Unix it is
+    // created readable by its owner only (Windows' per-user temp directory already is).
+    private static FileStream CreateSpool(string path, bool asynchronous = false)
+    {
+        var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None, BufferSize = 0, Options = asynchronous ? FileOptions.Asynchronous : FileOptions.None };
+        if (!OperatingSystem.IsWindows())
+        {
+            options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        }
+
+        return new FileStream(path, options);
+    }
 
     // Stream.CopyTo has no cancellation; this checks the token between chunks.
     private static void CopyTo(Stream input, Stream file, CancellationToken cancellationToken)

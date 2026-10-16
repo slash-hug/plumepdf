@@ -598,6 +598,7 @@ public static class Pdf
     /// <param name="options">Options controlling the open and save. Defaults to <see cref="PdfOptions.Default"/>.</param>
     /// <param name="cancellationToken">Stops the call while copying the input, or between pages or streams.</param>
     /// <returns>The same report <see cref="Compress(Stream, Stream, PdfCompressOptions?, PdfOptions?)"/> returns.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="input"/> or <paramref name="output"/> is null.</exception>
     /// <exception cref="ArgumentException">See <see cref="Compress(Stream, Stream, PdfCompressOptions?, PdfOptions?)"/>.</exception>
     /// <exception cref="PlumePdfException">See <see cref="Compress(Stream, Stream, PdfCompressOptions?, PdfOptions?)"/>.</exception>
     /// <example>

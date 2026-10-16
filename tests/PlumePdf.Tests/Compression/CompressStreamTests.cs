@@ -57,6 +57,44 @@ public class CompressStreamTests
     }
 
     [Fact]
+    public void NonSeekableInput_SpoolIsReadableByItsOwnerOnly()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        // The spool holds the caller's whole document in a shared temp directory, so on Unix
+        // nobody but the owner may read it.
+        var source = OneImage(Image(), FlateSamples()).Build();
+        using var input = new ForwardOnlyStream(new MemoryStream(source), writable: false);
+        using var output = new MemoryStream();
+        string? spool = null;
+        UnixFileMode? mode = null;
+        var hooks = new CompressionHooks
+        {
+            Spooled = path => spool = path,
+            Planning = () => mode = OperatingSystem.IsWindows() ? null : File.GetUnixFileMode(spool!),
+        };
+
+        CompressionEngine.Compress(input, output, AllLevers, null, CancellationToken.None, hooks);
+
+        Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, mode);
+    }
+
+    [Fact]
+    public void Output_IsFlushedOnce()
+    {
+        var source = OneImage(Image(), FlateSamples()).Build();
+        using var input = new MemoryStream(source);
+        using var output = new ForwardOnlyStream(new MemoryStream(), readable: false);
+
+        Pdf.Compress(input, output, AllLevers);
+
+        Assert.Equal(1, output.Flushes);
+    }
+
+    [Fact]
     public void NonSeekableInput_SpoolIsDeleted_WhenTheWriteFails()
     {
         using var input = new ForwardOnlyStream(new MemoryStream(TwoImages().Build()), writable: false);

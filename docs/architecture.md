@@ -162,7 +162,7 @@ caller's stream, which can't be atomic: refusals still come before the first byt
 failure while writing leaves a partial output for the caller to discard. A seekable input
 stream opens in place (`PdfDocument.Open(Stream)`); a non-seekable one is spooled to a
 temporary file first, deleted when the call ends, and opened like a path. For the same input
-and options the two targets write the same bytes.
+and options, under `Deterministic`, the two targets write the same bytes.
 
 **Mutation and the dirty-object set (Phase 4):**
 `ObjectRegistry` (`doc.Objects`) gains a general-purpose `MarkDirty(reference)` (for a

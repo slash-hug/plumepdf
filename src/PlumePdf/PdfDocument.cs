@@ -671,8 +671,8 @@ public sealed class PdfDocument : IDisposable
         // The writers issue many small writes; a caller's stream (an upload, say) may not
         // buffer them. Not disposed: that would close the caller's stream.
         var buffered = new BufferedStream(output, 1 << 16);
+        // WriteSave's own flush reaches through the buffer to the caller's stream, once.
         var written = WriteSave(buffered, save, transform, aliases);
-        buffered.Flush();
         CompleteSave(save);
         return written;
     }
