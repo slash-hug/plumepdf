@@ -469,8 +469,11 @@ public static class Pdf
     /// <see cref="PdfCompressOptions.AllowInvalidatingSignatures"/> is not set
     /// (<c>PLUME6084</c>); or <paramref name="outputPath"/> is <paramref name="path"/> and the
     /// memory-mapped source is over 2 GiB (<c>PLUME1006</c>). An image that can't be decoded is never a
-    /// refusal, even under <see cref="PdfOptions.Strict"/>: it is written unchanged and
-    /// reported (<c>PLUME6086</c>).
+    /// refusal, even under <see cref="PdfOptions.Strict"/>: its samples are written unchanged
+    /// and it is reported (<c>PLUME6086</c>). Under <see cref="PdfOptions.Strict"/>, a
+    /// reference the document can't resolve (an image's <c>/SMask</c> naming a missing object,
+    /// say) refuses the save with <c>PLUME2060</c>, as <see cref="PdfDocument.Save(string, PdfOptions?)"/>
+    /// does; that refusal comes after planning, and no output file is written.
     /// </exception>
     /// <example>
     /// <code>

@@ -143,7 +143,7 @@ Images compression doesn't resample or re-encode are reported as `Skipped` with 
 |---|---|
 | `Bilevel`, `StencilMask` | 1-bit images and stencil masks: resampling destroys text |
 | `TilingPatternOnly` | drawn only inside tiling patterns, where the drawn size isn't measured |
-| `UnmeasuredPlacement` | drawn where the effective DPI can't be measured (a Type 3 glyph, a zero-area placement, or a page whose content walk was cut short — `PLUME6025`, `PLUME7010`) |
+| `UnmeasuredPlacement` | drawn where the effective DPI can't be measured (a Type 3 glyph, a zero-area placement, or a page whose content walk was cut short — `PLUME6025`, `PLUME7010`, or a content stream the scan couldn't decode) |
 | `NoPlacement` | listed in a page's resources but never drawn |
 | `UnsupportedBitDepth` | 2-, 4- or 16-bit samples |
 | `UnsupportedColorSpace` | a colour space other than gray, RGB or a 1- or 3-component ICC profile |
@@ -155,10 +155,11 @@ Images compression doesn't resample or re-encode are reported as `Skipped` with 
 | `ResourceLimit` | decoding would exceed `PdfOptions.MaxImagePixels` or `MaxDecompressedStreamBytes` — raise them to include it |
 | `DecodeFailed` | the samples couldn't be decoded (`PLUME6086`) |
 
-An image that fails to decode is written unchanged with a `PLUME6086` warning — never a
+An image that fails to decode keeps its samples unchanged, with a `PLUME6086` warning — never a
 refusal, even under `PdfOptions.Strict`. There is no continuous-tone classifier yet: with
 `JpegQuality` set, screenshots and line art are re-encoded as JPEG too, so check the result
-on documents that mix scans with drawings.
+on documents that mix scans with drawings. A page's `/Thumb` thumbnail gets no entry in
+`result.Images`: no image lever touches it, and it is written as any other stream is.
 
 ## Tagged and PDF/A sources
 
@@ -212,7 +213,10 @@ fail the PDF/A-1 self-check.
 - `outputPath` may equal `path`, but the source is then buffered into memory first, and a
   source over 2 GiB is refused before any work (`PLUME1006`). Write to a different path.
 
-Every refusal happens before anything is planned or written.
+Every refusal above happens before anything is planned or written. One more comes later:
+under `PdfOptions.Strict`, a reference the document can't resolve (an image's `/SMask`
+naming a missing object, say) refuses the save with `PLUME2060`, exactly as `Save` does,
+after planning; no output file is written.
 
 ## Memory, disk and time
 

@@ -51,7 +51,7 @@ public enum ImageSkipReason
     /// <summary>Used both as another image's soft mask and as an image in its own right; the two uses can't be sized apart.</summary>
     SharedAsMask,
 
-    /// <summary>Its samples couldn't be decoded; the image is written unchanged and a <c>PLUME6086</c> warning carries the decoder's reason. Never a refusal, even under <see cref="PdfOptions.Strict"/>.</summary>
+    /// <summary>Its samples couldn't be decoded; they are written unchanged and a <c>PLUME6086</c> warning carries the decoder's reason. Never a refusal, even under <see cref="PdfOptions.Strict"/>.</summary>
     DecodeFailed,
 
     /// <summary>Decoding it would exceed <see cref="PdfOptions.MaxImagePixels"/> or <see cref="PdfOptions.MaxDecompressedStreamBytes"/>; raise the cap to include it, at the memory cost the cookbook describes.</summary>

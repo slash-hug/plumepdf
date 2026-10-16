@@ -35,7 +35,9 @@ internal sealed class CompressionHooks
 /// an encrypted source (<c>PLUME5001</c>), a signed source without
 /// <see cref="PdfCompressOptions.AllowInvalidatingSignatures"/> (<c>PLUME6084</c>), and saving
 /// over a source too large to buffer (<c>PLUME1006</c>). Signatures are stripped before the
-/// save, so the save's own full-rewrite signature warning never fires.
+/// save, so the save's own full-rewrite signature warning never fires. The save itself can
+/// still refuse as any save does: under <see cref="PdfOptions.Strict"/>, a reference the
+/// document can't resolve throws <c>PLUME2060</c> from the writer's discovery walk.
 /// </para>
 /// <para>
 /// The effective options: with the lossless levers on, objects are packed
@@ -368,11 +370,11 @@ internal static class CompressionEngine
             if (group.Key == ImageSkipReason.DecodeFailed)
             {
                 var detail = first.SourceReference is { } reference && written.TryGetValue(reference.Number, out var record) ? record.Detail : null;
-                diagnostics.Add(new PdfDiagnostic("PLUME6086", DiagnosticSeverity.Warning, $"Compress could not decode {count} image(s) and wrote them unchanged ({group.Key}); the first, object {first.SourceReference?.Number}: {detail ?? "no detail"}.", subject: first.SourceReference));
+                diagnostics.Add(new PdfDiagnostic("PLUME6086", DiagnosticSeverity.Warning, $"Compress could not decode {count} image(s) and wrote their samples unchanged ({group.Key}); the first, object {first.SourceReference?.Number}: {detail ?? "no detail"}.", subject: first.SourceReference));
             }
             else
             {
-                diagnostics.Add(new PdfDiagnostic("PLUME6085", DiagnosticSeverity.Info, $"Compress left {count} image(s) unchanged ({group.Key}): {Describe(group.Key)} See CompressionResult.Images for each one.", subject: first.SourceReference));
+                diagnostics.Add(new PdfDiagnostic("PLUME6085", DiagnosticSeverity.Info, $"Compress left the samples of {count} image(s) unchanged ({group.Key}): {Describe(group.Key)} See CompressionResult.Images for each one.", subject: first.SourceReference));
             }
         }
 

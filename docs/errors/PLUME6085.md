@@ -21,12 +21,14 @@ var result = Pdf.Compress("scan.pdf", "scan-small.pdf", new PdfCompressOptions
 {
     Images = new PdfImageCompression { MaxDpi = 200 },
 });
-// result.Diagnostics: PLUME6085 "Compress left 12 image(s) unchanged (Bilevel): ..."
+// result.Diagnostics: PLUME6085 "Compress left the samples of 12 image(s) unchanged (Bilevel): ..."
 ```
 
-**Fix:** None is needed for most reasons — the image is written exactly as it was. For
+**Fix:** None is needed for most reasons — the image's samples are written unchanged (with
+the lossless levers on, an unfiltered stream may still be Flate-compressed losslessly; see
+`BytesAfter`). For
 `ResourceLimit`, raise `PdfOptions.MaxImagePixels` or `PdfOptions.MaxDecompressedStreamBytes`
 (decoding needs roughly five times the decoded image size in memory).
 
-**Recovery attempted:** The image is written unchanged; the rest of the document is
+**Recovery attempted:** The image's samples are written unchanged; the rest of the document is
 compressed as asked.

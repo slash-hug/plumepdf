@@ -30,7 +30,8 @@ only by diffing output. Entries land in the same change as the behavior they des
   failure or cancellation leaves no partial file. Refused before any work: a signed source
   unless `AllowInvalidatingSignatures` strips it (new `PLUME6084`), an encrypted source
   (`PLUME5001`), `PdfOptions.Linearize` (`PLUME5018`), and same-path output over 2 GiB
-  (`PLUME1006`). A version below 1.5 is raised to 1.5 for packing (`PLUME6088`); a PDF/A-1
+  (`PLUME1006`); under `PdfOptions.Strict`, a reference the document can't resolve refuses the
+  save with `PLUME2060`, as `Save` does. A version below 1.5 is raised to 1.5 for packing (`PLUME6088`); a PDF/A-1
   source is not packed (`PLUME6089`) and keeps a 1.4 header unless the caller sets the version. Path-only for now: a `Stream` overload and progress
   reporting are not yet available. Recipe: `docs/cookbook/compress.md`.
 

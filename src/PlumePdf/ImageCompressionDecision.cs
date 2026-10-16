@@ -2,8 +2,11 @@ namespace PlumePdf;
 
 /// <summary>
 /// What <c>Pdf.Compress</c> did to one image, and why (<see cref="CompressionResult.Images"/>).
-/// Every image XObject the output's pages reach gets one, soft masks included, as does every
-/// inline image (one per occurrence) and every image written as a duplicate of another.
+/// Every image XObject the output's pages draw or list, through their content, Form XObjects,
+/// annotation appearances and soft-mask groups, gets one, soft masks included, as does every
+/// inline image (one per occurrence) and every image written as a duplicate of another. A
+/// page's <c>/Thumb</c> thumbnail is not reported: no image lever touches it, and it is written
+/// as any other stream is.
 /// </summary>
 /// <remarks>
 /// Object references are the <em>input</em> document's: a full rewrite renumbers every object,
