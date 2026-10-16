@@ -503,6 +503,7 @@ Compress's per-stream rule: a resampled, re-encoded or Flate-compressed stream i
 only if it is smaller than the original stream (for a Flate-compressed stream, counting the
 `/Filter` entry it adds to the dictionary); otherwise the original is written unchanged
 (`ImageCompressionAction.KeptOriginal` for an image, `PLUME6087`). It is why Compress can't
-make an individual stream bigger, though packing can still add a few bytes to a tiny file.
+make an individual stream bigger, though on a very small file the object-stream and
+cross-reference-stream structure can still add up to a few hundred bytes.
 _Avoid_: resample budget, size guard (neither names the rule: there is no budget, only a
 per-stream comparison)

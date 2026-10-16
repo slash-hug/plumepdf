@@ -44,9 +44,13 @@ internal sealed class CompressionHooks
 /// (<see cref="PdfOptions.Optimize"/>) and a version below 1.5 is raised to "1.5"
 /// (<c>PLUME6088</c>), except for a PDF/A-1 source or output, which PDF/A-1 forbids object
 /// streams in (<c>PLUME6089</c>). With them off, packing is off whatever the caller set. A
-/// PDF/A-1 source is written with a 1.4 header, PDF/A-1's ceiling, unless the caller set
-/// <see cref="PdfOptions.PdfVersion"/> or <see cref="PdfOptions.PdfAConformance"/>. An
-/// unparseable version is not repaired: the save refuses it as it would any other.
+/// PDF/A-1 source is written with a 1.4 header so PlumePDF's own PDF/A self-check, which
+/// requires 1.4 for PDF/A-1, still passes on the output (PDF/A-1 itself doesn't require that
+/// header). That happens whenever <see cref="PdfOptions.PdfAConformance"/> is
+/// <see cref="PdfAConformance.None"/> and <see cref="PdfOptions.PdfVersion"/> is the default
+/// "1.7"; an explicit "1.7" can't be told apart from the default, so only another version or a
+/// conformance overrides it. An unparseable version is not repaired: the save refuses it as it
+/// would any other.
 /// </para>
 /// <para>
 /// The result's diagnostics are result-scoped summaries, one per kind of outcome with a
@@ -188,8 +192,9 @@ internal static class CompressionEngine
 
     private static PdfOptions EffectiveOptions(PdfDocument document, PdfOptions options, CompressionSettings settings, DiagnosticCollection diagnostics)
     {
-        // A PDF/A-1 source keeps PDF/A-1's 1.4 header ceiling unless the caller chose a
-        // version; the default "1.7" would make the output fail its own conformance check.
+        // A PDF/A-1 source keeps a 1.4 header unless the caller chose a version other than the
+        // default (an explicit "1.7" looks the same) or a conformance: PlumePDF's own PDF/A
+        // self-check requires 1.4 for PDF/A-1, and the default "1.7" would fail it.
         var sourceIsPdfA1 = DeclaresPdfA1(document);
         if (sourceIsPdfA1 && options.PdfAConformance == PdfAConformance.None && options.PdfVersion == PdfOptions.Default.PdfVersion)
         {

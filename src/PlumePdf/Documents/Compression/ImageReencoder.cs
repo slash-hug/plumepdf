@@ -70,7 +70,9 @@ internal sealed record ImageReencodeResult(
 /// when a non-JPEG image becomes a JPEG: renderers don't all apply a JPEG's <c>/Decode</c>
 /// array (PlumePDF's rasterizer reads it only for CMYK polarity), so its mapping is applied to
 /// the samples before encoding and the entry is dropped, and the image looks the same
-/// everywhere.
+/// everywhere. A dropped <c>/DecodeParms</c> or <c>/Decode</c> that was an indirect object is
+/// still written, unreferenced: the writer has already numbered it by the time the image is
+/// offered. It is a few bytes.
 /// </remarks>
 internal static class ImageReencoder
 {

@@ -33,7 +33,9 @@ internal sealed record WrittenImage(
 /// <remarks>
 /// A stream with no plan entry gets no image lever, only the lossless one. Every replacement
 /// is a new dictionary built from the original's entries, so it references a subset of what
-/// the original did, as the writer requires. A failure to read or decode one image skips that
+/// the original did, as the writer requires; an indirect object only the dropped entries named
+/// (a re-encoded image's <c>/DecodeParms</c>, or a baked <c>/Decode</c>) is still written,
+/// unreferenced. A failure to read or decode one image skips that
 /// image (<see cref="PlannedSkip.DecodeFailed"/>) rather than failing the save, under
 /// <see cref="PdfOptions.Strict"/> too.
 /// </remarks>

@@ -7,7 +7,8 @@ lossy happens unless you ask for it.
 **Set expectations first:** with no options, compression is lossless — unfiltered streams are
 Flate-compressed, objects are packed into object streams, and byte-identical streams are
 written once. That rarely shrinks a document whose size is mostly images (scans), and a
-small, already-compact file can even grow by a few bytes. The result says so with a
+very small, already-compact file can even grow, by up to a few hundred bytes of object-stream
+and cross-reference-stream structure. The result says so with a
 `PLUME6090` note; check `result.SavedBytes`:
 
 <!-- snippet: compress-lossless -->
@@ -159,8 +160,16 @@ Images compression doesn't resample or re-encode are reported as `Skipped` with 
 An image that fails to decode keeps its samples unchanged, with a `PLUME6086` warning — never a
 refusal, even under `PdfOptions.Strict`. There is no continuous-tone classifier yet: with
 `JpegQuality` set, screenshots and line art are re-encoded as JPEG too, so check the result
-on documents that mix scans with drawings. A page's `/Thumb` thumbnail gets no entry in
-`result.Images`: no image lever touches it, and it is written as any other stream is.
+on documents that mix scans with drawings.
+
+`result.Images` covers the images the pages reach: through their content and resources, Form
+XObjects, annotation appearances, soft-mask groups, patterns and Type 3 glyphs, plus those
+images' soft masks. An image reached only some other way gets no entry and no image lever: an
+explicit stencil `/Mask` stream (unless a page also draws it), a page's or a file
+specification's `/Thumb` thumbnail, and an image reachable only through `/AcroForm /DR` or
+another path outside the pages. It is written as any other stream is: unchanged, except that
+the lossless levers still apply (an unfiltered stream may be Flate-compressed, and a
+byte-identical copy is written once).
 
 ## Tagged and PDF/A sources
 
@@ -201,9 +210,11 @@ Declared: PDF/A-2B, conformant (self-check): True
 The XMP metadata stream is never Flate-compressed. A PDF/A-1 source (or
 `PdfAConformance.A1b`) is not packed into object streams, which PDF/A-1 forbids
 (`PLUME6089`); the other levers still apply. A PDF/A-1 source is also written with a 1.4
-header, PDF/A-1's ceiling, unless you set `PdfOptions.PdfVersion` or
-`PdfOptions.PdfAConformance` yourself; an explicitly chosen higher version makes the output
-fail the PDF/A-1 self-check.
+header, so that `Pdf.ValidatePdfA`, which requires 1.4 for PDF/A-1, still passes on the output
+(PDF/A-1 itself doesn't require that header). That happens whenever `PdfOptions.PdfAConformance`
+is `None` and `PdfOptions.PdfVersion` is the default `"1.7"`; an explicit `"1.7"` can't be told
+apart from the default and gets 1.4 too, so only another version, or a `PdfAConformance`,
+overrides it. A version above 1.4 makes the output fail that self-check.
 
 ## Refusals
 

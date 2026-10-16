@@ -34,7 +34,8 @@ only by diffing output. Entries land in the same change as the behavior they des
   (`PLUME5001`), `PdfOptions.Linearize` (`PLUME5018`), and same-path output over 2 GiB
   (`PLUME1006`); under `PdfOptions.Strict`, a reference the document can't resolve refuses the
   save with `PLUME2060`, as `Save` does. A version below 1.5 is raised to 1.5 for packing (`PLUME6088`); a PDF/A-1
-  source is not packed (`PLUME6089`) and keeps a 1.4 header unless the caller sets the version. Path-only for now: a `Stream` overload and progress
+  source is not packed (`PLUME6089`) and keeps a 1.4 header, which PlumePDF's own PDF/A self-check requires, unless the caller sets
+  a version other than the default 1.7 or a `PdfAConformance`. Path-only for now: a `Stream` overload and progress
   reporting are not yet available. Recipe: `docs/cookbook/compress.md`.
 
 ### Fixed

@@ -41,7 +41,7 @@ public sealed class CompressionResult
     /// <summary>The output file's size, in bytes.</summary>
     public long OutputBytes { get; }
 
-    /// <summary><see cref="InputBytes"/> minus <see cref="OutputBytes"/>; negative when the output is larger (a small, already-compact file can grow by a few bytes of rewritten structure).</summary>
+    /// <summary><see cref="InputBytes"/> minus <see cref="OutputBytes"/>; negative when the output is larger (on a very small, already-compact file the object-stream and cross-reference-stream structure can add up to a few hundred bytes).</summary>
     public long SavedBytes => InputBytes - OutputBytes;
 
     /// <summary>

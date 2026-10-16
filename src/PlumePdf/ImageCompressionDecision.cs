@@ -2,17 +2,27 @@ namespace PlumePdf;
 
 /// <summary>
 /// What <c>Pdf.Compress</c> did to one image, and why (<see cref="CompressionResult.Images"/>).
-/// Every image XObject the output's pages draw or list, through their content, Form XObjects,
-/// annotation appearances and soft-mask groups, gets one, soft masks included, as does every
-/// inline image (one per occurrence) and every image written as a duplicate of another. A
-/// page's <c>/Thumb</c> thumbnail is not reported: no image lever touches it, and it is written
-/// as any other stream is.
+/// Every image XObject the output's pages draw or list, through their content and resources,
+/// Form XObjects, annotation appearances (<c>/N</c>, <c>/R</c>, <c>/D</c>), soft-mask groups,
+/// patterns and Type 3 glyphs, gets one, as does each such image's <c>/SMask</c>, every inline
+/// image (one per occurrence) and every image written as a duplicate of another.
 /// </summary>
 /// <remarks>
+/// <para>
+/// An image reached only some other way is not reported and no image lever touches it: an
+/// explicit stencil <c>/Mask</c> stream (unless a page also draws it), a page's <c>/Thumb</c>
+/// thumbnail, a file specification's <c>/Thumb</c>, and an image reachable only through
+/// <c>/AcroForm /DR</c> or another path outside the pages' content, resources and annotations.
+/// It is written as any other stream is: unchanged, except that the lossless levers still apply
+/// (a stream stored without a filter may be Flate-compressed, and a byte-identical copy written
+/// once).
+/// </para>
+/// <para>
 /// Object references are the <em>input</em> document's: a full rewrite renumbers every object,
 /// so they identify the image in the file you passed in, not in the output. Sizes and DPI
 /// describe the image as read and as written; for an inline image, which isn't measured, they
 /// are zero and <see langword="null"/>.
+/// </para>
 /// </remarks>
 /// <example>
 /// <code>
