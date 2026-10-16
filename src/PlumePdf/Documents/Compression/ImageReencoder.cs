@@ -58,8 +58,9 @@ internal sealed record ImageReencodeResult(
 /// </summary>
 /// <remarks>
 /// The family rule: with a JPEG quality requested, the image becomes a baseline JPEG at that
-/// quality; otherwise a Flate (or other lossless) image stays Flate and a JPEG stays JPEG at its
-/// own estimated quality. A soft mask is always written as gray Flate. The never-larger rule:
+/// quality, colour with 4:2:0 chroma subsampling; otherwise a Flate (or other lossless) image
+/// stays Flate and a JPEG stays JPEG at its own estimated quality, keeping full-resolution
+/// chroma when the source had it (4:2:0 otherwise). A soft mask is always written as gray Flate. The never-larger rule:
 /// when the new encoding is not smaller than the original stream's encoded bytes, the original
 /// is kept. The rewritten dictionary differs from the original only in <c>/Width</c>,
 /// <c>/Height</c> and <c>/Filter</c>, and drops <c>/DecodeParms</c> and <c>/Length</c>;
@@ -128,6 +129,10 @@ internal static class ImageReencoder
             ? Math.Clamp(raw, MinEstimatedQuality, MaxEstimatedQuality)
             : (int?)null;
 
+        // A JPEG kept as JPEG at its own quality keeps its own chroma resolution too: a
+        // downsample alone must not also subsample a 4:4:4 source's colour.
+        var keepFullChroma = request.JpegQuality is null && sourceIsJpeg && jpegOnly && JpegQualityEstimator.HasFullResolutionChroma(image.RawBytes.Span);
+
         if (!NativeImageSamples.TryDecode(image, objects, options, out var decoded, out var skip, out var detail, request.SoftMask))
         {
             return Unchanged(image, ImageReencodeOutcome.Skipped, skip, detail, width, height, estimated);
@@ -152,7 +157,7 @@ internal static class ImageReencoder
 
             // No resolution argument: the JFIF header records aspect ratio only, so it can't
             // contradict the placement the page gives the image.
-            encoded = JpegEncoder.Encode(samples, targetWidth, targetHeight, channels, quality);
+            encoded = JpegEncoder.Encode(samples, targetWidth, targetHeight, channels, quality, subsampleChroma: !keepFullChroma);
         }
         else
         {

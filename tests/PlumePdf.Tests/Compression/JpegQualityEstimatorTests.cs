@@ -48,6 +48,16 @@ public class JpegQualityEstimatorTests
     }
 
     [Fact]
+    public void HasFullResolutionChroma_IsTrueOnlyForAnUnsubsampledColourFrame()
+    {
+        var pixels = new byte[16 * 16 * 3];
+        Assert.True(JpegQualityEstimator.HasFullResolutionChroma(JpegEncoder.Encode(pixels, 16, 16, 3, 80, subsampleChroma: false)));
+        Assert.False(JpegQualityEstimator.HasFullResolutionChroma(JpegEncoder.Encode(pixels, 16, 16, 3, 80, subsampleChroma: true)));
+        Assert.False(JpegQualityEstimator.HasFullResolutionChroma(JpegEncoder.Encode(pixels.AsSpan(0, 256), 16, 16, 1, 80)));
+        Assert.False(JpegQualityEstimator.HasFullResolutionChroma([0xFF, 0xD8, 0xFF]));
+    }
+
+    [Fact]
     public void EveryQuality_RoundTrips()
     {
         for (var quality = 1; quality <= 100; quality++)

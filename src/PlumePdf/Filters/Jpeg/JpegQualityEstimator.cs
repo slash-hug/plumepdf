@@ -26,7 +26,7 @@ internal static class JpegQualityEstimator
     public static bool TryEstimate(ReadOnlySpan<byte> jpeg, out int quality)
     {
         quality = 0;
-        if (!TryReadTables(jpeg, out var tables, out var lumaId, out var chromaId))
+        if (!TryReadTables(jpeg, out var tables, out var lumaId, out var chromaId, out _))
         {
             return false;
         }
@@ -69,6 +69,14 @@ internal static class JpegQualityEstimator
         return true;
     }
 
+    /// <summary>
+    /// Whether <paramref name="jpeg"/>'s frame has more than one component and every component
+    /// shares the same sampling factors, so no chroma channel was subsampled (4:4:4). False for a
+    /// grayscale frame, a subsampled one, or an unreadable header; never throws.
+    /// </summary>
+    public static bool HasFullResolutionChroma(ReadOnlySpan<byte> jpeg) =>
+        TryReadTables(jpeg, out _, out _, out _, out var fullChroma) && fullChroma;
+
     private static long SquaredError(ushort[] actual, ushort[] expected)
     {
         long error = 0;
@@ -82,13 +90,15 @@ internal static class JpegQualityEstimator
     }
 
     // Walks SOI .. SOS collecting DQT tables by id, and reads which table the first component
-    // (luminance) and the second (chrominance, when present) quantize with. Without a frame
-    // header before the scan, table 0 is luminance and table 1, if defined, chrominance.
-    private static bool TryReadTables(ReadOnlySpan<byte> jpeg, out Dictionary<byte, ushort[]> tables, out byte lumaId, out byte? chromaId)
+    // (luminance) and the second (chrominance, when present) quantize with, and whether the
+    // frame's components all share one sampling factor (multi-component frames only). Without
+    // a frame header before the scan, table 0 is luminance and table 1, if defined, chrominance.
+    private static bool TryReadTables(ReadOnlySpan<byte> jpeg, out Dictionary<byte, ushort[]> tables, out byte lumaId, out byte? chromaId, out bool fullChroma)
     {
         tables = [];
         lumaId = 0;
         chromaId = null;
+        fullChroma = false;
         var sawFrame = false;
 
         if (jpeg.Length < 4 || jpeg[0] != 0xFF || jpeg[1] != JpegMarkers.Soi)
@@ -168,6 +178,11 @@ internal static class JpegQualityEstimator
                 sawFrame = true;
                 lumaId = payload[6 + 2];
                 chromaId = payload[5] > 1 ? payload[9 + 2] : null;
+                fullChroma = payload[5] > 1;
+                for (var c = 1; c < payload[5]; c++)
+                {
+                    fullChroma &= payload[6 + (c * 3) + 1] == payload[6 + 1];
+                }
             }
         }
 

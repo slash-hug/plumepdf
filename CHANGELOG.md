@@ -14,9 +14,10 @@ only by diffing output. Entries land in the same change as the behavior they des
   with a cross-reference stream, and byte-identical streams are written once. Images change
   only when asked: `PdfCompressOptions.Images` with `MaxDpi` downsamples images whose effective
   DPI is above 1.5 × `MaxDpi` to `MaxDpi` (box filter, per axis, never upsampling), and
-  `JpegQuality` re-encodes 8-bit gray and RGB images (ICC profiles kept) as baseline JPEG.
-  With only `MaxDpi`, a JPEG keeps its own estimated quality (85 when it can't be estimated,
-  `PLUME6091`). A Flate image's `/Decode` array is applied to its samples when it becomes a
+  `JpegQuality` re-encodes 8-bit gray and RGB images (ICC profiles kept) as baseline JPEG,
+  colour with 4:2:0 chroma subsampling. With only `MaxDpi`, a JPEG keeps its own estimated
+  quality (85 when it can't be estimated, `PLUME6091`) and its full-resolution chroma when it
+  had it. A Flate image's `/Decode` array is applied to its samples when it becomes a
   JPEG, so it renders the same in every viewer. Every rewritten stream follows
   the never-larger rule. The returned `CompressionResult` gives input and output sizes and one
   `ImageCompressionDecision` per image (`Action`, `SkipReason`, sizes, effective DPI before and

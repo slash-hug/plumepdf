@@ -27,11 +27,12 @@ report.AppendLine($"No-lever hint (PLUME6090): {lossless.Diagnostics.Any(static 
 To make images smaller, opt in to the image levers. `MaxDpi` downsamples images drawn above
 1.5 × that effective DPI (pixels per inch at the image's largest placement, per axis) to
 `MaxDpi`, with a box filter, never upsampling. `JpegQuality` re-encodes every eligible image
-(8-bit gray or RGB, ICC profiles kept) as baseline JPEG at that quality. With only `MaxDpi`
-set, a Flate image stays Flate and a JPEG stays JPEG at its own estimated quality
-(`EstimatedSourceQuality`); when that can't be estimated (non-standard quantization tables,
-or a JPEG behind another filter) it is written at quality 85, counted in one `PLUME6091`
-note. A Flate image with a `/Decode` array that becomes a JPEG has the array applied to its
+(8-bit gray or RGB, ICC profiles kept) as baseline JPEG at that quality, colour images with
+4:2:0 chroma subsampling. With only `MaxDpi` set, a Flate image stays Flate and a JPEG stays
+JPEG at its own estimated quality (`EstimatedSourceQuality`), keeping full-resolution
+chroma when the source had it; when the quality can't be estimated (non-standard
+quantization tables, or a JPEG behind another filter) it is written at quality 85, counted in
+one `PLUME6091` note. A Flate image with a `/Decode` array that becomes a JPEG has the array applied to its
 samples, so it renders the same in every viewer. Every rewritten image follows the never-larger rule: a new
 encoding that isn't smaller is dropped (`KeptOriginal`). Group `result.Images` by `Action`
 and `SkipReason` to tune:

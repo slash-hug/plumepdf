@@ -33,6 +33,63 @@ public class CompressJpegColorTests
         AssertNear(40, decoded[2]);
     }
 
+    [Fact]
+    public void FullChromaJpeg_DownsampledWithMaxDpiOnly_KeepsFullChroma()
+    {
+        // Downsampling alone never lowers an image's quality, and chroma resolution is part of it.
+        var jpeg = JpegEncoder.Encode(CompressionTestImages.Samples(Pixels, Pixels, 3), Pixels, Pixels, 3, quality: 90, subsampleChroma: false);
+        Assert.Equal([0x11, 0x11, 0x11], SamplingFactors(jpeg));
+
+        var (result, output) = Compress(OneImage(Image(filter: "/DCTDecode"), jpeg), new PdfCompressOptions { Images = new PdfImageCompression { MaxDpi = 100 } });
+
+        Assert.Equal(ImageCompressionAction.Downsampled, Decision(result, 10).Action);
+        using var document = PdfDocument.Open(output);
+        Assert.Equal([0x11, 0x11, 0x11], SamplingFactors(PageImage(document, 0).Stream.RawBytes.ToArray()));
+    }
+
+    [Fact]
+    public void SubsampledJpeg_DownsampledWithMaxDpiOnly_StaysSubsampled()
+    {
+        var jpeg = JpegEncoder.Encode(CompressionTestImages.Samples(Pixels, Pixels, 3), Pixels, Pixels, 3, quality: 90);
+
+        var (_, output) = Compress(OneImage(Image(filter: "/DCTDecode"), jpeg), new PdfCompressOptions { Images = new PdfImageCompression { MaxDpi = 100 } });
+
+        using var document = PdfDocument.Open(output);
+        Assert.Equal([0x22, 0x11, 0x11], SamplingFactors(PageImage(document, 0).Stream.RawBytes.ToArray()));
+    }
+
+    [Fact]
+    public void FullChromaJpeg_WithJpegQuality_IsWrittenSubsampled()
+    {
+        // An explicit quality is a request for the standard re-encode, 4:2:0 chroma included.
+        var jpeg = JpegEncoder.Encode(CompressionTestImages.Samples(Pixels, Pixels, 3), Pixels, Pixels, 3, quality: 95, subsampleChroma: false);
+
+        var (_, output) = Compress(OneImage(Image(filter: "/DCTDecode"), jpeg), new PdfCompressOptions { Images = new PdfImageCompression { MaxDpi = 100, JpegQuality = 80 } });
+
+        using var document = PdfDocument.Open(output);
+        Assert.Equal([0x22, 0x11, 0x11], SamplingFactors(PageImage(document, 0).Stream.RawBytes.ToArray()));
+    }
+
+    // Each frame component's sampling-factor byte (H << 4 | V), read from the first SOF0.
+    private static byte[] SamplingFactors(byte[] jpeg)
+    {
+        var position = 2;
+        while (position + 4 <= jpeg.Length)
+        {
+            var marker = jpeg[position + 1];
+            var length = (jpeg[position + 2] << 8) | jpeg[position + 3];
+            if (marker == 0xC0)
+            {
+                var count = jpeg[position + 9];
+                return [.. Enumerable.Range(0, count).Select(i => jpeg[position + 11 + (3 * i)])];
+            }
+
+            position += 2 + length;
+        }
+
+        throw new InvalidOperationException("No SOF0 segment.");
+    }
+
     private static void AssertNear(int expected, byte actual) =>
         Assert.True(Math.Abs(expected - actual) <= 4, $"expected {expected} (within 4), got {actual}");
 }
