@@ -47,8 +47,12 @@ public partial class CookbookTests
             report.AppendLine($"{group.Key.Action} {group.Key.SkipReason}: {group.Count()}");
         }
 
+        // EncodingBefore/EncodingAfter say what each image was stored as and what it became:
+        // a JPEG source only shrinks further with a lower JpegQuality or MaxDpi.
+        report.AppendLine($"Already JPEG: {result.Images.Count(static i => i.EncodingBefore == ImageEncoding.Jpeg)}");
         var image = result.Images[0];
-        report.AppendLine($"{image.WidthBefore}x{image.HeightBefore} at {image.EffectiveDpiBefore:F0} DPI -> " +
+        report.AppendLine($"{image.EncodingBefore} -> {image.EncodingAfter}, " +
+            $"{image.WidthBefore}x{image.HeightBefore} at {image.EffectiveDpiBefore:F0} DPI -> " +
             $"{image.WidthAfter}x{image.HeightAfter} at {image.EffectiveDpiAfter:F0} DPI");
         // end-snippet
 

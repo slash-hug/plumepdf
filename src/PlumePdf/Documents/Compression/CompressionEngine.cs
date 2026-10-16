@@ -462,9 +462,10 @@ internal static class CompressionEngine
         }
 
         var ordered = decisions.OrderBy(static d => d.Number).Select(static d => d.Decision).ToList();
-        foreach (var page in plan.InlineImagePages)
+        // An inline image is part of a content stream, which is never rewritten: written as read.
+        foreach (var inline in plan.InlineImages)
         {
-            ordered.Add(new ImageCompressionDecision(null, page, ImageCompressionAction.Skipped, ImageSkipReason.InlineImage, null, 0, 0, 0, 0, 0, 0, null, null, null));
+            ordered.Add(new ImageCompressionDecision(null, inline.PageIndex, ImageCompressionAction.Skipped, ImageSkipReason.InlineImage, null, 0, 0, 0, 0, 0, 0, null, null, null, inline.Encoding, inline.Encoding));
         }
 
         return ordered;
@@ -502,7 +503,9 @@ internal static class CompressionEngine
             record.HeightAfter,
             dpiBefore,
             dpiAfter,
-            record.EstimatedSourceQuality);
+            record.EstimatedSourceQuality,
+            record.EncodingBefore,
+            record.EncodingAfter);
     }
 
     // A planned image the writer never offered (nothing in the saved graph reached it): it was
@@ -511,11 +514,12 @@ internal static class CompressionEngine
     {
         var length = DeclaredLength(objects, planned.SourceNumber);
         var outcome = planned.Skip == PlannedSkip.None ? ImageReencodeOutcome.Unchanged : ImageReencodeOutcome.Skipped;
-        return new WrittenImage(outcome, planned.Skip, planned.SkipDetail, length, length, planned.Width, planned.Height, null);
+        var encoding = SourceEncoding(objects, planned.SourceNumber);
+        return new WrittenImage(outcome, planned.Skip, planned.SkipDetail, length, length, planned.Width, planned.Height, null, encoding, encoding);
     }
 
     // A duplicate that is an image: written as its canonical copy, which has the same
-    // dictionary and payload, so the same size before.
+    // dictionary and payload, so the same size before and the same encoding written.
     private static ImageCompressionDecision? DuplicateImage(ObjectRegistry objects, int duplicate, int canonical, IReadOnlyDictionary<int, WrittenImage> written)
     {
         var value = ((IObjectSource)objects).ResolveForDiscovery(new IndirectReference(duplicate, 0), out var isStream);
@@ -527,9 +531,10 @@ internal static class CompressionEngine
 
         var width = dictionary.TryGetValue(WidthName, out var w) && w is PdfNumber wn ? (int)wn.Value : 0;
         var height = dictionary.TryGetValue(HeightName, out var h) && h is PdfNumber hn ? (int)hn.Value : 0;
-        var (bytesBefore, widthAfter, heightAfter) = written.TryGetValue(canonical, out var copy)
-            ? (copy.BytesBefore, copy.WidthAfter, copy.HeightAfter)
-            : (DeclaredLength(objects, duplicate), width, height);
+        var encodingBefore = ImageEncodings.OfStream(dictionary, objects);
+        var (bytesBefore, widthAfter, heightAfter, encodingAfter) = written.TryGetValue(canonical, out var copy)
+            ? (copy.BytesBefore, copy.WidthAfter, copy.HeightAfter, copy.EncodingAfter)
+            : (DeclaredLength(objects, duplicate), width, height, SourceEncoding(objects, canonical));
 
         return new ImageCompressionDecision(
             new IndirectReference(duplicate, 0),
@@ -545,7 +550,16 @@ internal static class CompressionEngine
             heightAfter,
             null,
             null,
-            null);
+            null,
+            encodingBefore,
+            encodingAfter);
+    }
+
+    private static ImageEncoding SourceEncoding(ObjectRegistry objects, int number)
+    {
+        var value = ((IObjectSource)objects).ResolveForDiscovery(new IndirectReference(number, 0), out _);
+        var dictionary = value as PdfDictionary ?? (value as PdfStream)?.Dictionary;
+        return dictionary is null ? ImageEncoding.Uncompressed : ImageEncodings.OfStream(dictionary, objects);
     }
 
     private static long DeclaredLength(ObjectRegistry objects, int number)

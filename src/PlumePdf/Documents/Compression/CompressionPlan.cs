@@ -59,13 +59,13 @@ internal sealed record PlannedImage(
 /// canonical in <see cref="PlannedImage.SoftMaskNumber"/>). An image no retained page reaches is absent and written unchanged.
 /// </param>
 /// <param name="Aliases">Duplicate original number → canonical original number, for <c>PdfDocument.SaveWithWriteHooks</c>.</param>
-/// <param name="InlineImagePages">
-/// The page index of every inline image met, one entry per occurrence, in page order. One inside a tiling pattern
+/// <param name="InlineImages">
+/// Every inline image met, with its page and encoding family, one entry per occurrence, in page order. One inside a tiling pattern
 /// or Type 3 glyph counts once for each page that uses that pattern or font.
 /// </param>
 /// <param name="Diagnostics">What the scan recorded (cycles, depth caps, unreadable content); result-scoped.</param>
 internal sealed record CompressionPlan(
     IReadOnlyDictionary<int, PlannedImage> Images,
     IReadOnlyDictionary<int, int> Aliases,
-    IReadOnlyList<int> InlineImagePages,
+    IReadOnlyList<InlineImageUse> InlineImages,
     DiagnosticCollection Diagnostics);

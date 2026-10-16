@@ -55,7 +55,9 @@ public sealed class ImageCompressionDecision
         int heightAfter,
         double? effectiveDpiBefore,
         double? effectiveDpiAfter,
-        int? estimatedSourceQuality)
+        int? estimatedSourceQuality,
+        ImageEncoding encodingBefore,
+        ImageEncoding encodingAfter)
     {
         SourceReference = sourceReference;
         PageIndex = pageIndex;
@@ -71,6 +73,8 @@ public sealed class ImageCompressionDecision
         EffectiveDpiBefore = effectiveDpiBefore;
         EffectiveDpiAfter = effectiveDpiAfter;
         EstimatedSourceQuality = estimatedSourceQuality;
+        EncodingBefore = encodingBefore;
+        EncodingAfter = encodingAfter;
     }
 
     /// <summary>
@@ -137,4 +141,25 @@ public sealed class ImageCompressionDecision
     /// counted in one <c>PLUME6091</c> summary.
     /// </summary>
     public int? EstimatedSourceQuality { get; }
+
+    /// <summary>
+    /// The encoding family of the image as read: its stream's last <c>/Filter</c> that encodes
+    /// the samples (see <see cref="ImageEncoding"/>), so an agent tuning
+    /// <see cref="PdfImageCompression.JpegQuality"/> can see which images were already JPEG. For a
+    /// <see cref="ImageCompressionAction.Deduplicated"/> image, its own stream's family.
+    /// </summary>
+    public ImageEncoding EncodingBefore { get; }
+
+    /// <summary>
+    /// The encoding family actually written for the image: <see cref="ImageEncoding.Jpeg"/>
+    /// after a re-encode, the source's own family after a downsample or for
+    /// <see cref="ImageCompressionAction.KeptOriginal"/>, and for an
+    /// <see cref="ImageCompressionAction.Unchanged"/> or <see cref="ImageCompressionAction.Skipped"/>
+    /// image what was written, which is <see cref="ImageEncoding.Flate"/> when the lossless
+    /// levers compressed a formerly unfiltered stream. For a
+    /// <see cref="ImageCompressionAction.Deduplicated"/> image, what its canonical copy
+    /// (<see cref="DuplicateOf"/>) was written as; for an inline image, which is never
+    /// rewritten, equal to <see cref="EncodingBefore"/>.
+    /// </summary>
+    public ImageEncoding EncodingAfter { get; }
 }

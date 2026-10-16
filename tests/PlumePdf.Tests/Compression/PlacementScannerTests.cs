@@ -338,7 +338,19 @@ public class PlacementScannerTests
             .Page(3, "q 10 0 0 10 0 0 cm BI /W 2 /H 1 /CS /G /BPC 8 ID \u0001\u0002 EI Q")
             .Page(5, "BI /W 1 /H 1 /CS /G /BPC 8 ID \u0001 EI BI /W 1 /H 1 /CS /G /BPC 8 ID \u0002 EI");
 
-        Assert.Equal([0, 1, 1], Scan(pdf).InlineImagePages);
+        Assert.Equal([0, 1, 1], Scan(pdf).InlineImages.Select(static i => i.PageIndex));
+    }
+
+    [Fact]
+    public void InlineImages_RecordTheirEncoding()
+    {
+        var pdf = new ScanTestPdf()
+            .Page(3, "BI /W 1 /H 1 /CS /G /BPC 8 /F /DCT ID \u0001 EI BI /W 1 /H 1 /CS /G /BPC 8 ID \u0001 EI")
+            .Page(5, "BI /W 1 /H 1 /CS /G /BPC 8 /Filter [/AHx /RL] ID 01> EI");
+
+        Assert.Equal(
+            [new InlineImageUse(0, ImageEncoding.Jpeg), new InlineImageUse(0, ImageEncoding.Uncompressed), new InlineImageUse(1, ImageEncoding.RunLength)],
+            Scan(pdf).InlineImages);
     }
 
     // A tiling pattern and a Type 3 font are walked once per scan, but an inline image inside
@@ -351,7 +363,7 @@ public class PlacementScannerTests
             .Page(3, "/Pattern cs /P0 scn 0 0 100 100 re f /P0 scn 0 0 9 9 re f", resources: "/Pattern << /P0 11 0 R >>")
             .Page(5, "/Pattern cs /P0 scn 0 0 100 100 re f", resources: "/Pattern << /P0 11 0 R >>");
 
-        Assert.Equal([0, 1], Scan(pdf).InlineImagePages);
+        Assert.Equal([0, 1], Scan(pdf).InlineImages.Select(static i => i.PageIndex));
     }
 
     [Fact]
@@ -363,7 +375,7 @@ public class PlacementScannerTests
             .Page(3, "BT /T3 72 Tf (a) Tj ET", resources: "/Font << /T3 12 0 R >>")
             .Page(5, "BT /T3 72 Tf (a) Tj ET", resources: "/Font << /T3 12 0 R >>");
 
-        Assert.Equal([0, 1], Scan(pdf).InlineImagePages);
+        Assert.Equal([0, 1], Scan(pdf).InlineImages.Select(static i => i.PageIndex));
     }
 
     [Fact]

@@ -33,7 +33,7 @@ public class CompressionPlannerTests
         var expected = ImageClassifier.Classify(document.Objects, scan, settings, PdfOptions.Default, CancellationToken.None);
         Assert.Equal(expected.OrderBy(static i => i.Key), plan.Images.OrderBy(static i => i.Key));
         Assert.Equal([10, 11, 20], plan.Images.Keys.Order());
-        Assert.Equal(scan.InlineImagePages, plan.InlineImagePages);
+        Assert.Equal(scan.InlineImages, plan.InlineImages);
         Assert.Empty(plan.Aliases);
     }
 
