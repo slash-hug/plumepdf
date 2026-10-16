@@ -488,6 +488,17 @@ _Avoid_: optimize (that is Optimization, structure only), shrink/minify (informa
 "compression" for Compress's whole job — lower-case compression is still a Filter's
 stream-payload encoding
 
+**Compression stage**:
+One of the three phases a Compress call reports through `PdfCompressOptions.Progress`
+(`CompressionStage`): **Spooling** (copying a non-seekable input stream to a temporary file,
+in bytes), **Planning** (the pass that measures every image's placements and finds duplicate
+streams before anything is written, in pages) and **Writing** (the full-rewrite save, in
+**planned images**: the image XObjects the plan holds — every one the pages reach, soft masks
+included, whether rewritten or skipped — less duplicates merged into a canonical copy; inline
+images are never planned).
+_Avoid_: phase, step (in Compress's reporting vocabulary), "images processed" for the Writing
+count (a skipped image counts; a merged duplicate doesn't)
+
 **Effective DPI**:
 An image's pixels per inch as drawn: its pixel count along an axis divided by the length, in
 inches, of the placed image's edge along that axis (the current transformation matrix's column

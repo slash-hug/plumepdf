@@ -37,8 +37,8 @@ only by diffing output. Entries land in the same change as the behavior they des
   (`PLUME1006`); under `PdfOptions.Strict`, a reference the document can't resolve refuses the
   save with `PLUME2060`, as `Save` does. A version below 1.5 is raised to 1.5 for packing (`PLUME6088`); a PDF/A-1
   source is not packed (`PLUME6089`) and keeps a 1.4 header, which PlumePDF's own PDF/A self-check requires, unless the caller sets
-  a version other than the default 1.7 or a `PdfAConformance`. Progress reporting is not
-  available. Recipe: `docs/cookbook/compress.md`.
+  a version other than the default 1.7 or a `PdfAConformance`. Recipe:
+  `docs/cookbook/compress.md`.
 - **`Pdf.Compress(Stream, Stream, ...)` and `Pdf.CompressAsync(Stream, Stream, ...)` compress
   from one stream to another** (#47), with the same options, levers, `CompressionResult` and
   refusals as the path overloads, and byte-identical output under `PdfOptions.Deterministic`.
@@ -54,6 +54,19 @@ only by diffing output. Entries land in the same change as the behavior they des
   `PLUME6084`) comes before the first byte, but a failure or cancellation while writing can
   leave a partial output for the caller to discard. With this the compression work is
   complete; #48–#54 are optional enhancements.
+- **`PdfCompressOptions.Progress` reports how far a `Compress` call has got** (#48). Set it to
+  an `IProgress<CompressionProgress>` and every overload reports the `CompressionStage`
+  running with `Completed` and `Total`: `Spooling` in bytes copied from a non-seekable input
+  stream (no total, at most once per 1 MiB chunk), `Planning` in pages scanned out of the page
+  count, and `Writing` in planned images written out of the image XObjects the plan holds
+  (soft masks counted on their own; merged duplicates and inline images not counted). Each
+  stage starts at 0, only grows, never repeats a report, and ends at its total when it has one.
+  `Report` is called synchronously on the working thread (`Progress<T>` posts to its own
+  context); an exception it throws propagates out of the call, leaving no file at a path output.
+  The refusals before any work report nothing, and reporting never changes the output bytes.
+  `CompressionProgress` is a `readonly record struct`, so reporting allocates nothing per
+  report. `CompressAsync`'s spool copy is now a chunked loop instead of `Stream.CopyToAsync`,
+  still cancellable between chunks.
 
 ### Fixed
 

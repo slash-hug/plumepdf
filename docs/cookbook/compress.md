@@ -98,7 +98,8 @@ Flate-compressed reads `Uncompressed` → `Flate`.
 
 ## Cancel a long run
 
-`Pdf.CompressAsync` takes a `CancellationToken`. Progress reporting is not yet available.
+`Pdf.CompressAsync` takes a `CancellationToken`; to show how far a run has got, see
+[Report progress](#report-progress).
 
 <!-- snippet: compress-async -->
 <a id='snippet-compress-async'></a>
@@ -136,6 +137,99 @@ Cancelled; output file exists: False
 ```
 <sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.CompressAsync.verified.txt#L1-L2' title='Snippet source file'>snippet source</a> | <a href='#snippet-CookbookTests.CompressAsync.verified.txt' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
+
+## Report progress
+
+Set `PdfCompressOptions.Progress` to an `IProgress<CompressionProgress>`. Each report names
+the `CompressionStage` running, how much of it is done (`Completed`) and how much there is
+(`Total`, null when unknown):
+
+| Stage | Unit | Total | When |
+|---|---|---|---|
+| `Spooling` | bytes copied | null | only a non-seekable input stream; at most once per 1 MiB chunk |
+| `Planning` | pages scanned | the page count | every call |
+| `Writing` | planned images written | the image XObjects the plan holds | every call |
+
+The writing total counts every image XObject the pages reach, drawn or only listed, soft masks
+on their own, whether it is rewritten or skipped. It leaves out a duplicate merged into its
+canonical copy (`Deduplicated`), inline images (part of a content stream, never rewritten) and
+images no page reaches: it is the number of `result.Images` entries with a `SourceReference`
+whose action isn't `Deduplicated`. Each stage starts at 0, only grows, never repeats a report,
+and ends at its total when it has one. The refusals that come before any work report nothing
+(a non-seekable input is spooled before an encrypted or signed source can be told apart, so
+those refusals follow its `Spooling` reports).
+
+<!-- snippet: compress-progress -->
+<a id='snippet-compress-progress'></a>
+```cs
+// Progress reports each stage as it runs: pages while planning, images while writing
+// (and bytes, with no total, while a non-seekable input stream is spooled). Each stage
+// starts at 0 and, when it has a total, ends at it. Reporting never changes the output.
+var log = new ProgressLog();
+var result = Pdf.Compress("output/scan-for-progress.pdf", "output/scan-progress.pdf", new PdfCompressOptions
+{
+    Images = new PdfImageCompression { MaxDpi = 200, JpegQuality = 70 },
+    Progress = log,
+});
+```
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L102-L112' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-progress' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
+
+<!-- snippet: compress-progress-sink -->
+<a id='snippet-compress-progress-sink'></a>
+```cs
+// Your own IProgress is called synchronously, on the thread doing the work: keep it fast
+// and thread-safe. Progress<T> instead posts each report to the context it was created on
+// (a UI thread), so it suits a UI. An exception thrown here ends the call: to stop a run,
+// cancel its token instead.
+private sealed class ProgressLog : IProgress<CompressionProgress>
+{
+    private readonly List<string> _lines = [];
+
+    public IReadOnlyList<string> Lines
+    {
+        get
+        {
+            lock (_lines)
+            {
+                return [.. _lines];
+            }
+        }
+    }
+
+    public void Report(CompressionProgress value)
+    {
+        var line = value.Total is long total
+            ? $"{value.Stage}: {value.Completed} of {total}"
+            : $"{value.Stage}: {value.Completed:N0} bytes";
+        lock (_lines)
+        {
+            _lines.Add(line);
+        }
+    }
+}
+```
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L123-L154' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-progress-sink' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
+
+<!-- snippet: CookbookTests.CompressProgress.verified.txt -->
+<a id='snippet-CookbookTests.CompressProgress.verified.txt'></a>
+```txt
+Saved bytes: True
+Planning: 0 of 1
+Planning: 1 of 1
+Writing: 0 of 1
+Writing: 1 of 1
+```
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.CompressProgress.verified.txt#L1-L5' title='Snippet source file'>snippet source</a> | <a href='#snippet-CookbookTests.CompressProgress.verified.txt' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
+
+`Report` is called synchronously, between pages and between images, on the thread doing the
+work. `Progress<T>`'s `Report` returns at once and runs your handler later on the context the
+`Progress<T>` was created on, which suits a UI; a sink of your own must be fast and
+thread-safe. Reporting never changes the output bytes. A sink that throws ends the call with its
+exception: a path output is not written, while a stream output may hold a partial document to
+discard. Cancel the token to stop a run rather than throwing.
 
 ## Streams in and out
 
@@ -193,7 +287,7 @@ catch (Exception e) when (e is PlumePdfException or OperationCanceledException o
     throw;
 }
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L102-L129' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-stream' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L162-L189' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-stream' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 <!-- snippet: CookbookTests.CompressStream.verified.txt -->
@@ -276,7 +370,7 @@ report.AppendLine($"Image actions: {string.Join(", ", result.Images.Select(stati
 report.AppendLine($"Still tagged: {structure.IsTagged}, language: {structure.Language}");
 report.AppendLine($"Declared: PDF/A-{pdfa.DeclaredPart}{pdfa.DeclaredConformance}, conformant (self-check): {pdfa.IsConformant}");
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L153-L167' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-tagged-pdfa' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L213-L227' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-tagged-pdfa' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 <!-- snippet: CookbookTests.CompressTaggedPdfA.verified.txt -->
@@ -344,9 +438,9 @@ after planning; no output file is written.
 
 ## Not built in
 
-Progress reporting is not available: give `CompressAsync` a deadline instead. There is no
-size target (shrink until under N bytes) either: pick `MaxDpi` and `JpegQuality`, then check
-`result.OutputBytes`.
+There is no size target (shrink until under N bytes): pick `MaxDpi` and `JpegQuality`, then
+check `result.OutputBytes`. Progress reports how far a run has got, not how long it has left:
+the stages' units differ, and one image can take far longer than another.
 
 Related: [large-files.md](large-files.md), [optimize-linearize.md](optimize-linearize.md),
 [extract-images.md](extract-images.md).
