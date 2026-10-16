@@ -321,7 +321,7 @@ public static class Pdf
     /// <param name="outputPath">Where to write the signed document. May equal <paramref name="path"/>.</param>
     /// <param name="signOptions">Who signs, and the signature dictionary's descriptive fields.</param>
     /// <param name="options">Options controlling the open and write. Defaults to <see cref="PdfOptions.Default"/>.</param>
-    /// <exception cref="PlumePdfException">See <see cref="SignatureCollection.Add"/>.</exception>
+    /// <exception cref="PlumePdfException">See <see cref="SignatureCollection.Add"/>; also <paramref name="path"/> can't be opened (<c>PLUME1001</c>/<c>PLUME1002</c>).</exception>
     /// <example>
     /// <code>
     /// Pdf.Sign("input.pdf", "signed.pdf", new PdfSignOptions { Certificate = myCertificate, Reason = "Approved" });
@@ -473,7 +473,11 @@ public static class Pdf
     /// and it is reported (<c>PLUME6086</c>). Under <see cref="PdfOptions.Strict"/>, a
     /// reference the document can't resolve (an image's <c>/SMask</c> naming a missing object,
     /// say) refuses the save with <c>PLUME2060</c>, as <see cref="PdfDocument.Save(string, PdfOptions?)"/>
-    /// does; that refusal comes after planning, and no output file is written.
+    /// does; that refusal comes after planning, and no output file is written. The source path
+    /// can't be opened (<c>PLUME1001</c>/<c>PLUME1002</c>), or the output file can't be written
+    /// — a missing directory, a path that is a directory, no write permission, a full disk
+    /// (<c>PLUME1007</c>, the operating system's exception as the inner exception; no
+    /// temporary file is left behind and an existing file at <paramref name="outputPath"/> is untouched).
     /// </exception>
     /// <example>
     /// <code>
@@ -567,7 +571,10 @@ public static class Pdf
     /// (<c>PLUME6084</c>). The input couldn't be read as a PDF (as
     /// <see cref="PdfDocument.Open(Stream, PdfOptions?)"/> refuses). Under
     /// <see cref="PdfOptions.Strict"/>, a reference the document can't resolve refuses the save
-    /// with <c>PLUME2060</c> after planning, before writing.
+    /// with <c>PLUME2060</c> after planning, before writing. A non-seekable
+    /// <paramref name="input"/> can't be spooled to its temporary copy in the temp directory
+    /// (<c>PLUME1008</c>, before anything is written). An exception thrown by
+    /// <paramref name="input"/> or <paramref name="output"/> themselves propagates unchanged.
     /// </exception>
     /// <example>
     /// <code>

@@ -176,11 +176,13 @@ catch (Exception e) when (e is PlumePdfException or OperationCanceledException o
 {
     // Refusals come before the first byte, but a failure or cancellation while
     // writing can leave a partial PDF in the output: discard it (abort the upload).
+    // PlumePDF's own file failures are coded (PLUME1008: the temporary copy couldn't
+    // be made); an IOException here comes from your own streams.
     upload.SetLength(0);
     throw;
 }
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L98-L123' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-stream' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L98-L125' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-stream' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 <!-- snippet: CookbookTests.CompressStream.verified.txt -->
@@ -263,7 +265,7 @@ report.AppendLine($"Image actions: {string.Join(", ", result.Images.Select(stati
 report.AppendLine($"Still tagged: {structure.IsTagged}, language: {structure.Language}");
 report.AppendLine($"Declared: PDF/A-{pdfa.DeclaredPart}{pdfa.DeclaredConformance}, conformant (self-check): {pdfa.IsConformant}");
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L147-L161' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-tagged-pdfa' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L149-L163' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-tagged-pdfa' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 <!-- snippet: CookbookTests.CompressTaggedPdfA.verified.txt -->

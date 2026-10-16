@@ -71,7 +71,9 @@ public sealed class SignatureCollection : IReadOnlyList<PdfSignature>
     /// source is encrypted (<c>PLUME6054</c>) or has no backing byte source
     /// (<c>PLUME5003</c>) or no reliable prior <c>startxref</c> (<c>PLUME5005</c>); or
     /// <paramref name="signOptions"/>'s field name collides with an existing field
-    /// (<c>PLUME6047</c>).
+    /// (<c>PLUME6047</c>); or <paramref name="outputPath"/> can't be written (<c>PLUME1007</c> —
+    /// a missing directory, a path that is a directory, no write permission, a full disk; no
+    /// temporary file is left behind).
     /// </exception>
     /// <example>
     /// <code>
@@ -110,7 +112,7 @@ public sealed class SignatureCollection : IReadOnlyList<PdfSignature>
     /// <param name="trustedRoots">Trust anchors for chain building — the roots revocation material is collected up to.</param>
     /// <param name="options">Options controlling the write. Defaults to the options this document was opened with.</param>
     /// <param name="cancellationToken">Propagated to every revocation fetch.</param>
-    /// <exception cref="PlumePdfException">This document carries no signature to build LTV material for (<c>PLUME6050</c>).</exception>
+    /// <exception cref="PlumePdfException">This document carries no signature to build LTV material for (<c>PLUME6050</c>), or <paramref name="outputPath"/> can't be written (<c>PLUME1007</c>).</exception>
     public Task AddLtvAsync(string outputPath, IRevocationFetcher revocationFetcher, IReadOnlyList<X509Certificate2>? trustedRoots = null, PdfOptions? options = null, CancellationToken cancellationToken = default) =>
         DssWriter.AddLtvAsync(_document, outputPath, revocationFetcher, trustedRoots, options, cancellationToken);
 
@@ -125,6 +127,7 @@ public sealed class SignatureCollection : IReadOnlyList<PdfSignature>
     /// <param name="reservationBytes">Overrides the <c>/Contents</c> reservation. Defaults to 24 KB — generous for a TSA token including its own certificate chain.</param>
     /// <param name="options">Options controlling the write. Defaults to the options this document was opened with.</param>
     /// <param name="cancellationToken">Propagated to the timestamp request.</param>
+    /// <exception cref="PlumePdfException"><paramref name="outputPath"/> can't be written (<c>PLUME1007</c> — a missing directory, a path that is a directory, no write permission, a full disk; no temporary file is left behind).</exception>
     public Task AddDocumentTimestampAsync(string outputPath, ITimestampAuthority timestampAuthority, HashAlgorithmName? digestAlgorithm = null, int? reservationBytes = null, PdfOptions? options = null, CancellationToken cancellationToken = default) =>
         DocumentTimestamper.AddDocumentTimestampAsync(_document, outputPath, timestampAuthority, digestAlgorithm ?? HashAlgorithmName.SHA256, reservationBytes, options, cancellationToken);
 }

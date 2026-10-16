@@ -115,7 +115,7 @@ An in-house, pure-managed rasterizer (NativeAOT-safe, no native dependency): tex
 
 ## Errors
 
-Every failure carries a stable `Code` (`PLUME####`) and an `Exception.HelpLink` to that code's reference page. Start at the [error-code index](https://github.com/slash-hug/plumepdf/blob/main/docs/errors/README.md).
+Every failure carries a stable `Code` (`PLUME####`) and an `Exception.HelpLink` to that code's reference page — file-system failures included: an output path that can't be written is `PLUME1007`, a non-seekable `Compress` input that can't be spooled to the temp directory is `PLUME1008`, a missing or unreadable source path is `PLUME1002`/`PLUME1001`, each with the operating system's exception as `InnerException` (`PlumePdfException` derives from `Exception`, not `IOException`). Start at the [error-code index](https://github.com/slash-hug/plumepdf/blob/main/docs/errors/README.md).
 
 ## Provenance
 

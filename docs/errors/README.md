@@ -49,6 +49,8 @@ This index is populated one page per code as codes are minted in `src/`, in the 
 | [PLUME1004](PLUME1004.md) | could not memory-map the file |
 | [PLUME1005](PLUME1005.md) | source region too large for a single in-memory array |
 | [PLUME1006](PLUME1006.md) | cannot buffer an over-2GiB mapped source to save over it in place |
+| [PLUME1007](PLUME1007.md) | could not write the output file |
+| [PLUME1008](PLUME1008.md) | could not create the temporary copy of a non-seekable input |
 | [PLUME2010](PLUME2010.md) | object nesting exceeded the configured limit |
 | [PLUME2011](PLUME2011.md) | unexpected end of input while parsing a value |
 | [PLUME2012](PLUME2012.md) | unexpected token type while parsing a value (diagnostic) |

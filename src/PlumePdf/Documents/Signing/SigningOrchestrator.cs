@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using PlumePdf.IO;
 using PlumePdf.Objects;
 using PlumePdf.Objects.Signing;
 
@@ -120,35 +121,17 @@ internal static class SigningOrchestrator
             var topPagesReference = ResolveTopPagesReference(document);
 
             document.DetachMappedSourceIfSamePath(outputPath);
-            var directory = Path.GetDirectoryName(Path.GetFullPath(outputPath));
-            var tempPath = Path.Combine(string.IsNullOrEmpty(directory) ? "." : directory, $".{Path.GetFileName(outputPath)}.plumepdf-tmp-{Guid.NewGuid():N}");
+            var session = SigningWriteSession.Create(document.Source!, document.Objects, document.PagesTreeDirty, topPagesReference, pages, document.StartXrefOffset!.Value, effectiveOptions);
 
-            try
+            using (var hash = IncrementalHash.CreateHash(signOptions.DigestAlgorithm))
             {
-                var session = SigningWriteSession.Create(document.Source!, document.Objects, document.PagesTreeDirty, topPagesReference, pages, document.StartXrefOffset!.Value, effectiveOptions);
-
-                using (var hash = IncrementalHash.CreateHash(signOptions.DigestAlgorithm))
-                {
-                    session.HashDocument(hash);
-                    var digest = hash.GetHashAndReset();
-                    var cms = await CmsSignatureBuilder.BuildAsync(digest, signOptions.DigestAlgorithm, signer, signOptions.ResolveCmsLevel(), timestampAuthority, cancellationToken).ConfigureAwait(false);
-                    session.PatchContents(cms);
-                }
-
-                using (var tempStream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
-                {
-                    session.WriteTo(tempStream);
-                }
-
-                File.Move(tempPath, outputPath, overwrite: true);
+                session.HashDocument(hash);
+                var digest = hash.GetHashAndReset();
+                var cms = await CmsSignatureBuilder.BuildAsync(digest, signOptions.DigestAlgorithm, signer, signOptions.ResolveCmsLevel(), timestampAuthority, cancellationToken).ConfigureAwait(false);
+                session.PatchContents(cms);
             }
-            finally
-            {
-                if (File.Exists(tempPath))
-                {
-                    File.Delete(tempPath);
-                }
-            }
+
+            OutputFile.Replace(outputPath, session.WriteTo);
         }
         catch
         {

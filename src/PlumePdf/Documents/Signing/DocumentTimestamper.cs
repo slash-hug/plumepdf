@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using PlumePdf.IO;
 using PlumePdf.Objects;
 using PlumePdf.Objects.Signing;
 
@@ -61,35 +62,17 @@ internal static class DocumentTimestamper
             var topPagesReference = SigningOrchestrator.ResolveTopPagesReference(document);
 
             document.DetachMappedSourceIfSamePath(outputPath);
-            var directory = Path.GetDirectoryName(Path.GetFullPath(outputPath));
-            var tempPath = Path.Combine(string.IsNullOrEmpty(directory) ? "." : directory, $".{Path.GetFileName(outputPath)}.plumepdf-tmp-{Guid.NewGuid():N}");
+            var session = SigningWriteSession.Create(document.Source!, document.Objects, document.PagesTreeDirty, topPagesReference, pages, document.StartXrefOffset!.Value, effectiveOptions);
 
-            try
+            using (var hash = IncrementalHash.CreateHash(digestAlgorithm))
             {
-                var session = SigningWriteSession.Create(document.Source!, document.Objects, document.PagesTreeDirty, topPagesReference, pages, document.StartXrefOffset!.Value, effectiveOptions);
-
-                using (var hash = IncrementalHash.CreateHash(digestAlgorithm))
-                {
-                    session.HashDocument(hash);
-                    var digest = hash.GetHashAndReset();
-                    var token = await timestampAuthority.GetTimestampAsync(digest, digestAlgorithm, cancellationToken).ConfigureAwait(false);
-                    session.PatchContents(DerNormalizer.Normalize(token));
-                }
-
-                using (var tempStream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
-                {
-                    session.WriteTo(tempStream);
-                }
-
-                File.Move(tempPath, outputPath, overwrite: true);
+                session.HashDocument(hash);
+                var digest = hash.GetHashAndReset();
+                var token = await timestampAuthority.GetTimestampAsync(digest, digestAlgorithm, cancellationToken).ConfigureAwait(false);
+                session.PatchContents(DerNormalizer.Normalize(token));
             }
-            finally
-            {
-                if (File.Exists(tempPath))
-                {
-                    File.Delete(tempPath);
-                }
-            }
+
+            OutputFile.Replace(outputPath, session.WriteTo);
         }
         catch
         {

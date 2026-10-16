@@ -1,6 +1,7 @@
 using System.Globalization;
 using PlumePdf.Documents.PdfA;
 using PlumePdf.Documents.Signing;
+using PlumePdf.IO;
 using PlumePdf.Objects;
 
 namespace PlumePdf.Documents.Compression;
@@ -23,6 +24,9 @@ internal sealed class CompressionHooks
 
     /// <summary>Called with the temporary file's path when a non-seekable input stream is about to be spooled to it.</summary>
     public Action<string>? Spooled { get; init; }
+
+    /// <summary>The directory a non-seekable input is spooled to, in place of <see cref="Path.GetTempPath"/>.</summary>
+    public string? SpoolDirectory { get; init; }
 }
 
 /// <summary>
@@ -113,21 +117,26 @@ internal static class CompressionEngine
         }
 
         var spool = SpoolPath(hooks);
+        CompressionResult result;
         try
         {
             long spooled;
-            using (var file = CreateSpool(spool))
+            using (var file = SpoolFile.Create(spool))
             {
                 CopyTo(input, file, cancellationToken);
                 spooled = file.Length;
             }
 
-            return RunSpooled(spool, spooled, output, compress, saveOptions, cancellationToken, hooks);
+            result = RunSpooled(spool, spooled, output, compress, saveOptions, cancellationToken, hooks);
         }
-        finally
+        catch
         {
-            File.Delete(spool);
+            SpoolFile.Delete(spool, failing: true);
+            throw;
         }
+
+        SpoolFile.Delete(spool, failing: false);
+        return result;
     }
 
     /// <summary>
@@ -151,22 +160,27 @@ internal static class CompressionEngine
         }
 
         var spool = SpoolPath(hooks);
+        CompressionResult result;
         try
         {
             long spooled;
-            var file = CreateSpool(spool, asynchronous: true);
+            var file = SpoolFile.Create(spool, asynchronous: true);
             await using (file.ConfigureAwait(false))
             {
                 await input.CopyToAsync(file, SpoolBufferSize, cancellationToken).ConfigureAwait(false);
                 spooled = file.Length;
             }
 
-            return await Task.Run(() => RunSpooled(spool, spooled, output, compress, saveOptions, cancellationToken, hooks), cancellationToken).ConfigureAwait(false);
+            result = await Task.Run(() => RunSpooled(spool, spooled, output, compress, saveOptions, cancellationToken, hooks), cancellationToken).ConfigureAwait(false);
         }
-        finally
+        catch
         {
-            File.Delete(spool);
+            SpoolFile.Delete(spool, failing: true);
+            throw;
         }
+
+        SpoolFile.Delete(spool, failing: false);
+        return result;
     }
 
     /// <summary>
@@ -301,22 +315,9 @@ internal static class CompressionEngine
     // A unique temporary file for a non-seekable input; the hook sees it before it exists.
     private static string SpoolPath(CompressionHooks? hooks)
     {
-        var path = Path.Combine(Path.GetTempPath(), $"plumepdf-compress-input-{Guid.NewGuid():N}.pdf");
+        var path = Path.Combine(hooks?.SpoolDirectory ?? Path.GetTempPath(), $"plumepdf-compress-input-{Guid.NewGuid():N}.pdf");
         hooks?.Spooled?.Invoke(path);
         return path;
-    }
-
-    // The spool holds the caller's whole document in a shared temp directory, so on Unix it is
-    // created readable by its owner only (Windows' per-user temp directory already is).
-    private static FileStream CreateSpool(string path, bool asynchronous = false)
-    {
-        var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None, BufferSize = 0, Options = asynchronous ? FileOptions.Asynchronous : FileOptions.None };
-        if (!OperatingSystem.IsWindows())
-        {
-            options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
-        }
-
-        return new FileStream(path, options);
     }
 
     // Stream.CopyTo has no cancellation; this checks the token between chunks.

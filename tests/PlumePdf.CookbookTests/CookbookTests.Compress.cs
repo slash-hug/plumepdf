@@ -117,6 +117,8 @@ public partial class CookbookTests
         {
             // Refusals come before the first byte, but a failure or cancellation while
             // writing can leave a partial PDF in the output: discard it (abort the upload).
+            // PlumePDF's own file failures are coded (PLUME1008: the temporary copy couldn't
+            // be made); an IOException here comes from your own streams.
             upload.SetLength(0);
             throw;
         }
