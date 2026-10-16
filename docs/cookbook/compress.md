@@ -2,7 +2,8 @@
 
 `Pdf.Compress(path, outputPath, compressOptions, options)` makes a document smaller with the
 levers you choose, and reports what it did to every image in a `CompressionResult`. Nothing
-lossy happens unless you ask for it.
+lossy happens unless you ask for it. `Pdf.Compress(input, output, ...)` does the same from one
+`Stream` to another — a download to an upload, say ([below](#streams-in-and-out)).
 
 **Set expectations first:** with no options, compression is lossless — unfiltered streams are
 Flate-compressed, objects are packed into object streams, and byte-identical streams are
@@ -22,7 +23,7 @@ report.AppendLine($"Lossless smaller: {lossless.OutputBytes < lossless.InputByte
 report.AppendLine($"Lossless image actions: {string.Join(", ", lossless.Images.Select(static i => i.Action))}");
 report.AppendLine($"No-lever hint (PLUME6090): {lossless.Diagnostics.Any(static d => d.Code == "PLUME6090")}");
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L24-L32' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-lossless' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L25-L33' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-lossless' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 To make images smaller, opt in to the image levers. `MaxDpi` downsamples images drawn above
@@ -59,7 +60,7 @@ var image = result.Images[0];
 report.AppendLine($"{image.WidthBefore}x{image.HeightBefore} at {image.EffectiveDpiBefore:F0} DPI -> " +
     $"{image.WidthAfter}x{image.HeightAfter} at {image.EffectiveDpiAfter:F0} DPI");
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L34-L52' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-images' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L35-L53' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-images' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Expected output (backing test `CookbookTests.Compress` — run it and diff `.received` vs
@@ -113,7 +114,7 @@ catch (OperationCanceledException)
     report.AppendLine($"Cancelled; output file exists: {File.Exists("output/scan-cancelled.pdf")}");
 }
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L64-L86' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-async' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L65-L87' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-async' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 <!-- snippet: CookbookTests.CompressAsync.verified.txt -->
@@ -123,6 +124,74 @@ Async saved bytes: True
 Cancelled; output file exists: False
 ```
 <sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.CompressAsync.verified.txt#L1-L2' title='Snippet source file'>snippet source</a> | <a href='#snippet-CookbookTests.CompressAsync.verified.txt' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
+
+## Streams in and out
+
+`Pdf.Compress(Stream input, Stream output, ...)` and `Pdf.CompressAsync(Stream, Stream, ...)`
+take the same options, apply the same levers, return the same `CompressionResult` and refuse
+the same things as the path overloads. With `PdfOptions.Deterministic`, the output is
+byte-identical to what the path overload writes for the same input.
+
+- **Input:** a seekable stream is read in place from position 0, through a small window — it
+  is never buffered whole. A non-seekable one (an HTTP response body, a blob download) is
+  first copied to a temporary file in `Path.GetTempPath()`, never into memory, and that file is
+  deleted when the call returns or throws, cancellation included. On Linux and macOS that copy
+  is readable by its owner only. Leave room in the temporary directory for a copy of the input.
+  `result.InputBytes` is the stream's length, or the bytes copied. If the input is already a
+  file, pass its path instead: the path overloads memory-map the file, which is faster than
+  reading a `FileStream` through the window.
+- **Output:** need not be seekable. Writing starts at the stream's current position and the
+  PDF's offsets count from there, so a stream already positioned past 0 holds a valid PDF from
+  that point on. The output is flushed at the end; `result.OutputBytes` is the bytes written.
+- **Ownership:** neither stream is disposed or closed; you own both. Passing the same stream
+  as input and output is an `ArgumentException`, as are an unreadable input and an unwritable
+  output.
+- **No atomic write:** your stream can't be written to a temporary file and moved into place.
+  Every refusal and argument error comes before the first byte, so nothing is written then;
+  but a failure or cancellation *while writing* can leave a partial, unusable PDF in the
+  output. Discard it: abort the upload, delete the blob.
+
+<!-- snippet: compress-stream -->
+<a id='snippet-compress-stream'></a>
+```cs
+// Streams in, streams out: a download and an upload, neither of which needs to be
+// seekable. A non-seekable input is copied to a temporary file (never into memory),
+// deleted when the call ends; the output is written from its current position.
+using var download = OpenDownload("output/scan-for-stream.pdf");
+using var upload = new MemoryStream();
+using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(8));
+try
+{
+    var result = await Pdf.CompressAsync(download, upload, new PdfCompressOptions
+    {
+        Images = new PdfImageCompression { MaxDpi = 200, JpegQuality = 70 },
+    }, cancellationToken: deadline.Token);
+
+    report.AppendLine($"Saved bytes: {result.SavedBytes > 0}");
+    report.AppendLine($"OutputBytes is what was written: {result.OutputBytes == upload.Length}");
+    report.AppendLine($"Both streams left open: {download.CanRead && upload.CanWrite}");
+}
+catch (Exception e) when (e is PlumePdfException or OperationCanceledException or IOException)
+{
+    // Refusals come before the first byte, but a failure or cancellation while
+    // writing can leave a partial PDF in the output: discard it (abort the upload).
+    upload.SetLength(0);
+    throw;
+}
+```
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L98-L123' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-stream' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
+
+<!-- snippet: CookbookTests.CompressStream.verified.txt -->
+<a id='snippet-CookbookTests.CompressStream.verified.txt'></a>
+```txt
+Saved bytes: True
+OutputBytes is what was written: True
+Both streams left open: True
+Output reopens: 1 page(s)
+```
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.CompressStream.verified.txt#L1-L4' title='Snippet source file'>snippet source</a> | <a href='#snippet-CookbookTests.CompressStream.verified.txt' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 ## Compress or `Save` with `Optimize`?
@@ -194,7 +263,7 @@ report.AppendLine($"Image actions: {string.Join(", ", result.Images.Select(stati
 report.AppendLine($"Still tagged: {structure.IsTagged}, language: {structure.Language}");
 report.AppendLine($"Declared: PDF/A-{pdfa.DeclaredPart}{pdfa.DeclaredConformance}, conformant (self-check): {pdfa.IsConformant}");
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L105-L119' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-tagged-pdfa' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L147-L161' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-tagged-pdfa' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 <!-- snippet: CookbookTests.CompressTaggedPdfA.verified.txt -->
@@ -225,9 +294,12 @@ overrides it. A version above 1.4 makes the output fail that self-check.
 - An encrypted source is refused (`PLUME5001`), and so is `PdfOptions.Linearize`
   (`PLUME5018`): compress first, then linearize the result if you need fast web view.
 - `outputPath` may equal `path`, but the source is then buffered into memory first, and a
-  source over 2 GiB is refused before any work (`PLUME1006`). Write to a different path.
+  source over 2 GiB is refused before any work (`PLUME1006`). Write to a different path. (The
+  stream overloads have no same-path case; the same stream for input and output is an
+  `ArgumentException`.)
 
-Every refusal above happens before anything is planned or written. One more comes later:
+Every refusal above happens before anything is planned or written; `PLUME5018` comes before a
+stream input is even read or copied. One more comes later:
 under `PdfOptions.Strict`, a reference the document can't resolve (an image's `/SMask`
 naming a missing object, say) refuses the save with `PLUME2060`, exactly as `Save` does,
 after planning; no output file is written.
@@ -240,10 +312,15 @@ after planning; no output file is written.
   letter-size RGB scan decodes to about 100 MB).
 - **Disk:** the output is written to a temporary file beside `outputPath` and moved into
   place, so a failure or cancellation leaves no partial file. Leave room for the output there.
+  The stream overloads write straight to your output stream (no temporary output file), and
+  copy a non-seekable input to `Path.GetTempPath()` first.
 - **Measured** (one run of the repository's large-file test on an Apple M5, .NET 10): a
   generated 2.36 GB document of 533 letter-size 300 DPI JPEG scans, compressed with
   `MaxDpi = 150` and `JpegQuality = 70`, came out at 114 MB with every image downsampled. The
-  managed heap peaked at 260 MB; planning took 5 seconds and writing about 3 minutes.
+  managed heap peaked at 260 MB; planning took 5 seconds and writing about 3 minutes. The
+  stream overload on the same document, from a non-seekable input (spooled to disk first) to a
+  non-seekable output, wrote the same 114 MB with the heap peaking at 417 MB, in 186 seconds
+  including the copy.
 - **Time** grows with the number and size of the images it rewrites. A serverless host with a
   short execution limit (Azure Functions' Consumption plan stops a call after at most
   10 minutes) can be too short for a multi-gigabyte scan: run large compressions where calls
@@ -252,11 +329,11 @@ after planning; no output file is written.
 - **Determinism:** with `PdfOptions.Deterministic`, two runs on the same platform and runtime
   write the same bytes. Flate output can differ between runtimes' zlib builds.
 
-## Not yet available
+## Not built in
 
-A `Stream` overload (`Compress(Stream, Stream)`) and progress reporting are not yet
-available; compress from a path for now. A size target (shrink until under N bytes) is not
-yet available either: pick `MaxDpi` and `JpegQuality`, then check `result.OutputBytes`.
+Progress reporting is not available: give `CompressAsync` a deadline instead. There is no
+size target (shrink until under N bytes) either: pick `MaxDpi` and `JpegQuality`, then check
+`result.OutputBytes`.
 
 Related: [large-files.md](large-files.md), [optimize-linearize.md](optimize-linearize.md),
 [extract-images.md](extract-images.md).

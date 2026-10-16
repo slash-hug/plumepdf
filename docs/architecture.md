@@ -150,8 +150,19 @@ so memory follows the largest image rather than the file:
   overridden.
 
 Signatures are stripped before planning when the caller allows it (the same stripper `Redact`
-uses); every refusal comes before planning. The save is the ordinary temp-file-then-move
-`Save`, so a failure or cancellation leaves no partial output.
+uses); every refusal comes before planning. The save has two targets over one core. The
+full-rewrite save's stream-target core runs every refusal, the effective options, the
+removed-page clean-up and the signature scan, then writes through an internal counting
+wrapper (`CountingWriteStream`, `Objects/Writing`, the same type the linearizer measures
+with), so the writers' offsets are relative to where writing began: any writable stream
+works, seekable or not, already positioned or not. The path target wraps that core in the
+ordinary temp-file-then-move `Save`, so a path output is atomic — a failure or cancellation
+leaves no partial file. `Pdf.Compress(Stream, Stream)` writes the core straight to the
+caller's stream, which can't be atomic: refusals still come before the first byte, but a
+failure while writing leaves a partial output for the caller to discard. A seekable input
+stream opens in place (`PdfDocument.Open(Stream)`); a non-seekable one is spooled to a
+temporary file first, deleted when the call ends, and opened like a path. For the same input
+and options, under `Deterministic`, the two targets write the same bytes.
 
 **Mutation and the dirty-object set (Phase 4):**
 `ObjectRegistry` (`doc.Objects`) gains a general-purpose `MarkDirty(reference)` (for a

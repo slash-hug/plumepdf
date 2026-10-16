@@ -492,19 +492,19 @@ public static class Pdf
         CompressionEngine.Compress(path, outputPath, compressOptions, options, CancellationToken.None);
 
     /// <summary>
-    /// Asynchronous equivalent of <see cref="Compress"/>, run on the thread pool, with
+    /// Asynchronous equivalent of <see cref="Compress(string, string, PdfCompressOptions?, PdfOptions?)"/>, run on the thread pool, with
     /// cooperative cancellation: <paramref name="cancellationToken"/> is checked between pages
     /// while planning and between streams while writing. A cancelled call throws
     /// <see cref="OperationCanceledException"/> and leaves no output file (an existing file at
     /// <paramref name="outputPath"/> is left as it was).
     /// </summary>
     /// <param name="path">The path to open and compress.</param>
-    /// <param name="outputPath">Where to write the compressed document. May equal <paramref name="path"/> (see <see cref="Compress"/>).</param>
+    /// <param name="outputPath">Where to write the compressed document. May equal <paramref name="path"/> (see <see cref="Compress(string, string, PdfCompressOptions?, PdfOptions?)"/>).</param>
     /// <param name="compressOptions">The levers to apply. Defaults to <see cref="PdfCompressOptions.Default"/> (lossless only).</param>
     /// <param name="options">Options controlling the open and save. Defaults to <see cref="PdfOptions.Default"/>.</param>
     /// <param name="cancellationToken">Stops the call between pages or streams.</param>
-    /// <returns>The same report <see cref="Compress"/> returns.</returns>
-    /// <exception cref="PlumePdfException">See <see cref="Compress"/>.</exception>
+    /// <returns>The same report <see cref="Compress(string, string, PdfCompressOptions?, PdfOptions?)"/> returns.</returns>
+    /// <exception cref="PlumePdfException">See <see cref="Compress(string, string, PdfCompressOptions?, PdfOptions?)"/>.</exception>
     /// <example>
     /// <code>
     /// using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(8));
@@ -516,6 +516,104 @@ public static class Pdf
     /// </example>
     public static Task<CompressionResult> CompressAsync(string path, string outputPath, PdfCompressOptions? compressOptions = null, PdfOptions? options = null, CancellationToken cancellationToken = default) =>
         Task.Run(() => CompressionEngine.Compress(path, outputPath, compressOptions, options, cancellationToken), cancellationToken);
+
+    /// <summary>
+    /// Reads a document from <paramref name="input"/>, makes it smaller with the levers
+    /// <paramref name="compressOptions"/> turns on, and writes the result to
+    /// <paramref name="output"/> — the stream form of
+    /// <see cref="Compress(string, string, PdfCompressOptions?, PdfOptions?)"/>, for a document
+    /// that arrives as a download and leaves as an upload. The levers, the
+    /// <see cref="CompressionResult"/>, the diagnostics and the refusals are the same, and so are
+    /// the bytes: for the same input and options, the output is byte-identical to the path
+    /// overload's under <see cref="PdfOptions.Deterministic"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A seekable <paramref name="input"/> is read in place, from position 0, through a small
+    /// window, never buffered whole. A non-seekable one (an HTTP response body, a blob download)
+    /// is first copied to a temporary file in <see cref="Path.GetTempPath"/>, never into memory,
+    /// and that file is deleted when the call returns or throws; the temporary directory needs
+    /// room for a copy of the input. <see cref="CompressionResult.InputBytes"/> is the stream's
+    /// length, or the number of bytes copied.
+    /// </para>
+    /// <para>
+    /// <paramref name="output"/> need not be seekable. Writing starts at its current position,
+    /// and the PDF's offsets are counted from there, so a stream already positioned past 0 holds
+    /// a valid PDF from that point on. <paramref name="output"/> is flushed at the end, and
+    /// <see cref="CompressionResult.OutputBytes"/> is the number of bytes written. Neither stream
+    /// is disposed or closed: the caller owns both.
+    /// </para>
+    /// <para>
+    /// A caller's stream can't be written atomically. Every refusal and argument error comes
+    /// before the first byte, so nothing is written to <paramref name="output"/> then; a failure
+    /// or cancellation during the write can leave a partial, unusable PDF in
+    /// <paramref name="output"/>, which the caller discards (aborts the upload, deletes the
+    /// blob). Memory is bounded by the largest image, as for the path overload.
+    /// </para>
+    /// </remarks>
+    /// <param name="input">A readable stream holding the document. Seekable or not.</param>
+    /// <param name="output">A writable stream to write the compressed document to. Seekable or not; must not be <paramref name="input"/>.</param>
+    /// <param name="compressOptions">The levers to apply. Defaults to <see cref="PdfCompressOptions.Default"/> (lossless only).</param>
+    /// <param name="options">Options controlling the open and save, such as <see cref="PdfOptions.Deterministic"/>, <see cref="PdfOptions.Strict"/> and the image resource caps. Defaults to <see cref="PdfOptions.Default"/>.</param>
+    /// <returns>Input and output sizes, one decision per image, and the call's result-scoped diagnostics.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="input"/> or <paramref name="output"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="input"/> can't be read, <paramref name="output"/> can't be written (a read-only or disposed stream), or both are the same stream.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><see cref="PdfImageCompression.MaxDpi"/> is not a positive finite number, or <see cref="PdfImageCompression.JpegQuality"/> is outside 1–100.</exception>
+    /// <exception cref="PlumePdfException">
+    /// Refused before anything is written: <paramref name="options"/> asks for
+    /// <see cref="PdfOptions.Linearize"/> (<c>PLUME5018</c>, before <paramref name="input"/> is
+    /// read); the source is encrypted (<c>PLUME5001</c>); or the source is signed and
+    /// <see cref="PdfCompressOptions.AllowInvalidatingSignatures"/> is not set
+    /// (<c>PLUME6084</c>). The input couldn't be read as a PDF (as
+    /// <see cref="PdfDocument.Open(Stream, PdfOptions?)"/> refuses). Under
+    /// <see cref="PdfOptions.Strict"/>, a reference the document can't resolve refuses the save
+    /// with <c>PLUME2060</c> after planning, before writing.
+    /// </exception>
+    /// <example>
+    /// <code>
+    /// using var download = await http.GetStreamAsync(sourceUrl);
+    /// await using var upload = File.Create("scan-small.pdf");
+    /// var result = Pdf.Compress(download, upload, new PdfCompressOptions
+    /// {
+    ///     Images = new PdfImageCompression { MaxDpi = 200, JpegQuality = 70 },
+    /// });
+    /// Console.WriteLine($"{result.InputBytes:N0} -> {result.OutputBytes:N0} bytes");
+    /// </code>
+    /// </example>
+    public static CompressionResult Compress(Stream input, Stream output, PdfCompressOptions? compressOptions = null, PdfOptions? options = null) =>
+        CompressionEngine.Compress(input, output, compressOptions, options, CancellationToken.None);
+
+    /// <summary>
+    /// Asynchronous equivalent of <see cref="Compress(Stream, Stream, PdfCompressOptions?, PdfOptions?)"/>:
+    /// a non-seekable <paramref name="input"/> is copied to its temporary file asynchronously,
+    /// then the compression runs on the thread pool, with cooperative cancellation —
+    /// <paramref name="cancellationToken"/> is checked while copying, between pages while
+    /// planning and between streams while writing. A cancelled call throws
+    /// <see cref="OperationCanceledException"/>; if it was already writing,
+    /// <paramref name="output"/> may hold a partial PDF to discard.
+    /// </summary>
+    /// <param name="input">A readable stream holding the document. Seekable or not.</param>
+    /// <param name="output">A writable stream to write the compressed document to. Seekable or not; must not be <paramref name="input"/>.</param>
+    /// <param name="compressOptions">The levers to apply. Defaults to <see cref="PdfCompressOptions.Default"/> (lossless only).</param>
+    /// <param name="options">Options controlling the open and save. Defaults to <see cref="PdfOptions.Default"/>.</param>
+    /// <param name="cancellationToken">Stops the call while copying the input, or between pages or streams.</param>
+    /// <returns>The same report <see cref="Compress(Stream, Stream, PdfCompressOptions?, PdfOptions?)"/> returns.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="input"/> or <paramref name="output"/> is null.</exception>
+    /// <exception cref="ArgumentException">See <see cref="Compress(Stream, Stream, PdfCompressOptions?, PdfOptions?)"/>.</exception>
+    /// <exception cref="PlumePdfException">See <see cref="Compress(Stream, Stream, PdfCompressOptions?, PdfOptions?)"/>.</exception>
+    /// <example>
+    /// <code>
+    /// using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(8));
+    /// await using var download = await http.GetStreamAsync(sourceUrl, timeout.Token);
+    /// await using var upload = File.Create("scan-small.pdf");
+    /// var result = await Pdf.CompressAsync(download, upload, new PdfCompressOptions
+    /// {
+    ///     Images = new PdfImageCompression { MaxDpi = 200, JpegQuality = 70 },
+    /// }, cancellationToken: timeout.Token);
+    /// </code>
+    /// </example>
+    public static Task<CompressionResult> CompressAsync(Stream input, Stream output, PdfCompressOptions? compressOptions = null, PdfOptions? options = null, CancellationToken cancellationToken = default) =>
+        CompressionEngine.CompressAsync(input, output, compressOptions, options, cancellationToken);
 
     /// <summary>
     /// Opens the document at <paramref name="path"/> and runs PlumePDF's in-process PDF/A

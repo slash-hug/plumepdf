@@ -440,7 +440,7 @@ internal static class Linearizer
 
         long Measure(int number, PdfObject value)
         {
-            var counter = new CountingStream();
+            var counter = new CountingWriteStream();
             ObjectSerializer.WriteIndirectObject(counter, number, 0, value, Translate);
             return counter.Position;
         }
@@ -722,40 +722,4 @@ internal static class Linearizer
         WriteAscii(output, $"{offset.ToString("D10", CultureInfo.InvariantCulture)} 00000 n \n");
 
     private static void WriteAscii(Stream output, string text) => output.Write(Encoding.ASCII.GetBytes(text));
-
-    /// <summary>A write-only sink that discards bytes and counts them — the measurement pass's stream.</summary>
-    private sealed class CountingStream : Stream
-    {
-        private long _length;
-
-        public override bool CanRead => false;
-
-        public override bool CanSeek => false;
-
-        public override bool CanWrite => true;
-
-        public override long Length => _length;
-
-        public override long Position
-        {
-            get => _length;
-            set => throw new NotSupportedException("CountingStream is forward-only.");
-        }
-
-        public override void Flush()
-        {
-        }
-
-        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException("CountingStream is write-only.");
-
-        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException("CountingStream is forward-only.");
-
-        public override void SetLength(long value) => throw new NotSupportedException("CountingStream is forward-only.");
-
-        public override void Write(byte[] buffer, int offset, int count) => _length += count;
-
-        public override void Write(ReadOnlySpan<byte> buffer) => _length += buffer.Length;
-
-        public override void WriteByte(byte value) => _length++;
-    }
 }

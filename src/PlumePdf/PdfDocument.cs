@@ -624,6 +624,65 @@ public sealed class PdfDocument : IDisposable
     internal void SaveWithWriteHooks(string path, PdfOptions? options, IStreamWriteTransform? transform, IReadOnlyDictionary<int, int>? aliases)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
+        var save = PrepareSave(options, transform, aliases);
+
+        // Windows refuses to replace a file that still has a live mapped section, no
+        // matter how the original handle was shared — so saving over the currently-open file
+        // first buffers the source into memory and releases the OS handles. The document
+        // (and its lazy resolver) stays fully readable off the in-memory copy.
+        DetachMappedSourceIfSamePath(path);
+
+        var directory = Path.GetDirectoryName(Path.GetFullPath(path));
+        var tempPath = Path.Combine(string.IsNullOrEmpty(directory) ? "." : directory, $".{Path.GetFileName(path)}.plumepdf-tmp-{Guid.NewGuid():N}");
+
+        try
+        {
+            using (var tempStream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                WriteSave(tempStream, save, transform, aliases);
+            }
+
+            File.Move(tempPath, path, overwrite: true);
+            CompleteSave(save);
+        }
+        finally
+        {
+            if (File.Exists(tempPath))
+            {
+                File.Delete(tempPath);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The stream-target core of <see cref="SaveWithWriteHooks(string, PdfOptions?, IStreamWriteTransform?, IReadOnlyDictionary{int, int}?)"/>:
+    /// the same refusals, clean-up and writer, writing to <paramref name="output"/> from its
+    /// current position. <paramref name="output"/> need not be seekable: the writers' offsets
+    /// come from a counting wrapper, so they are relative to where writing began. Every refusal
+    /// comes before the first byte; a failure while writing leaves whatever was written so far.
+    /// <paramref name="output"/> is flushed at the end and never disposed.
+    /// </summary>
+    /// <returns>The number of bytes written.</returns>
+    internal long SaveWithWriteHooks(Stream output, PdfOptions? options, IStreamWriteTransform? transform, IReadOnlyDictionary<int, int>? aliases)
+    {
+        ArgumentNullException.ThrowIfNull(output);
+        var save = PrepareSave(options, transform, aliases);
+
+        // The writers issue many small writes; a caller's stream (an upload, say) may not
+        // buffer them. Not disposed: that would close the caller's stream.
+        var buffered = new BufferedStream(output, 1 << 16);
+        // WriteSave's own flush reaches through the buffer to the caller's stream, once.
+        var written = WriteSave(buffered, save, transform, aliases);
+        CompleteSave(save);
+        return written;
+    }
+
+    /// <summary>
+    /// Everything a full-rewrite save checks and computes before its first byte: the refusals,
+    /// the effective options, the removed-page clean-up and the existing-signature scan.
+    /// </summary>
+    private PreparedSave PrepareSave(PdfOptions? options, IStreamWriteTransform? transform, IReadOnlyDictionary<int, int>? aliases)
+    {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         if (HasEncryptedSource)
@@ -716,61 +775,54 @@ public sealed class PdfDocument : IDisposable
             Diagnostics.Add(new PdfDiagnostic("PLUME5014", DiagnosticSeverity.Warning, $"Save (full rewrite) invalidates {existingSignatures.Count} existing signature(s) ({names}); proceeding anyway — use SaveIncremental to keep them valid."));
         }
 
-        // Windows refuses to replace a file that still has a live mapped section, no
-        // matter how the original handle was shared — so saving over the currently-open file
-        // first buffers the source into memory and releases the OS handles. The document
-        // (and its lazy resolver) stays fully readable off the in-memory copy.
-        DetachMappedSourceIfSamePath(path);
+        return new PreparedSave(effectiveOptions, cleanup);
+    }
 
-        var directory = Path.GetDirectoryName(Path.GetFullPath(path));
-        var tempPath = Path.Combine(string.IsNullOrEmpty(directory) ? "." : directory, $".{Path.GetFileName(path)}.plumepdf-tmp-{Guid.NewGuid():N}");
-
-        try
+    // Writes the document through a byte counter, so the writers' offsets are relative to where
+    // 'sink' was when writing began, and returns the byte count.
+    private long WriteSave(Stream sink, PreparedSave save, IStreamWriteTransform? transform, IReadOnlyDictionary<int, int>? aliases)
+    {
+        var (effectiveOptions, cleanup) = save;
+        var counter = new CountingWriteStream(sink);
+        var pages = cleanup.Pages;
+        if (effectiveOptions.Linearize)
         {
-            using (var tempStream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
-            {
-                var pages = cleanup.Pages;
-                if (effectiveOptions.Linearize)
-                {
-                    // Two-pass staged output through this already-existing temp
-                    // file (the recorded carve-out of the "no whole-document byte buffer"
-                    // promise — staging through the temp FILE is fine; a whole-document MEMORY
-                    // buffer is what the promise forbids).
-                    Linearizer.Write(tempStream, Objects, Catalog?.Reference, cleanup.Catalog, pages, effectiveOptions, cleanup.Excluded, cleanup.Replacements);
-                }
-                else
-                {
-                    FullRewriteWriter.Write(tempStream, Objects, Catalog?.Reference, cleanup.Catalog, pages, effectiveOptions, cleanup.Excluded, cleanup.Replacements, transform, aliases);
-                }
-            }
-
-            File.Move(tempPath, path, overwrite: true);
-
-            if (cleanup.Counts.Any)
-            {
-                Diagnostics.Add(new PdfDiagnostic("PLUME5021", DiagnosticSeverity.Info, $"Save left out what pointed at removed pages: {cleanup.Counts.Describe()}. Reopen the saved file to see the result."));
-            }
-
-            if (effectiveOptions.Linearize)
-            {
-                // Remembered for this instance's lifetime so a later
-                // SaveIncremental can record the de-linearization diagnostic (PLUME5019).
-                _linearizedSave = true;
-            }
+            // Two passes by measurement (a counting sink), then one front-to-back write: no
+            // whole-document memory buffer, which the streaming-write promise forbids.
+            Linearizer.Write(counter, Objects, Catalog?.Reference, cleanup.Catalog, pages, effectiveOptions, cleanup.Excluded, cleanup.Replacements);
         }
-        finally
+        else
         {
-            if (File.Exists(tempPath))
-            {
-                File.Delete(tempPath);
-            }
+            FullRewriteWriter.Write(counter, Objects, Catalog?.Reference, cleanup.Catalog, pages, effectiveOptions, cleanup.Excluded, cleanup.Replacements, transform, aliases);
+        }
+
+        counter.Flush();
+        return counter.Position;
+    }
+
+    // What a save records once its output is complete.
+    private void CompleteSave(PreparedSave save)
+    {
+        if (save.Cleanup.Counts.Any)
+        {
+            Diagnostics.Add(new PdfDiagnostic("PLUME5021", DiagnosticSeverity.Info, $"Save left out what pointed at removed pages: {save.Cleanup.Counts.Describe()}. Reopen the saved file to see the result."));
+        }
+
+        if (save.Options.Linearize)
+        {
+            // Remembered for this instance's lifetime so a later
+            // SaveIncremental can record the de-linearization diagnostic (PLUME5019).
+            _linearizedSave = true;
         }
     }
+
+    /// <summary>The effective options and clean-up one full-rewrite save writes with.</summary>
+    private readonly record struct PreparedSave(PdfOptions Options, SaveCleanupContext Cleanup);
 
     /// <summary>
     /// The object numbers a full-rewrite save with <paramref name="options"/> would leave out
     /// for the current pages: what only removed pages reached, plus what the save-time clean-up
-    /// drops. A caller building an alias map for <see cref="SaveWithWriteHooks"/> picks
+    /// drops. A caller building an alias map for <see cref="SaveWithWriteHooks(string, PdfOptions?, IStreamWriteTransform?, IReadOnlyDictionary{int, int}?)"/> picks
     /// canonicals outside this set, because the writer refuses an alias onto any member of it.
     /// </summary>
     /// <param name="options">The options the save will run with; <see langword="null"/> means this document's own.</param>
