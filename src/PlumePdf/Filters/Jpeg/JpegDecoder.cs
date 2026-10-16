@@ -836,7 +836,10 @@ internal static class JpegDecoder
         }
 
         var pixels = new byte[frame.Width * frame.Height * componentCount];
-        var useRawRgb = componentCount == 3 && effectiveTransform is JpegAdobeTransform.Unknown or null && IsRgbComponentIds(frame);
+        // An explicit "no transform" (Adobe APP14 transform 0, or the PDF's /ColorTransform 0)
+        // makes a 3-component frame RGB whatever its component ids are, as libjpeg, poppler and
+        // pdf.js read it; the R/G/B-ids heuristic applies only when neither says anything.
+        var useRawRgb = componentCount == 3 && (effectiveTransform is JpegAdobeTransform.Unknown || (effectiveTransform is null && IsRgbComponentIds(frame)));
         var useNoTransformCmyk = componentCount == 4 && effectiveTransform is not JpegAdobeTransform.Ycck;
 
         // Nearest-neighbor (block-replication) upsampling — djpeg's `-nosmooth` interpretation,

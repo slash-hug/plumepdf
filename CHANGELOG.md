@@ -37,6 +37,17 @@ only by diffing output. Entries land in the same change as the behavior they des
 
 ### Fixed
 
+- **3-component JPEGs marked "no colour transform" decoded as YCbCr.** A JPEG whose Adobe
+  `APP14` marker says transform 0, or whose PDF `/DecodeParms` say `/ColorTransform 0`, stores
+  its samples as RGB, but PlumePDF read them as RGB only when the component ids were also
+  `R`, `G`, `B`; with the usual ids 1, 2, 3 the colours came out wrong (a red of 220/30/40
+  rendered as 97/255/46). An explicit transform 0 now means RGB whatever the ids say, as
+  libjpeg, poppler and pdf.js read it; the id check is used only when neither the marker nor
+  `/ColorTransform` says anything. This changes the pixels `Rasterize` and
+  `RasterImage.Decode` give for such files, `ExtractImages`' decoded samples for one whose
+  `DCTDecode` isn't the last filter (a JPEG that ends its filter chain is still returned as its
+  own bytes, unchanged), and the colours `Pdf.Compress` writes when it re-encodes or
+  downsamples them.
 - **Streams whose `/Length` is an indirect reference read the rest of the file.** Below 2 GiB,
   resolving such a stream (common in Ghostscript, pdfTeX and scanner output) read from its
   offset to the end of the file — a 7.5 MB image in a 196 MB file allocated 642 MB; past 2 GiB
