@@ -1,6 +1,6 @@
 # PLUME1002 — file not found
 
-**Cause:** `PdfDocument.Open(string path)` was called with a path that doesn't exist.
+**Cause:** `PdfDocument.Open(string path)` was called with a path that doesn't exist, or with a symbolic link whose target doesn't exist.
 
 **Example:** `PdfDocument.Open("does-not-exist.pdf")`
 

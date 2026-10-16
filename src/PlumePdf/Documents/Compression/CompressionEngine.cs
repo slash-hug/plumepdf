@@ -186,7 +186,9 @@ internal static class CompressionEngine
         ArgumentNullException.ThrowIfNull(document);
         ArgumentException.ThrowIfNullOrEmpty(sourcePath);
         ArgumentException.ThrowIfNullOrEmpty(outputPath);
-        return Run(document, new FileInfo(sourcePath).Length, new SaveTarget(outputPath, null), compress, saveOptions, cancellationToken, hooks);
+        // The opened source's length, not the path's: for a symbolic link the path's FileInfo is
+        // the link's own size.
+        return Run(document, document.Source?.Length ?? new FileInfo(sourcePath).Length, new SaveTarget(outputPath, null), compress, saveOptions, cancellationToken, hooks);
     }
 
     /// <summary>
