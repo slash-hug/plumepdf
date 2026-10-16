@@ -7,6 +7,31 @@ only by diffing output. Entries land in the same change as the behavior they des
 
 ## [Unreleased]
 
+### Added
+
+- **`Pdf.Compress` and `Pdf.CompressAsync` make a document smaller.** With no options the call
+  is lossless: unfiltered streams are Flate-compressed, objects are packed into object streams
+  with a cross-reference stream, and byte-identical streams are written once. Images change
+  only when asked: `PdfCompressOptions.Images` with `MaxDpi` downsamples images whose effective
+  DPI is above 1.5 × `MaxDpi` to `MaxDpi` (box filter, per axis, never upsampling), and
+  `JpegQuality` re-encodes 8-bit gray and RGB images (ICC profiles kept) as baseline JPEG.
+  With only `MaxDpi`, a JPEG keeps its own estimated quality. Every rewritten stream follows
+  the never-larger rule. The returned `CompressionResult` gives input and output sizes and one
+  `ImageCompressionDecision` per image (`Action`, `SkipReason`, sizes, effective DPI before and
+  after), plus result-scoped summary diagnostics with counts (`PLUME6085`–`PLUME6090`), never
+  one entry per image and nothing on `doc.Diagnostics`. Bilevel and stencil images, 2/4/16-bit
+  images, colour spaces other than gray and RGB, JPEG 2000/JBIG2/CCITT, inline,
+  tiling-pattern-only, colour-key masked and `/Matte` soft-mask images are skipped with a
+  reason. An image that fails to decode is written unchanged with `PLUME6086`, never a
+  refusal, even under `PdfOptions.Strict`. Memory is bounded by the largest image (about five
+  times its decoded size), and output goes through the usual temp-file-then-move save, so a
+  failure or cancellation leaves no partial file. Refused before any work: a signed source
+  unless `AllowInvalidatingSignatures` strips it (new `PLUME6084`), an encrypted source
+  (`PLUME5001`), `PdfOptions.Linearize` (`PLUME5018`), and same-path output over 2 GiB
+  (`PLUME1006`). A version below 1.5 is raised to 1.5 for packing (`PLUME6088`); a PDF/A-1
+  source is not packed (`PLUME6089`). Path-only for now: a `Stream` overload and progress
+  reporting are not yet available. Recipe: `docs/cookbook/compress.md`.
+
 ### Fixed
 
 - **Streams whose `/Length` is an indirect reference read the rest of the file.** Below 2 GiB,

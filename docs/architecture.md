@@ -117,6 +117,42 @@ Filters layer rather than the Documents layer alongside `ExtractedImage`.
   this promise the same narrow way: its two-pass save stages through the writer's existing
   on-disk temp file — never a whole-document *in-memory* buffer — to back-patch the hint tables.
 
+**Compression: a planning pass, then a full rewrite with a write-time transform.**
+`Pdf.Compress` (`Documents/Compression`) is a full-rewrite `Save` with three additions, built
+so memory follows the largest image rather than the file:
+
+- **Planning pass.** Before anything is written, a placement scan walks every retained page's
+  content (Form XObjects, annotation appearances, soft-mask groups, tiling patterns and Type 3
+  glyphs included) tracking the CTM at each image, to measure each image's effective DPI per
+  axis at its largest placement; a classifier assigns each image an action or a skip reason; and
+  a deduplicator finds byte-identical streams — equal dictionaries once `/Length` is set
+  aside and references are read as their canonical numbers, and raw payloads of the same length
+  and SHA-256, hashed only within a bucket of equal dictionaries and declared lengths and
+  repeated to a fixpoint so parents of merged children merge too. Metadata, cross-reference,
+  object and external-file streams and Form XObjects are never merged. It reads only stream dictionaries and one-shot, uncached payloads, so the open
+  document's object cache does not grow with image data; the plan holds object numbers and
+  sizes, never pixels. A page walk that is cut short (`PLUME6025`, `PLUME7010`) marks the
+  images it reaches unmeasured rather than guessing.
+- **Write-time stream transform.** The full-rewrite writer takes an internal
+  `IStreamWriteTransform` (in `Objects/Writing`, with no Documents types), consulted at the one
+  point a stream's value is chosen for writing, after any caller or page-removal override and
+  never for an excluded object, on both the classic and the `Optimize` body paths. Compress's
+  transform decodes, resamples and encodes one planned image, or Flates one unfiltered stream,
+  and the writer writes the result and drops it. A replacement may reference only what the
+  original did (an internal `PLUME5010` invariant otherwise), and the never-larger rule falls
+  back to the original stream. The linearized writer takes no hooks, so Compress refuses
+  `Linearize` up front (`PLUME5018`).
+- **Duplicate alias map.** The writer also takes a map from a duplicate stream's original
+  number to the canonical copy written in its place; it is applied wherever references are
+  numbered and translated, so a duplicate is never numbered, walked or written. The writer
+  refuses (`PLUME5010`) an alias it can't honour: a self-alias, a duplicate that is the catalog,
+  a retained page or an overridden object, or a canonical that is excluded, itself aliased or
+  overridden.
+
+Signatures are stripped before planning when the caller allows it (the same stripper `Redact`
+uses); every refusal comes before planning. The save is the ordinary temp-file-then-move
+`Save`, so a failure or cancellation leaves no partial output.
+
 **Mutation and the dirty-object set (Phase 4):**
 `ObjectRegistry` (`doc.Objects`) gains a general-purpose `MarkDirty(reference)` (for a
 `PdfDictionary`/`PdfArray`/`PdfStream` already mutated in place — these containers were always
