@@ -20,13 +20,16 @@ internal sealed class CompressionHooks
 
     /// <summary>Called with each stream's original number as the writer offers it for transforming.</summary>
     public Action<int>? Transforming { get; init; }
+
+    /// <summary>Called with the temporary file's path when a non-seekable input stream is about to be spooled to it.</summary>
+    public Action<string>? Spooled { get; init; }
 }
 
 /// <summary>
 /// Orchestrates one <c>Compress</c> call: argument validation and the refusals that come
 /// before any work, the effective save options, signature stripping, the planning pass, the
-/// full-rewrite save with the write-time transform and the duplicate alias map, and the
-/// <see cref="CompressionResult"/>.
+/// full-rewrite save with the write-time transform and the duplicate alias map (to a path, or
+/// to a caller's stream from its current position), and the <see cref="CompressionResult"/>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -34,7 +37,8 @@ internal sealed class CompressionHooks
 /// linearized output (<c>PLUME5018</c>: the linearized writer takes no write-time hooks),
 /// an encrypted source (<c>PLUME5001</c>), a signed source without
 /// <see cref="PdfCompressOptions.AllowInvalidatingSignatures"/> (<c>PLUME6084</c>), and saving
-/// over a source too large to buffer (<c>PLUME1006</c>). Signatures are stripped before the
+/// over a source too large to buffer (<c>PLUME1006</c>, a path output only). A stream input is
+/// validated, and refused for linearized output, before it is read or spooled. Signatures are stripped before the
 /// save, so the save's own full-rewrite signature warning never fires. The save itself can
 /// still refuse as any save does: under <see cref="PdfOptions.Strict"/>, a reference the
 /// document can't resolve throws <c>PLUME2060</c> from the writer's discovery walk.
@@ -59,6 +63,9 @@ internal sealed class CompressionHooks
 /// </remarks>
 internal static class CompressionEngine
 {
+    // The chunk a non-seekable input is copied to its spool file in.
+    private const int SpoolBufferSize = 1 << 20;
+
     private static readonly PdfName WidthName = PdfName.Get("Width");
     private static readonly PdfName HeightName = PdfName.Get("Height");
 
@@ -85,6 +92,84 @@ internal static class CompressionEngine
     }
 
     /// <summary>
+    /// Reads <paramref name="input"/>, compresses it and writes the result to
+    /// <paramref name="output"/> from its current position. A seekable input is opened in place;
+    /// a non-seekable one is spooled to a temporary file first, deleted before this returns.
+    /// </summary>
+    public static CompressionResult Compress(
+        Stream input,
+        Stream output,
+        PdfCompressOptions? compressOptions,
+        PdfOptions? options,
+        CancellationToken cancellationToken,
+        CompressionHooks? hooks = null)
+    {
+        var (compress, saveOptions) = ValidateStreams(input, output, compressOptions, options);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (input.CanSeek)
+        {
+            return RunStream(input, output, compress, saveOptions, cancellationToken, hooks);
+        }
+
+        var spool = SpoolPath(hooks);
+        try
+        {
+            long spooled;
+            using (var file = CreateSpool(spool))
+            {
+                CopyTo(input, file, cancellationToken);
+                spooled = file.Length;
+            }
+
+            return RunSpooled(spool, spooled, output, compress, saveOptions, cancellationToken, hooks);
+        }
+        finally
+        {
+            File.Delete(spool);
+        }
+    }
+
+    /// <summary>
+    /// <see cref="Compress(Stream, Stream, PdfCompressOptions?, PdfOptions?, CancellationToken, CompressionHooks?)"/>
+    /// with a non-seekable input spooled asynchronously, then the compression run on the thread pool.
+    /// </summary>
+    public static async Task<CompressionResult> CompressAsync(
+        Stream input,
+        Stream output,
+        PdfCompressOptions? compressOptions,
+        PdfOptions? options,
+        CancellationToken cancellationToken,
+        CompressionHooks? hooks = null)
+    {
+        var (compress, saveOptions) = ValidateStreams(input, output, compressOptions, options);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (input.CanSeek)
+        {
+            return await Task.Run(() => RunStream(input, output, compress, saveOptions, cancellationToken, hooks), cancellationToken).ConfigureAwait(false);
+        }
+
+        var spool = SpoolPath(hooks);
+        try
+        {
+            long spooled;
+            var file = CreateSpool(spool, asynchronous: true);
+            await using (file.ConfigureAwait(false))
+            {
+                await input.CopyToAsync(file, SpoolBufferSize, cancellationToken).ConfigureAwait(false);
+                spooled = file.Length;
+            }
+
+            return await Task.Run(() => RunSpooled(spool, spooled, output, compress, saveOptions, cancellationToken, hooks), cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            File.Delete(spool);
+        }
+    }
+
+    /// <summary>
     /// Compresses an already-open <paramref name="document"/>, opened from
     /// <paramref name="sourcePath"/>, to <paramref name="outputPath"/>. Strips the document's
     /// signatures when allowed, so it is meant for a document opened for this one call.
@@ -101,6 +186,23 @@ internal static class CompressionEngine
         ArgumentNullException.ThrowIfNull(document);
         ArgumentException.ThrowIfNullOrEmpty(sourcePath);
         ArgumentException.ThrowIfNullOrEmpty(outputPath);
+        return Run(document, new FileInfo(sourcePath).Length, new SaveTarget(outputPath, null), compress, saveOptions, cancellationToken, hooks);
+    }
+
+    /// <summary>
+    /// Compresses an already-open <paramref name="document"/>, whose source is
+    /// <paramref name="inputBytes"/> long, to <paramref name="target"/>: a path (written to a
+    /// temporary file and moved into place) or a stream (written from its current position).
+    /// </summary>
+    private static CompressionResult Run(
+        PdfDocument document,
+        long inputBytes,
+        SaveTarget target,
+        PdfCompressOptions compress,
+        PdfOptions saveOptions,
+        CancellationToken cancellationToken,
+        CompressionHooks? hooks)
+    {
         Validate(compress);
         RefuseLinearize(saveOptions);
 
@@ -116,9 +218,8 @@ internal static class CompressionEngine
             throw new PlumePdfException("PLUME6084", $"Compress would invalidate {signatures.Count} existing signature(s)/timestamp(s) ({names}): compression is a full rewrite, which moves the bytes their /ByteRange covers. Pass PdfCompressOptions.AllowInvalidatingSignatures to strip them and write an honestly unsigned output.");
         }
 
-        var inputBytes = new FileInfo(sourcePath).Length;
         var samePathLimit = hooks?.SamePathSourceLimit ?? int.MaxValue;
-        if (inputBytes > samePathLimit && document.BuffersSourceToSaveOver(outputPath))
+        if (target.Path is { } outputPath && inputBytes > samePathLimit && document.BuffersSourceToSaveOver(outputPath))
         {
             throw new PlumePdfException("PLUME1006", $"Cannot compress this {inputBytes}-byte source over its own path: saving over the open file buffers it into memory first, and it exceeds the {samePathLimit}-byte single-array limit. Write the output to a different path.");
         }
@@ -137,12 +238,96 @@ internal static class CompressionEngine
         }
 
         var transform = new CompressionWriteTransform(document.Objects, plan, settings, effective, cancellationToken, hooks?.Transforming);
-        document.SaveWithWriteHooks(outputPath, effective, transform, plan.Aliases);
+        long outputBytes;
+        if (target.Path is { } path)
+        {
+            document.SaveWithWriteHooks(path, effective, transform, plan.Aliases);
+            outputBytes = new FileInfo(path).Length;
+        }
+        else
+        {
+            outputBytes = document.SaveWithWriteHooks(target.Stream!, effective, transform, plan.Aliases);
+        }
 
         var images = Decisions(document.Objects, plan, transform.Written);
         Summarize(images, transform.Written, settings, diagnostics);
-        return new CompressionResult(inputBytes, new FileInfo(outputPath).Length, images, diagnostics, signaturesStripped);
+        return new CompressionResult(inputBytes, outputBytes, images, diagnostics, signaturesStripped);
     }
+
+    // Argument errors and the refusals that come before the input is read, in the path
+    // overload's order; a non-seekable input is never spooled for a call that would refuse.
+    private static (PdfCompressOptions Compress, PdfOptions SaveOptions) ValidateStreams(Stream input, Stream output, PdfCompressOptions? compressOptions, PdfOptions? options)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        ArgumentNullException.ThrowIfNull(output);
+        if (ReferenceEquals(input, output))
+        {
+            throw new ArgumentException("The input and output must be different streams: the source's payloads are read while the output is written.", nameof(output));
+        }
+
+        if (!input.CanRead)
+        {
+            throw new ArgumentException("The input stream must be readable (it is write-only or disposed).", nameof(input));
+        }
+
+        if (!output.CanWrite)
+        {
+            throw new ArgumentException("The output stream must be writable (it is read-only or disposed).", nameof(output));
+        }
+
+        var compress = compressOptions ?? PdfCompressOptions.Default;
+        Validate(compress);
+        var saveOptions = options ?? PdfOptions.Default;
+        RefuseLinearize(saveOptions);
+        return (compress, saveOptions);
+    }
+
+    // A seekable input, opened in place from position 0 (PdfDocument.Open(Stream)).
+    private static CompressionResult RunStream(Stream input, Stream output, PdfCompressOptions compress, PdfOptions saveOptions, CancellationToken cancellationToken, CompressionHooks? hooks)
+    {
+        using var document = PdfDocument.Open(input, saveOptions);
+        return Run(document, input.Length, new SaveTarget(null, output), compress, saveOptions, cancellationToken, hooks);
+    }
+
+    // A non-seekable input, spooled to 'spool' and opened from there like a path input.
+    private static CompressionResult RunSpooled(string spool, long spooledBytes, Stream output, PdfCompressOptions compress, PdfOptions saveOptions, CancellationToken cancellationToken, CompressionHooks? hooks)
+    {
+        using var document = PdfDocument.Open(spool, saveOptions);
+        return Run(document, spooledBytes, new SaveTarget(null, output), compress, saveOptions, cancellationToken, hooks);
+    }
+
+    // A unique temporary file for a non-seekable input; the hook sees it before it exists.
+    private static string SpoolPath(CompressionHooks? hooks)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"plumepdf-compress-input-{Guid.NewGuid():N}.pdf");
+        hooks?.Spooled?.Invoke(path);
+        return path;
+    }
+
+    private static FileStream CreateSpool(string path, bool asynchronous = false) =>
+        new(path, new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None, BufferSize = 0, Options = asynchronous ? FileOptions.Asynchronous : FileOptions.None });
+
+    // Stream.CopyTo has no cancellation; this checks the token between chunks.
+    private static void CopyTo(Stream input, Stream file, CancellationToken cancellationToken)
+    {
+        var buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(SpoolBufferSize);
+        try
+        {
+            int read;
+            while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                file.Write(buffer, 0, read);
+            }
+        }
+        finally
+        {
+            System.Buffers.ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
+
+    /// <summary>Where one run writes: a path, or a caller's stream.</summary>
+    private readonly record struct SaveTarget(string? Path, Stream? Stream);
 
     /// <summary>The public skip reason for a planned one; every reason but <see cref="PlannedSkip.None"/> has one of the same name.</summary>
     internal static ImageSkipReason ToSkipReason(PlannedSkip skip) => skip switch

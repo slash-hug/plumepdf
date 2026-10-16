@@ -8,7 +8,8 @@ namespace PlumePdf.Tests;
 /// <summary>
 /// The opt-in large-file lane: a generated document over 2 GiB on disk, opened from its path
 /// (memory-mapped), saved with bounded memory, every image extracted, and the saved copy read
-/// back; and a document of real 300 DPI JPEG scans over 2 GiB compressed with every lever on.
+/// back; and a document of real 300 DPI JPEG scans over 2 GiB compressed with every lever on,
+/// once path to path and once from a non-seekable stream to a non-seekable stream.
 /// Each test writes about 4.5 GB to the temp directory and needs several GB of memory, so the
 /// lane self-skips unless <c>PLUMEPDF_LARGE_FILE_TESTS=1</c>. Run it on its own
 /// (<c>--filter LargeFileLaneTests</c>): the memory assertions read the whole process's heap.
@@ -128,6 +129,67 @@ public class LargeFileLaneTests(ITestOutputHelper output)
                 var image = Assert.Single(saved.Pages[page].ExtractImages());
                 Assert.Equal(targetWidth, image.Width);
             }
+        }
+        finally
+        {
+            File.Delete(input);
+            File.Delete(compressed);
+        }
+    }
+
+    [Fact]
+    public void DecodableScansPast2GiB_CompressFromANonSeekableStreamToANonSeekableStream_WithBoundedMemory()
+    {
+        if (!Enabled)
+        {
+            return;
+        }
+
+        // The stream overload's worst case: a download-like input it must spool to disk, and an
+        // upload-like output it can't seek, so the writer's offsets come from counting.
+        var input = Path.Combine(Path.GetTempPath(), $"plumepdf-large-scans-{Guid.NewGuid():N}.pdf");
+        var compressed = Path.Combine(Path.GetTempPath(), $"plumepdf-large-compressed-{Guid.NewGuid():N}.pdf");
+        try
+        {
+            int pageCount;
+            using (var file = new FileStream(input, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 20))
+            {
+                pageCount = DecodableImageDocumentFixture.Write(file, (long)(2.2 * (1L << 30)));
+            }
+
+            Assert.True(new FileInfo(input).Length > int.MaxValue);
+
+            string? spool = null;
+            var hooks = new CompressionHooks { Spooled = path => spool = path };
+            CompressionResult? result = null;
+            var clock = Stopwatch.StartNew();
+            long peak;
+            using (var source = new Compression.ForwardOnlyStream(new FileStream(input, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 20), writable: false))
+            using (var target = new FileStream(compressed, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 20))
+            using (var sink = new Compression.ForwardOnlyStream(target, readable: false))
+            {
+                peak = PeakManagedBytes(() => result = CompressionEngine.Compress(source, sink, CompressLevers, options: null, CancellationToken.None, hooks));
+            }
+
+            var total = clock.Elapsed;
+            var retained = GC.GetTotalMemory(forceFullCollection: true);
+
+            var images = result!.Images;
+            var downsampled = images.Count(static i => i.Action is ImageCompressionAction.Downsampled or ImageCompressionAction.DownsampledAndReencoded);
+            output.WriteLine(
+                $"[LANE] Compress(Stream) pages={pageCount} input={result.InputBytes} output={result.OutputBytes} saved={result.SavedBytes} " +
+                $"peakManaged={peak} retainedAfter={retained} wall={total.TotalSeconds:0.0}s downsampled={downsampled}/{images.Count}");
+
+            Assert.False(File.Exists(spool), "The spooled copy of the input outlived the call.");
+            Assert.True(peak <= MaxSavePeakBytes, $"Compressing the {pageCount}-page stream peaked at {peak} bytes of managed heap.");
+            Assert.True(retained < MaxRetainedAfterSaveBytes, $"{retained} bytes of managed heap were still held after Compress returned.");
+            Assert.Equal(new FileInfo(input).Length, result.InputBytes);
+            Assert.Equal(new FileInfo(compressed).Length, result.OutputBytes);
+            Assert.True(result.OutputBytes < result.InputBytes / 2, $"Compress wrote {result.OutputBytes} of {result.InputBytes} bytes.");
+
+            using var saved = PdfDocument.Open(compressed);
+            Assert.Equal(pageCount, saved.Pages.Count);
+            Assert.Single(saved.Pages[pageCount - 1].ExtractImages());
         }
         finally
         {
