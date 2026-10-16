@@ -472,4 +472,36 @@ PDF/A-1b (pre-1.5 object/cross-reference streams don't exist at that version), p
 PDF/A-2b.
 _Avoid_: compression alone (Filters, above, already owns that word for stream-payload encoding;
 Optimization is specifically about xref/object-stream *structure*, orthogonal to whether any
-given stream's own bytes are Flate-compressed)
+given stream's own bytes are Flate-compressed — and **Compress**, below, is the umbrella verb
+that uses Optimization as one of its levers)
+
+## Compression language
+
+**Compress**:
+The umbrella verb (`Pdf.Compress`) that makes a document file smaller by combining three
+existing mechanisms: Optimization (object-stream packing), Filters (Flate for unfiltered
+streams, baseline JPEG for re-encoded images) and image downsampling, plus writing
+byte-identical streams once. Lossless unless the caller opts in to an image lever
+(`MaxDpi`, `JpegQuality`); every image's outcome is reported in the result. A full rewrite
+with a write-time transform: never an in-place edit of the open document's images.
+_Avoid_: optimize (that is Optimization, structure only), shrink/minify (informal), and
+"compression" for Compress's whole job — lower-case compression is still a Filter's
+stream-payload encoding
+
+**Effective DPI**:
+An image's pixels per inch as drawn: its pixel count along an axis divided by the length, in
+inches, of the placed image's edge along that axis (the current transformation matrix's column
+for that axis, times the page's `/UserUnit`). Measured per axis and per placement; the image's
+effective DPI is taken at its largest placement (the lowest value), so no placement loses
+detail it needed, and the scalar reported is the lower axis. `MaxDpi` downsamples only above
+1.5 × `MaxDpi`, and never upsamples an axis.
+_Avoid_: PPI, resolution (both blur the image's pixel size with its drawn density; an image
+has no DPI until it is placed), "image DPI" without "effective"
+
+**Never-larger**:
+Compress's per-stream rule: a resampled, re-encoded or Flate-compressed stream is written
+only if it is smaller than the original stream; otherwise the original is written unchanged
+(`ImageCompressionAction.KeptOriginal` for an image, `PLUME6087`). It is why Compress can't
+make an individual stream bigger, though packing can still add a few bytes to a tiny file.
+_Avoid_: resample budget, size guard (neither names the rule: there is no budget, only a
+per-stream comparison)

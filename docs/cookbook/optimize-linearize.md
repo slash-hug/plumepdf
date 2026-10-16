@@ -19,6 +19,10 @@ out:
 The two are mutually exclusive in v1.0 (`PLUME5018`): linearized output uses classic
 cross-reference tables. Pick per output: `Linearize` for web delivery, `Optimize` for size.
 
+`Optimize` leaves every stream's bytes as they are. To shrink images too — downsampling,
+JPEG re-encoding, Flate for unfiltered streams, identical streams written once — use
+`Pdf.Compress`, which packs objects the same way: see [compress.md](compress.md).
+
 <!-- snippet: optimize-linearize -->
 <a id='snippet-optimize-linearize'></a>
 ```cs

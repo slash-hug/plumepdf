@@ -1,10 +1,11 @@
 # PLUME6086 — image could not be decoded for compression (diagnostic)
 
-**Cause (diagnostic, `Warning`):** an image lever of `Pdf.Compress` applied to an image, but
-its samples could not be decoded: a corrupt or truncated payload, a filter error, or a
-dictionary entry that doesn't resolve. One summary entry is recorded on
-`CompressionResult.Diagnostics` with the count and the first failure's reason; each image's
-decision in `CompressionResult.Images` is `Skipped` with `SkipReason = DecodeFailed`.
+**Cause (diagnostic, `Warning`):** `Pdf.Compress` could not read or decode an image it
+classified or rewrote: a corrupt or truncated payload, a filter error, or (under
+`PdfOptions.Strict`) a dictionary entry such as `/SMask` that doesn't resolve. One summary
+entry is recorded on `CompressionResult.Diagnostics` with the count and the first failure's
+object number and reason; each image's decision in `CompressionResult.Images` is `Skipped`
+with `SkipReason = DecodeFailed`.
 
 This is never a refusal, even under `PdfOptions.Strict`: one bad image must not stop the rest
 of a large document from being compressed.

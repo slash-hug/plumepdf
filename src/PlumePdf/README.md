@@ -2,7 +2,7 @@
 
 A fully-featured, high-performance, agent-forward PDF library for .NET, under Apache 2.0.
 
-**1.0.0-preview.** Every feature area below has shipped: reading and manipulation, creation with a real layout engine, extraction, AcroForms, digital signatures, compliance (PDF/A, tagged PDF, true redaction, optimize/linearize), complex-script shaping, raster image codecs, and page rasterization. The complex-script section documents the bidi bounds.
+**1.0.0-preview.** Every feature area below has shipped: reading and manipulation, creation with a real layout engine, extraction, AcroForms, digital signatures, compliance (PDF/A, tagged PDF, true redaction, optimize/linearize), compression (lossless by default, opt-in image downsampling and JPEG re-encoding), complex-script shaping, raster image codecs, and page rasterization. The complex-script section documents the bidi bounds.
 
 ## Names to start with
 

@@ -1,16 +1,18 @@
 # PLUME6085 — images left unchanged by compression (diagnostic)
 
-**Cause (diagnostic, `Info`):** an image lever of `Pdf.Compress` was on, but some images were
-not resampled or re-encoded. One summary entry is recorded on `CompressionResult.Diagnostics`
+**Cause (diagnostic, `Info`):** `Pdf.Compress` classified some images as ones it never
+resamples or re-encodes. The classification runs whether or not an image lever is on, so a
+lossless-only call reports these too. One summary entry is recorded on `CompressionResult.Diagnostics`
 per skip reason, with the count and the reason's name (an `ImageSkipReason` value) in the
-message; each skipped image's own decision in `CompressionResult.Images` carries the same
-`SkipReason`. The reasons are images compression deliberately leaves alone: 1-bit images and
-stencil masks (`Bilevel`, `StencilMask`), images whose effective DPI can't be measured
-(`TilingPatternOnly`, `UnmeasuredPlacement`, `NoPlacement`), encodings it doesn't rewrite
-(`UnsupportedBitDepth`, `UnsupportedColorSpace`, `UnsupportedFilter`, `InlineImage`), images
-whose pixels must stay exact or the same size as another image (`ColorKeyMask`,
-`SharedAsMask`, `MatteSoftMask`), and images over a decode cap (`ResourceLimit`). A decode
-failure is reported as `PLUME6086` instead.
+message, and the first such image as its subject; each skipped image's own decision in
+`CompressionResult.Images` carries the same `SkipReason`. The reasons are images compression
+deliberately leaves alone: 1-bit images and stencil masks (`Bilevel`, `StencilMask`), images
+whose effective DPI can't be measured (`TilingPatternOnly`, `UnmeasuredPlacement`) or that no
+page draws (`NoPlacement`), encodings it doesn't rewrite (`UnsupportedBitDepth`,
+`UnsupportedColorSpace`, `UnsupportedFilter`, `InlineImage`), images whose pixels must stay
+exact or the same size as another image (`ColorKeyMask`, `SharedAsMask`, `MatteSoftMask`),
+and images over a decode cap (`ResourceLimit`). A decode failure is reported as `PLUME6086`
+instead.
 
 **Example:**
 

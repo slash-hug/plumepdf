@@ -1,0 +1,3 @@
+﻿Image actions: DownsampledAndReencoded
+Still tagged: True, language: en-US
+Declared: PDF/A-2B, conformant (self-check): True
