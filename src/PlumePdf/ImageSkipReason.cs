@@ -30,7 +30,7 @@ public enum ImageSkipReason
     /// <summary>Drawn only inside tiling patterns, where the size the image is drawn at isn't measured.</summary>
     TilingPatternOnly,
 
-    /// <summary>Drawn somewhere its effective DPI can't be measured: a Type 3 glyph, a tiling pattern as well as a page, or content whose walk stopped early.</summary>
+    /// <summary>Drawn somewhere its effective DPI can't be measured: a Type 3 glyph, a tiling pattern as well as a page, a zero-area or non-finite placement, or content whose walk stopped early.</summary>
     UnmeasuredPlacement,
 
     /// <summary>2, 4 or 16 bits per component. Only 8-bit images are resampled or re-encoded.</summary>
