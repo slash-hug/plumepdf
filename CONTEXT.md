@@ -498,6 +498,15 @@ detail it needed, and the scalar reported is the lower axis. `MaxDpi` downsample
 _Avoid_: PPI, resolution (both blur the image's pixel size with its drawn density; an image
 has no DPI until it is placed), "image DPI" without "effective"
 
+**Encoding family**:
+What an image's samples are stored as (`ImageEncoding`: `Flate`, `Jpeg`, `Jpeg2000`, …),
+reported by Compress before and after for each image. It is the last filter in the image's
+`/Filter` chain that encodes the samples: `ASCIIHexDecode`/`ASCII85Decode` text wrappers
+don't count, so `[/ASCII85Decode /DCTDecode]` is `Jpeg` and a chain of wrappers alone is
+`Uncompressed`; inline-image abbreviations (`/Fl`, `/DCT`, `/CCF`, …) map like their full names.
+_Avoid_: format, codec (a family names the filter, not the decoder or a file format), "filter"
+for the family (a filter is one entry of the chain)
+
 **Never-larger**:
 Compress's per-stream rule: a resampled, re-encoded or Flate-compressed stream is written
 only if it is smaller than the original stream (for a Flate-compressed stream, counting the

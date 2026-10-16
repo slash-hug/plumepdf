@@ -21,7 +21,9 @@ only by diffing output. Entries land in the same change as the behavior they des
   JPEG, so it renders the same in every viewer. Every rewritten stream follows
   the never-larger rule. The returned `CompressionResult` gives input and output sizes and one
   `ImageCompressionDecision` per image (`Action`, `SkipReason`, sizes, effective DPI before and
-  after), plus result-scoped summary diagnostics with counts (`PLUME6085`–`PLUME6091`), never
+  after, and the encoding family read and written, `EncodingBefore`/`EncodingAfter` as the new
+  `ImageEncoding` enum, #53, so a caller tuning `JpegQuality`/`MaxDpi` sees which images were
+  already JPEG), plus result-scoped summary diagnostics with counts (`PLUME6085`–`PLUME6091`), never
   one entry per image and nothing on `doc.Diagnostics`. Bilevel and stencil images, 2/4/16-bit
   images, colour spaces other than gray and RGB, JPEG 2000/JBIG2/CCITT, inline,
   tiling-pattern-only, colour-key masked and `/Matte` soft-mask images are skipped with a

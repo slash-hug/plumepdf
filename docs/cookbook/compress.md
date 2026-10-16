@@ -37,7 +37,9 @@ quantization tables, or a JPEG behind another filter) it is written at quality 8
 one `PLUME6091` note. A Flate image with a `/Decode` array that becomes a JPEG has the array applied to its
 samples, so it renders the same in every viewer. Every rewritten image follows the never-larger rule: a new
 encoding that isn't smaller is dropped (`KeptOriginal`). Group `result.Images` by `Action`
-and `SkipReason` to tune:
+and `SkipReason` to tune, and read `EncodingBefore`/`EncodingAfter` (an `ImageEncoding`:
+`Uncompressed`, `Flate`, `Jpeg`, `Jpeg2000`, `Jbig2`, `Ccitt`, `RunLength`, `Lzw`, `Other`)
+to see which images were already JPEG and what each was written as:
 
 <!-- snippet: compress-images -->
 <a id='snippet-compress-images'></a>
@@ -56,11 +58,15 @@ foreach (var group in result.Images.GroupBy(static i => (i.Action, i.SkipReason)
     report.AppendLine($"{group.Key.Action} {group.Key.SkipReason}: {group.Count()}");
 }
 
+// EncodingBefore/EncodingAfter say what each image was stored as and what it became:
+// a JPEG source only shrinks further with a lower JpegQuality or MaxDpi.
+report.AppendLine($"Already JPEG: {result.Images.Count(static i => i.EncodingBefore == ImageEncoding.Jpeg)}");
 var image = result.Images[0];
-report.AppendLine($"{image.WidthBefore}x{image.HeightBefore} at {image.EffectiveDpiBefore:F0} DPI -> " +
+report.AppendLine($"{image.EncodingBefore} -> {image.EncodingAfter}, " +
+    $"{image.WidthBefore}x{image.HeightBefore} at {image.EffectiveDpiBefore:F0} DPI -> " +
     $"{image.WidthAfter}x{image.HeightAfter} at {image.EffectiveDpiAfter:F0} DPI");
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L35-L53' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-images' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L35-L57' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-images' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Expected output (backing test `CookbookTests.Compress` — run it and diff `.received` vs
@@ -75,15 +81,20 @@ Lossless image actions: Unchanged
 No-lever hint (PLUME6090): True
 Saved bytes: True
 DownsampledAndReencoded : 1
-900x900 at 450 DPI -> 400x400 at 200 DPI
+Already JPEG: 0
+Flate -> Jpeg, 900x900 at 450 DPI -> 400x400 at 200 DPI
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.verified.txt#L1-L6' title='Snippet source file'>snippet source</a> | <a href='#snippet-CookbookTests.Compress.verified.txt' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.verified.txt#L1-L7' title='Snippet source file'>snippet source</a> | <a href='#snippet-CookbookTests.Compress.verified.txt' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Each decision's `SourceReference` uses the *input* document's object numbers; `PageIndex` is
 the page of the image's largest placement. A duplicate written once is `Deduplicated`, with
-`DuplicateOf` naming the copy that was kept. Inline images come last, one per occurrence,
-with no `SourceReference`.
+`DuplicateOf` naming the copy that was kept; its `EncodingBefore` is its own stream's and its
+`EncodingAfter` what that copy was written as. Inline images come last, one per occurrence,
+with no `SourceReference` and the same encoding before and after (they are never rewritten).
+The encoding family is the last `/Filter` that encodes the samples, so an `ASCII85Decode`
+wrapper in front of a JPEG still reads `Jpeg`; an unfiltered image the lossless levers
+Flate-compressed reads `Uncompressed` → `Flate`.
 
 ## Cancel a long run
 
@@ -114,7 +125,7 @@ catch (OperationCanceledException)
     report.AppendLine($"Cancelled; output file exists: {File.Exists("output/scan-cancelled.pdf")}");
 }
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L65-L87' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-async' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L69-L91' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-async' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 <!-- snippet: CookbookTests.CompressAsync.verified.txt -->
@@ -182,7 +193,7 @@ catch (Exception e) when (e is PlumePdfException or OperationCanceledException o
     throw;
 }
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L98-L125' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-stream' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L102-L129' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-stream' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 <!-- snippet: CookbookTests.CompressStream.verified.txt -->
@@ -265,7 +276,7 @@ report.AppendLine($"Image actions: {string.Join(", ", result.Images.Select(stati
 report.AppendLine($"Still tagged: {structure.IsTagged}, language: {structure.Language}");
 report.AppendLine($"Declared: PDF/A-{pdfa.DeclaredPart}{pdfa.DeclaredConformance}, conformant (self-check): {pdfa.IsConformant}");
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L149-L163' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-tagged-pdfa' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L153-L167' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-tagged-pdfa' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 <!-- snippet: CookbookTests.CompressTaggedPdfA.verified.txt -->
