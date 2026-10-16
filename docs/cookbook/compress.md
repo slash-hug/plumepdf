@@ -216,6 +216,10 @@ Every refusal happens before anything is planned or written.
   letter-size RGB scan decodes to about 100 MB).
 - **Disk:** the output is written to a temporary file beside `outputPath` and moved into
   place, so a failure or cancellation leaves no partial file. Leave room for the output there.
+- **Measured** (one run of the repository's large-file test on an Apple M5, .NET 10): a
+  generated 2.36 GB document of 533 letter-size 300 DPI JPEG scans, compressed with
+  `MaxDpi = 150` and `JpegQuality = 70`, came out at 114 MB with every image downsampled. The
+  managed heap peaked at 260 MB; planning took 5 seconds and writing about 3 minutes.
 - **Time** grows with the number and size of the images it rewrites. A serverless host with a
   short execution limit (Azure Functions' Consumption plan stops a call after at most
   10 minutes) can be too short for a multi-gigabyte scan: run large compressions where calls
