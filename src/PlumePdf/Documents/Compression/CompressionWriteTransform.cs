@@ -12,6 +12,8 @@ namespace PlumePdf.Documents.Compression;
 /// <param name="WidthAfter">The written width.</param>
 /// <param name="HeightAfter">The written height.</param>
 /// <param name="EstimatedSourceQuality">A decoded JPEG source's estimated quality, clamped, or null.</param>
+/// <param name="EncodingBefore">The source stream's encoding family.</param>
+/// <param name="EncodingAfter">The written stream's encoding family.</param>
 /// <param name="UsedFallbackQuality">The written JPEG used <see cref="ImageReencoder.FallbackJpegQuality"/> because the source's quality couldn't be estimated.</param>
 internal sealed record WrittenImage(
     ImageReencodeOutcome Outcome,
@@ -22,6 +24,8 @@ internal sealed record WrittenImage(
     int WidthAfter,
     int HeightAfter,
     int? EstimatedSourceQuality,
+    ImageEncoding EncodingBefore,
+    ImageEncoding EncodingAfter,
     bool UsedFallbackQuality = false);
 
 /// <summary>
@@ -115,6 +119,8 @@ internal sealed class CompressionWriteTransform : IStreamWriteTransform
             reencoded.Width,
             reencoded.Height,
             reencoded.EstimatedSourceQuality,
+            ImageEncodings.OfStream(original.Dictionary, _objects),
+            ImageEncodings.OfStream(written.Dictionary, _objects),
             reencoded.UsedFallbackQuality);
         return written;
     }

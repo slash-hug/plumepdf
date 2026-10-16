@@ -48,7 +48,7 @@ internal static class CompressionPlanner
                 .ToList();
             if (conflicts.Count == 0)
             {
-                return new CompressionPlan(WrittenOnly(images, aliases), aliases, scan.InlineImagePages, scan.Diagnostics);
+                return new CompressionPlan(WrittenOnly(images, aliases), aliases, scan.InlineImages, scan.Diagnostics);
             }
 
             foreach (var duplicate in conflicts)

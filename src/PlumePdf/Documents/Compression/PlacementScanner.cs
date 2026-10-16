@@ -79,7 +79,7 @@ internal static class PlacementScanner
             images[number] = placements.Summarize();
         }
 
-        return new PlacementScan(images, scan.InlineImagePages, scan.Diagnostics);
+        return new PlacementScan(images, scan.InlineImages, scan.Diagnostics);
     }
 
     private static void ScanPage(ScanState scan, PdfDictionary page, int pageIndex)
@@ -212,7 +212,9 @@ internal static class PlacementScanner
                     break;
 
                 case "BI":
-                    scan.InlineImagePages.Add(walk.PageIndex);
+                    scan.InlineImages.Add(new InlineImageUse(
+                        walk.PageIndex,
+                        op.Operands is [PdfDictionary parameters] ? ImageEncodings.OfInlineImage(parameters) : ImageEncoding.Uncompressed));
                     break;
 
                 case "gs" when op.Operands.Count > 0 && op.Operands[0] is PdfName stateName:
@@ -357,7 +359,7 @@ internal static class PlacementScanner
             return;
         }
 
-        var before = scan.InlineImagePages.Count;
+        var before = scan.InlineImages.Count;
         WalkForm(walk, reference.Target, PdfMatrix.Identity, resources, patternMode, depth, applyMatrix: false);
         RecordInlineImages(walk, key, before);
     }
@@ -387,7 +389,7 @@ internal static class PlacementScanner
             return;
         }
 
-        var before = scan.InlineImagePages.Count;
+        var before = scan.InlineImages.Count;
         var fontResources = scan.ResolveDictionary(font.TryGetValue(ResourcesName, out var r) ? r : null) ?? resources;
         foreach (var (_, procedure) in charProcs)
         {
@@ -406,11 +408,11 @@ internal static class PlacementScanner
     }
 
     // Content walked once per scan still holds its inline images on every page that uses it:
-    // the first walk counts them, and each later page records that many again, once per page
-    // however often the page uses it.
+    // the first walk records where its entries are, and each later page records them again,
+    // with its own page index, once per page however often the page uses it.
     private static void RecordInlineImages(PageWalk walk, object key, int before)
     {
-        walk.Scan.OnceWalkedInlineImages[key] = walk.Scan.InlineImagePages.Count - before;
+        walk.Scan.OnceWalkedInlineImages[key] = (before, walk.Scan.InlineImages.Count - before);
         walk.Scan.OnceWalkedPages.Add((key, walk.PageIndex));
     }
 
@@ -418,11 +420,11 @@ internal static class PlacementScanner
     {
         // A use met while its first walk is still under way (it draws itself) has no count yet.
         var scan = walk.Scan;
-        if (scan.OnceWalkedInlineImages.TryGetValue(key, out var count) && scan.OnceWalkedPages.Add((key, walk.PageIndex)))
+        if (scan.OnceWalkedInlineImages.TryGetValue(key, out var recorded) && scan.OnceWalkedPages.Add((key, walk.PageIndex)))
         {
-            for (var i = 0; i < count; i++)
+            for (var i = 0; i < recorded.Count; i++)
             {
-                scan.InlineImagePages.Add(walk.PageIndex);
+                scan.InlineImages.Add(scan.InlineImages[recorded.Start + i] with { PageIndex = walk.PageIndex });
             }
         }
     }
@@ -683,14 +685,14 @@ internal static class PlacementScanner
 
         public Dictionary<int, ImagePlacements> Images { get; } = [];
 
-        public List<int> InlineImagePages { get; } = [];
+        public List<InlineImageUse> InlineImages { get; } = [];
 
         public HashSet<(int Number, WalkMode Mode)> WalkedOnce { get; } = [];
 
         public HashSet<object> WalkedFonts { get; } = [];
 
-        /// <summary>How many inline images each once-walked pattern or Type 3 font holds.</summary>
-        public Dictionary<object, int> OnceWalkedInlineImages { get; } = [];
+        /// <summary>Where each once-walked pattern or Type 3 font's inline images sit in <see cref="InlineImages"/>, from its first walk.</summary>
+        public Dictionary<object, (int Start, int Count)> OnceWalkedInlineImages { get; } = [];
 
         /// <summary>The pages each once-walked pattern or Type 3 font has recorded its inline images for.</summary>
         public HashSet<(object Key, int Page)> OnceWalkedPages { get; } = [];

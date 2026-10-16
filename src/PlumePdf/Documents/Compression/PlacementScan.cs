@@ -26,18 +26,23 @@ internal enum PlacementKind
 /// <param name="Kind">Whether the placements could be measured.</param>
 internal sealed record ImagePlacementSummary(double? DpiX, double? DpiY, int PageIndex, PlacementKind Kind);
 
+/// <summary>One inline image met by the scan: the page it is drawn on and its encoding family.</summary>
+/// <param name="PageIndex">The zero-based page index.</param>
+/// <param name="Encoding">The family of its <c>/F</c> (<c>/Filter</c>) entry.</param>
+internal sealed record InlineImageUse(int PageIndex, ImageEncoding Encoding);
+
 /// <summary>The placement scan's output for one document.</summary>
 /// <param name="Images">
 /// Every image XObject reached by a <c>Do</c>, plus every one a retained page's resources reach
 /// without drawing it (<see cref="PlacementKind.NotPlaced"/>), keyed by object number. An image
 /// no retained page reaches, and a soft mask reached only through its parent's <c>/SMask</c>, is absent.
 /// </param>
-/// <param name="InlineImagePages">
-/// The page index of every inline image met, one entry per occurrence, in page order. One inside a tiling pattern
+/// <param name="InlineImages">
+/// Every inline image met, one entry per occurrence, in page order. One inside a tiling pattern
 /// or Type 3 glyph counts once for each page that uses that pattern or font.
 /// </param>
 /// <param name="Diagnostics">Cycles, depth or operator caps hit, and unreadable content met during the scan.</param>
 internal sealed record PlacementScan(
     IReadOnlyDictionary<int, ImagePlacementSummary> Images,
-    IReadOnlyList<int> InlineImagePages,
+    IReadOnlyList<InlineImageUse> InlineImages,
     DiagnosticCollection Diagnostics);
