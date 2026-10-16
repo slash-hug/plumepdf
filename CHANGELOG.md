@@ -35,8 +35,23 @@ only by diffing output. Entries land in the same change as the behavior they des
   (`PLUME1006`); under `PdfOptions.Strict`, a reference the document can't resolve refuses the
   save with `PLUME2060`, as `Save` does. A version below 1.5 is raised to 1.5 for packing (`PLUME6088`); a PDF/A-1
   source is not packed (`PLUME6089`) and keeps a 1.4 header, which PlumePDF's own PDF/A self-check requires, unless the caller sets
-  a version other than the default 1.7 or a `PdfAConformance`. Path-only for now: a `Stream` overload and progress
-  reporting are not yet available. Recipe: `docs/cookbook/compress.md`.
+  a version other than the default 1.7 or a `PdfAConformance`. Progress reporting is not
+  available. Recipe: `docs/cookbook/compress.md`.
+- **`Pdf.Compress(Stream, Stream, ...)` and `Pdf.CompressAsync(Stream, Stream, ...)` compress
+  from one stream to another** (#47), with the same options, levers, `CompressionResult` and
+  refusals as the path overloads, and byte-identical output under `PdfOptions.Deterministic`.
+  A seekable input is read in place from position 0; a non-seekable one (an HTTP response, a
+  blob download) is copied to a temporary file in `Path.GetTempPath()`, never into memory, and
+  deleted when the call ends, on success, failure or cancellation (asynchronously, with the
+  token, in `CompressAsync`). The output need not be seekable: writing starts at its current
+  position and the PDF's offsets count from there. It is flushed and, like the input, never
+  disposed. `InputBytes` is the stream's length or the bytes copied; `OutputBytes` is the bytes
+  written. Null streams throw `ArgumentNullException`; an unreadable input, an unwritable
+  output, or the same stream for both throw `ArgumentException`. A caller's stream can't be
+  written atomically: every refusal (`PLUME5018` before the input is read, `PLUME5001`,
+  `PLUME6084`) comes before the first byte, but a failure or cancellation while writing can
+  leave a partial output for the caller to discard. With this the compression work is
+  complete; #48–#54 are optional enhancements.
 
 ### Fixed
 

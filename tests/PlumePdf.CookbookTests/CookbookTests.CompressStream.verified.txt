@@ -1,0 +1,4 @@
+﻿Saved bytes: True
+OutputBytes is what was written: True
+Both streams left open: True
+Output reopens: 1 page(s)
