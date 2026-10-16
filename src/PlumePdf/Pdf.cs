@@ -1,6 +1,7 @@
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using PlumePdf.Documents;
+using PlumePdf.Documents.Compression;
 using PlumePdf.Documents.PdfA;
 using PlumePdf.Documents.Redaction;
 using PlumePdf.Objects;
@@ -428,6 +429,90 @@ public static class Pdf
         document.Save(outputPath, options);
         return result;
     }
+
+    /// <summary>
+    /// Opens the document at <paramref name="path"/>, makes it smaller with the levers
+    /// <paramref name="compressOptions"/> turns on, and writes the result to
+    /// <paramref name="outputPath"/> — a full rewrite through <see cref="PdfDocument.Save"/>,
+    /// written to a temporary file and moved into place, so a failure leaves no partial output.
+    /// With no options the call is lossless: unfiltered streams are Flate-compressed, objects
+    /// are packed into object streams, and byte-identical streams are written once. Images are
+    /// downsampled (<see cref="PdfImageCompression.MaxDpi"/>) or re-encoded as JPEG
+    /// (<see cref="PdfImageCompression.JpegQuality"/>) only when asked, and every rewritten
+    /// image follows the never-larger rule. The returned <see cref="CompressionResult"/> says
+    /// what happened to every image, so the levers can be tuned.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Memory is bounded by the largest image rather than the file: images are decoded,
+    /// resampled and encoded one at a time while writing, with a working set of roughly five
+    /// times the largest decoded image. Disk needs room for the output-sized temporary file
+    /// beside <paramref name="outputPath"/>.
+    /// </para>
+    /// <para>
+    /// <paramref name="outputPath"/> may equal <paramref name="path"/>, but then the
+    /// memory-mapped source is buffered into memory before writing, and a source over 2 GiB is
+    /// refused before any work (<c>PLUME1006</c>); write to a different path for large inputs.
+    /// </para>
+    /// </remarks>
+    /// <param name="path">The path to open and compress.</param>
+    /// <param name="outputPath">Where to write the compressed document. May equal <paramref name="path"/> (see remarks).</param>
+    /// <param name="compressOptions">The levers to apply. Defaults to <see cref="PdfCompressOptions.Default"/> (lossless only).</param>
+    /// <param name="options">Options controlling the open and save, such as <see cref="PdfOptions.Deterministic"/>, <see cref="PdfOptions.Strict"/> and the image resource caps. Defaults to <see cref="PdfOptions.Default"/>.</param>
+    /// <returns>Input and output sizes, one decision per image, and the call's result-scoped diagnostics.</returns>
+    /// <exception cref="ArgumentException"><paramref name="path"/> or <paramref name="outputPath"/> is null or empty.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><see cref="PdfImageCompression.MaxDpi"/> is not a positive finite number, or <see cref="PdfImageCompression.JpegQuality"/> is outside 1–100.</exception>
+    /// <exception cref="PlumePdfException">
+    /// Refused before anything is planned or written: <paramref name="options"/> asks for
+    /// <see cref="PdfOptions.Linearize"/> (<c>PLUME5018</c>); the source is encrypted
+    /// (<c>PLUME5001</c>); the source is signed and
+    /// <see cref="PdfCompressOptions.AllowInvalidatingSignatures"/> is not set
+    /// (<c>PLUME6084</c>); or <paramref name="outputPath"/> is <paramref name="path"/> and the
+    /// memory-mapped source is over 2 GiB (<c>PLUME1006</c>). An image that can't be decoded is never a
+    /// refusal, even under <see cref="PdfOptions.Strict"/>: it is written unchanged and
+    /// reported (<c>PLUME6086</c>).
+    /// </exception>
+    /// <example>
+    /// <code>
+    /// var result = Pdf.Compress("scan.pdf", "scan-small.pdf", new PdfCompressOptions
+    /// {
+    ///     Images = new PdfImageCompression { MaxDpi = 200, JpegQuality = 70 },
+    /// });
+    /// Console.WriteLine($"{result.InputBytes:N0} -> {result.OutputBytes:N0} bytes");
+    /// foreach (var group in result.Images.GroupBy(static i => (i.Action, i.SkipReason)))
+    /// {
+    ///     Console.WriteLine($"{group.Key.Action} {group.Key.SkipReason}: {group.Count()}");
+    /// }
+    /// </code>
+    /// </example>
+    public static CompressionResult Compress(string path, string outputPath, PdfCompressOptions? compressOptions = null, PdfOptions? options = null) =>
+        CompressionEngine.Compress(path, outputPath, compressOptions, options, CancellationToken.None);
+
+    /// <summary>
+    /// Asynchronous equivalent of <see cref="Compress"/>, run on the thread pool, with
+    /// cooperative cancellation: <paramref name="cancellationToken"/> is checked between pages
+    /// while planning and between streams while writing. A cancelled call throws
+    /// <see cref="OperationCanceledException"/> and leaves no output file (an existing file at
+    /// <paramref name="outputPath"/> is left as it was).
+    /// </summary>
+    /// <param name="path">The path to open and compress.</param>
+    /// <param name="outputPath">Where to write the compressed document. May equal <paramref name="path"/> (see <see cref="Compress"/>).</param>
+    /// <param name="compressOptions">The levers to apply. Defaults to <see cref="PdfCompressOptions.Default"/> (lossless only).</param>
+    /// <param name="options">Options controlling the open and save. Defaults to <see cref="PdfOptions.Default"/>.</param>
+    /// <param name="cancellationToken">Stops the call between pages or streams.</param>
+    /// <returns>The same report <see cref="Compress"/> returns.</returns>
+    /// <exception cref="PlumePdfException">See <see cref="Compress"/>.</exception>
+    /// <example>
+    /// <code>
+    /// using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(8));
+    /// var result = await Pdf.CompressAsync("scan.pdf", "scan-small.pdf", new PdfCompressOptions
+    /// {
+    ///     Images = new PdfImageCompression { MaxDpi = 200, JpegQuality = 70 },
+    /// }, cancellationToken: timeout.Token);
+    /// </code>
+    /// </example>
+    public static Task<CompressionResult> CompressAsync(string path, string outputPath, PdfCompressOptions? compressOptions = null, PdfOptions? options = null, CancellationToken cancellationToken = default) =>
+        Task.Run(() => CompressionEngine.Compress(path, outputPath, compressOptions, options, cancellationToken), cancellationToken);
 
     /// <summary>
     /// Opens the document at <paramref name="path"/> and runs PlumePDF's in-process PDF/A

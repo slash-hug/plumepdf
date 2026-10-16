@@ -20,7 +20,7 @@ Codes are allocated per layer, four digits, grouped by leading digit. This table
 | `PLUME3xxx` | Filters — codecs, predictor, filter registry; from Phase 7, sub-allocated by codec: `3200`–`3249` JPEG, `3250`–`3279` PNG, `3300`–`3349` TIFF, `3400`–`3449` CCITT, `3500`–`3559` JBIG2, `3600`–`3629` `RasterImage`/`Pdf.FromImages` refusals that are really codec refusals surfacing through the verb (`Pdf.FromImages`' own *orchestration* failures — empty input set, unreadable source, save-to-open-path — reuse the existing 5xxx/6xxx verb machinery instead); `3700`–`3749` JPEG 2000 (JPX) |
 | `PLUME4xxx` | Encryption & signing — security-handler setup, wrong password, unsupported cipher; from Phase 5, also CMS build/parse, DER normalization, certificate-chain build/validation, and TSA/OCSP/CRL transport failures |
 | `PLUME5xxx` | Writer — incremental update, full rewrite, save-to-open-path contract, encrypted-source save refusal; from Phase 4, also the general dirty-object-set/allocator and encrypt-on-append; from Phase 5, also ByteRange/`/Contents`-placeholder reservation overflow and the signed-source `Save` guard; from Phase 6, also linearization and the redaction-dirty `SaveIncremental` refusal |
-| `PLUME6xxx` | Documents / verbs — `PdfDocument` hub, `Pdf.Merge`/`Split`, page mutation; from Phase 4, also the field/widget model, `/AcroForm` reading, fill/flatten orchestration; from Phase 5, also the signature-field model, verify orchestration, DSS/LTV, and DocMDP semantics; from Phase 6, also redaction/PDF/A/PDF-UA orchestration, the structure-tree model, and XMP/DocInfo metadata write |
+| `PLUME6xxx` | Documents / verbs — `PdfDocument` hub, `Pdf.Merge`/`Split`, page mutation; from Phase 4, also the field/widget model, `/AcroForm` reading, fill/flatten orchestration; from Phase 5, also the signature-field model, verify orchestration, DSS/LTV, and DocMDP semantics; from Phase 6, also redaction/PDF/A/PDF-UA orchestration, the structure-tree model, and XMP/DocInfo metadata write; `6084`–`6090` are `Pdf.Compress` (signed-source refusal and the result-scoped compression summaries) |
 | `PLUME7xxx` | Content — content-stream generation, encode-side filters; from Phase 4, also widget appearance-stream generation; from Phase 6, also marked-content emission and redaction's content-stream rewriting |
 | `PLUME8xxx` | Fonts — SFNT parsing, embedding, subsetting, shaping; from Phase 4, also `/DA` font resolution and the Unicode→character-code encode direction; from Phase 6, also PDF/A Standard-14 embedding refusals; from Phase 6.5, also complex-script (Arabic/Devanagari) OpenType Layout shaping refusals — shaping budget exceeded, missing capability, unsupported script tier (starting at `8024`) |
 | `PLUME9xxx` | Layout — `Manuscript`, layout engine, pagination; from Phase 6, also tagging from the Manuscript tree; from Phase 6.5, also UAX#9 bidirectional-algorithm and text-direction refusals (starting at `9013` — `BidiAlgorithm`'s embedding-depth cap itself follows UAX#9's own defined graceful overflow rather than refusing; `9013` is `TextLayouter`'s bidi-isolate refusal, X10's isolating-run-sequence construction not being implemented) |
@@ -289,6 +289,13 @@ This index is populated one page per code as codes are minted in `src/`, in the 
 | [PLUME6081](PLUME6081.md) | XMP field contains a character XML cannot represent |
 | [PLUME6082](PLUME6082.md) | malformed marked-content /MCID tolerated (diagnostic) |
 | [PLUME6083](PLUME6083.md) | page /Contents resolved to no usable content streams (diagnostic) |
+| [PLUME6084](PLUME6084.md) | compression would invalidate an existing signature |
+| [PLUME6085](PLUME6085.md) | images left unchanged by compression, per skip reason (diagnostic) |
+| [PLUME6086](PLUME6086.md) | image could not be decoded for compression (diagnostic) |
+| [PLUME6087](PLUME6087.md) | compression kept an image's original encoding (diagnostic) |
+| [PLUME6088](PLUME6088.md) | compression raised the output version to 1.5 (diagnostic) |
+| [PLUME6089](PLUME6089.md) | compression did not pack a PDF/A-1 document (diagnostic) |
+| [PLUME6090](PLUME6090.md) | compression ran with no image lever (diagnostic) |
 | [PLUME7001](PLUME7001.md) | content-stream graphics-state stack underflow |
 | [PLUME7002](PLUME7002.md) | nested text object (`BT` while already inside one) |
 | [PLUME7003](PLUME7003.md) | `ET` with no matching `BT` |
