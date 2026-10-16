@@ -73,6 +73,10 @@ Rewritten copy reopens with pages: 5
 <sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.LargeFiles.verified.txt#L1-L3' title='Snippet source file'>snippet source</a> | <a href='#snippet-CookbookTests.LargeFiles.verified.txt' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
-Related: [optimize-linearize.md](optimize-linearize.md) (`Optimize` shrinks the
-cross-reference and object overhead; it doesn't recompress images),
+To make a large scan *smaller*, not just rewrite it, use `Pdf.Compress`: it downsamples
+and re-encodes images one at a time while writing, so memory stays bounded by the largest
+image — see [compress.md](compress.md).
+
+Related: [compress.md](compress.md), [optimize-linearize.md](optimize-linearize.md)
+(`Optimize` shrinks the cross-reference and object overhead; it doesn't recompress images),
 [extract-images.md](extract-images.md), [handle-damaged-pdf.md](handle-damaged-pdf.md).

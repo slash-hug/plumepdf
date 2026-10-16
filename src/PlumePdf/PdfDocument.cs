@@ -1094,6 +1094,15 @@ public sealed class PdfDocument : IDisposable
         }
     }
 
+    /// <summary>
+    /// Whether a full rewrite to <paramref name="outputPath"/> must first buffer this
+    /// document's memory-mapped source into memory (<see cref="DetachMappedSourceIfSamePath"/>),
+    /// which a source over 2 GiB can't be (<c>PLUME1006</c>), so a verb can refuse before
+    /// doing the work that precedes its save.
+    /// </summary>
+    internal bool BuffersSourceToSaveOver(string outputPath) =>
+        _openPath is not null && _source is IO.MemoryMappedByteSource && PathsReferToSameFile(_openPath, outputPath);
+
     private static bool PathsReferToSameFile(string a, string b)
     {
         try

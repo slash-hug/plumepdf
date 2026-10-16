@@ -104,6 +104,15 @@ public class LayeringTests
         // Pinned at the Raster index so Raster.RasterPaintContext may carry it; pinning it at 6
         // would forbid the very layer that consumes it.
         ("PlumePdf.ImageResamplingMode", 5),
+        // Compress: the verb's options and result types are the Documents-layer face of
+        // Documents.Compression (index 6, alongside PdfRedactOptions/RedactionResult), so no
+        // lower layer may depend on them.
+        ("PlumePdf.PdfCompressOptions", 6),
+        ("PlumePdf.PdfImageCompression", 6),
+        ("PlumePdf.CompressionResult", 6),
+        ("PlumePdf.ImageCompressionDecision", 6),
+        ("PlumePdf.ImageCompressionAction", 6),
+        ("PlumePdf.ImageSkipReason", 6),
     ];
 
     public static TheoryData<string, string> ForbiddenDependencies()

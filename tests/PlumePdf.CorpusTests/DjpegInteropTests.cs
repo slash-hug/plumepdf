@@ -196,6 +196,37 @@ public class DjpegInteropTests
         }
     }
 
+    [Theory]
+    [InlineData((byte)0)]
+    [InlineData((byte)1)]
+    public void ThreeComponentAdobeTransform_MatchesDjpeg(byte adobeTransform)
+    {
+        // Numeric component ids 1/2/3 with an explicit Adobe transform: 0 means the stored
+        // samples are already R/G/B (libjpeg ignores the ids), 1 means Y/Cb/Cr.
+        var bytes = CmykJpegFixture.BuildFlatThreeComponent(220, 30, 40, adobeTransform);
+        var result = JpegDecoder.Decode(bytes, PdfOptions.Default, diagnostics: null, subject: null);
+        if (adobeTransform == 0)
+        {
+            Assert.Equal(new byte[] { 220, 30, 40 }, result.Pixels[..3]);
+        }
+
+        if (!ToolsAvailableOrFailIfRequired())
+        {
+            Console.WriteLine("SKIPPED djpeg cross-check (requires djpeg)");
+            return;
+        }
+
+        var path = WriteTemp(bytes, ".jpg");
+        try
+        {
+            AssertPixelsMatch(DecodeWithDjpeg(path), result.Pixels, result.Width, result.Height, result.ComponentCount, $"adobe-transform-{adobeTransform}");
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     [Fact]
     public void Encode_Quality95_MeetsPsnrFloorAgainstCjpeg()
     {

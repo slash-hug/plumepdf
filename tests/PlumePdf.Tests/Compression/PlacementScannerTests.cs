@@ -436,6 +436,34 @@ public class PlacementScannerTests
     }
 
     [Fact]
+    public void UndecodablePageContent_LeavesThePagesImagesUnmeasured()
+    {
+        // The content draws the image, but its filter isn't one the scan can decode, so the
+        // scan can't tell where or how large: the image is unmeasured, never "not placed".
+        var pdf = new ScanTestPdf()
+            .Image(Image, 300, 300)
+            .Object(3, $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /XObject << /Im0 {Image} 0 R >> >> /Contents 4 0 R >>")
+            .Stream(4, "/Filter /Flatedecode", "q 144 0 0 144 0 0 cm /Im0 Do Q")
+            .PageNumber(3);
+
+        var scan = Scan(pdf);
+
+        Assert.Equal(PlacementKind.Unmeasured, scan.Images[Image].Kind);
+        Assert.Contains(scan.Diagnostics, static d => d.Code == "PLUME3010" && d.Message.Contains("unmeasured", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void UndecodableFormContent_LeavesThePagesImagesUnmeasured()
+    {
+        var pdf = new ScanTestPdf()
+            .Image(Image, 300, 300)
+            .Stream(11, $"/Type /XObject /Subtype /Form /BBox [0 0 1 1] /Resources << /XObject << /Im0 {Image} 0 R >> >> /Filter /Flatedecode", "/Im0 Do")
+            .Page(3, "q 72 0 0 72 0 0 cm /Fm0 Do Q", xobjects: "/Fm0 11 0 R");
+
+        Assert.Equal(PlacementKind.Unmeasured, Scan(pdf).Images[Image].Kind);
+    }
+
+    [Fact]
     public void DegeneratePlacement_IsUnmeasured()
     {
         var pdf = new ScanTestPdf().Image(Image, 300, 300).Page(3, "q 0 0 0 0 0 0 cm /Im0 Do Q", xobjects: $"/Im0 {Image} 0 R");
@@ -509,6 +537,13 @@ internal sealed class ScanTestPdf
             Stream(number + 1, string.Empty, content);
         }
 
+        _pages.Add(number);
+        return this;
+    }
+
+    /// <summary>Lists object <paramref name="number"/>, added with <see cref="Object"/>, as the next page.</summary>
+    public ScanTestPdf PageNumber(int number)
+    {
         _pages.Add(number);
         return this;
     }

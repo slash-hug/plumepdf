@@ -5,6 +5,11 @@
 counterpart of `PLUME6020`, a resource-limit guard against a hostile or pathological
 Form XObject graph.
 
+`Pdf.Compress` records the same code as a diagnostic (on `CompressionResult.Diagnostics`,
+not thrown) when its placement scan meets a Form XObject that draws itself, or nesting deeper
+than `PdfOptions.MaxXObjectNestingDepth`: the cycle isn't followed, and every image that
+page reaches is skipped as `UnmeasuredPlacement` rather than resized on a guess.
+
 **Example:** A crafted document with a deeply or cyclically nested chain of Form XObjects.
 
 **Fix:** Treat the document as hostile; there is currently no `PdfOptions`/extraction-options

@@ -161,7 +161,6 @@ public class ImageReencoderTests
         dictionary.Set(PdfName.Get("Height"), PdfNumber.Get(32));
         dictionary.Set(PdfName.ColorSpace, new PdfArray([PdfName.Get("ICCBased"), new PdfReference(new IndirectReference(5, 0))]));
         dictionary.Set(PdfName.BitsPerComponent, PdfNumber.Get(8));
-        dictionary.Set(PdfName.Decode, new PdfArray([PdfNumber.Get(1), PdfNumber.Get(0), PdfNumber.Get(1), PdfNumber.Get(0), PdfNumber.Get(1), PdfNumber.Get(0)]));
         dictionary.Set(PdfName.Get("Intent"), PdfName.Get("Perceptual"));
         dictionary.Set(PdfName.Interpolate, PdfBoolean.True);
         dictionary.Set(PdfName.SMask, new PdfReference(new IndirectReference(6, 0)));
@@ -181,7 +180,7 @@ public class ImageReencoderTests
         Assert.Equal(ImageReencodeOutcome.DownsampledAndReencoded, result.Outcome);
         Assert.Equal(
             "<< /Type /XObject /Subtype /Image /Width 32 /Height 16 /ColorSpace [/ICCBased 5 0 R] /BitsPerComponent 8 "
-            + "/Decode [1 0 1 0 1 0] /Intent /Perceptual /Interpolate true /SMask 6 0 R /StructParent 3 /OC 7 0 R /Filter /DCTDecode >>",
+            + "/Intent /Perceptual /Interpolate true /SMask 6 0 R /StructParent 3 /OC 7 0 R /Filter /DCTDecode >>",
             Serialize(result.Stream.Dictionary));
 
         // The JFIF header records aspect ratio only (units 0 at byte 13: SOI, APP0 marker and
@@ -189,6 +188,61 @@ public class ImageReencoderTests
         var jpeg = result.Stream.RawBytes.Span;
         Assert.True(jpeg[6..11].SequenceEqual("JFIF\0"u8));
         Assert.Equal(0, jpeg[13]);
+    }
+
+    private static PdfArray DecodeArray(params int[] values) => new([.. values.Select(static v => (PdfObject)PdfNumber.Get(v))]);
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    public void FlateWithDecodeArray_ReencodedAsJpeg_BakesItIntoTheSamples(int channels)
+    {
+        // A JPEG's /Decode is not applied by every renderer, so a non-JPEG source's array is
+        // applied to the samples before encoding and dropped from the dictionary.
+        var original = Samples(64, 48, channels);
+        var image = FlateImage(original, 64, 48, channels);
+        image.Dictionary.Set(PdfName.Decode, DecodeArray([.. Enumerable.Repeat(new[] { 1, 0 }, channels).SelectMany(static p => p)]));
+
+        var result = Reencode(image, 64, 48, jpegQuality: 95);
+
+        Assert.Equal(ImageReencodeOutcome.Reencoded, result.Outcome);
+        Assert.False(result.Stream.Dictionary.ContainsKey(PdfName.Decode));
+        var inverted = original.Select(static v => (byte)(255 - v)).ToArray();
+        Assert.Equal(JpegEncoder.Encode(inverted, 64, 48, channels, 95), result.Stream.RawBytes.ToArray());
+    }
+
+    [Fact]
+    public void FlateWithIndirectDecodeArray_ReencodedAsJpeg_BakesIt()
+    {
+        var original = Samples(32, 32, 1);
+        var image = FlateImage(original, 32, 32, 1);
+        image.Dictionary.Set(PdfName.Decode, new PdfReference(new IndirectReference(5, 0)));
+
+        var result = Reencode(image, 32, 32, jpegQuality: 95, objects: Registry((5, DecodeArray(1, 0))));
+
+        Assert.False(result.Stream.Dictionary.ContainsKey(PdfName.Decode));
+        var inverted = original.Select(static v => (byte)(255 - v)).ToArray();
+        Assert.Equal(JpegEncoder.Encode(inverted, 32, 32, 1, 95), result.Stream.RawBytes.ToArray());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DecodeArray_StaysOnTheDictionary_WhenTheFamilyIsKept(bool jpegSource)
+    {
+        // Flate stays Flate and JPEG stays JPEG: the array means what it meant before.
+        var samples = Samples(64, 48, 3);
+        var image = jpegSource ? DctImage(samples, 64, 48, 3, 80) : FlateImage(samples, 64, 48, 3);
+        image.Dictionary.Set(PdfName.Decode, DecodeArray(1, 0, 1, 0, 1, 0));
+
+        var result = Reencode(image, 32, 24, jpegQuality: jpegSource ? 70 : null);
+
+        Assert.Equal(jpegSource ? ImageReencodeOutcome.DownsampledAndReencoded : ImageReencodeOutcome.Downsampled, result.Outcome);
+        Assert.Equal("[1 0 1 0 1 0]", Serialize(result.Stream.Dictionary[PdfName.Decode]));
+        if (!jpegSource)
+        {
+            Assert.Equal(BoxResampler.Resample(samples, 64, 48, 3, 32, 24), result.Stream.GetDecodedBytes(PdfFilterRegistry.Default));
+        }
     }
 
     [Fact]

@@ -7,7 +7,11 @@ the 2 GiB single-array limit, so it cannot be buffered.
 
 **Example:** `PdfDocument.Open("huge.pdf")` (3 GiB) followed by `document.Save("huge.pdf")`.
 
-**Fix:** Save to a different path (`document.Save("huge-rewritten.pdf")`), or open with
+`Pdf.Compress("huge.pdf", "huge.pdf")` raises the same code, but checks the source's file
+length up front, before planning or writing anything, so a large same-path compression fails
+immediately rather than after the planning pass.
+
+**Fix:** Save (or compress) to a different path (`document.Save("huge-rewritten.pdf")`), or open with
 `PdfOptions.PreferStreamIo` so the source isn't memory-mapped, or use `SaveIncremental`
 (appends via an independent handle; no replace needed).
 

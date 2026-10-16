@@ -7,6 +7,11 @@ extraction, redaction, stamping, rasterization) passes `PdfOptions.MaxContentStr
 (5,000,000 by default) as this limit; a direct call to `ContentStreamReader.Read` that omits the
 limit falls back to the reader's own internal default of 2,000,000.
 
+`Pdf.Compress` records the same code as a `Warning` diagnostic (on
+`CompressionResult.Diagnostics`, not thrown) when a page and the content it draws exceed
+`PdfOptions.MaxContentStreamOperators` during its placement scan: the scan stops, and every
+image that page reaches is skipped as `UnmeasuredPlacement`.
+
 **Example:** A crafted content stream that repeats a trivial operator (e.g. `0 0 m`) an extreme
 number of times.
 

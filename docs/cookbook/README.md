@@ -8,6 +8,7 @@ One task per file; every snippet is embedded from a compiling, CI-run test in `t
 - [Reorder and remove pages](reorder-pages.md)
 - [Save incrementally](save-incremental.md)
 - [Deterministic, byte-identical output](deterministic-output.md)
+- [Compress a document](compress.md)
 - [Optimize and linearize output](optimize-linearize.md)
 - [Handle a damaged PDF](handle-damaged-pdf.md)
 - [Work with very large files](large-files.md)

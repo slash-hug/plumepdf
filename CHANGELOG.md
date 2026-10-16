@@ -7,8 +7,55 @@ only by diffing output. Entries land in the same change as the behavior they des
 
 ## [Unreleased]
 
+### Added
+
+- **`Pdf.Compress` and `Pdf.CompressAsync` make a document smaller.** With no options the call
+  is lossless: unfiltered streams are Flate-compressed, objects are packed into object streams
+  with a cross-reference stream, and byte-identical streams are written once. Images change
+  only when asked: `PdfCompressOptions.Images` with `MaxDpi` downsamples images whose effective
+  DPI is above 1.5 × `MaxDpi` to `MaxDpi` (box filter, per axis, never upsampling), and
+  `JpegQuality` re-encodes 8-bit gray and RGB images (ICC profiles kept) as baseline JPEG,
+  colour with 4:2:0 chroma subsampling. With only `MaxDpi`, a JPEG keeps its own estimated
+  quality (85 when it can't be estimated, `PLUME6091`) and its full-resolution chroma when it
+  had it. A Flate image's `/Decode` array is applied to its samples when it becomes a
+  JPEG, so it renders the same in every viewer. Every rewritten stream follows
+  the never-larger rule. The returned `CompressionResult` gives input and output sizes and one
+  `ImageCompressionDecision` per image (`Action`, `SkipReason`, sizes, effective DPI before and
+  after), plus result-scoped summary diagnostics with counts (`PLUME6085`–`PLUME6091`), never
+  one entry per image and nothing on `doc.Diagnostics`. Bilevel and stencil images, 2/4/16-bit
+  images, colour spaces other than gray and RGB, JPEG 2000/JBIG2/CCITT, inline,
+  tiling-pattern-only, colour-key masked and `/Matte` soft-mask images are skipped with a
+  reason. An image that fails to decode is written unchanged with `PLUME6086`, never a
+  refusal, even under `PdfOptions.Strict`. Memory is bounded by the largest image (about five
+  times its decoded size), and output goes through the usual temp-file-then-move save, so a
+  failure or cancellation leaves no partial file. Refused before any work: a signed source
+  unless `AllowInvalidatingSignatures` strips it (new `PLUME6084`; the count is
+  `CompressionResult.SignaturesStripped`), an encrypted source
+  (`PLUME5001`), `PdfOptions.Linearize` (`PLUME5018`), and same-path output over 2 GiB
+  (`PLUME1006`); under `PdfOptions.Strict`, a reference the document can't resolve refuses the
+  save with `PLUME2060`, as `Save` does. A version below 1.5 is raised to 1.5 for packing (`PLUME6088`); a PDF/A-1
+  source is not packed (`PLUME6089`) and keeps a 1.4 header, which PlumePDF's own PDF/A self-check requires, unless the caller sets
+  a version other than the default 1.7 or a `PdfAConformance`. Path-only for now: a `Stream` overload and progress
+  reporting are not yet available. Recipe: `docs/cookbook/compress.md`.
+
 ### Fixed
 
+- **3-component JPEGs marked "no colour transform" decoded as YCbCr.** A JPEG whose Adobe
+  `APP14` marker says transform 0, or whose PDF `/DecodeParms` say `/ColorTransform 0`, stores
+  its samples as RGB, but PlumePDF read them as RGB only when the component ids were also
+  `R`, `G`, `B`; with the usual ids 1, 2, 3 the colours came out wrong (a red of 220/30/40
+  rendered as 97/255/46). An explicit transform 0 now means RGB whatever the ids say, as
+  libjpeg, poppler and pdf.js read it; the id check is used only when neither the marker nor
+  `/ColorTransform` says anything. This changes the pixels `Rasterize` and
+  `RasterImage.Decode` give for such files, `ExtractImages`' decoded samples for one whose
+  `DCTDecode` isn't the last filter (a JPEG that ends its filter chain is still returned as its
+  own bytes, unchanged), and the colours `Pdf.Compress` writes when it re-encodes or
+  downsamples them.
+- **`Redact` with `AllowInvalidatingSignatures` left `/SigFlags` behind.** When the signed
+  document's form had other fields, the stripped output kept its `/AcroForm` (correctly) along
+  with `/SigFlags`, which still said the document held signatures, so viewers could treat the
+  unsigned output as signed (append-only). `/SigFlags` is now removed once no signature field
+  is left in the form. `Pdf.Compress`'s `AllowInvalidatingSignatures` strips the same way.
 - **Streams whose `/Length` is an indirect reference read the rest of the file.** Below 2 GiB,
   resolving such a stream (common in Ghostscript, pdfTeX and scanner output) read from its
   offset to the end of the file — a 7.5 MB image in a 196 MB file allocated 642 MB; past 2 GiB

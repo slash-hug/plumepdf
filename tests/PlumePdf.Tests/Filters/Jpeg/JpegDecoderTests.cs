@@ -215,6 +215,55 @@ public class JpegDecoderTests
     }
 
     [Fact]
+    public void Decode_Adobe0WithNumericComponentIds_IsRawRgb()
+    {
+        // An explicit Adobe transform 0 means "no color transform": libjpeg, poppler and pdf.js
+        // all read the three components as R, G, B whatever their ids say.
+        var data = CmykJpegFixture.BuildFlatThreeComponent(220, 30, 40, adobeTransform: 0);
+
+        var result = JpegDecoder.Decode(data, PdfOptions.Default, diagnostics: null, subject: null);
+
+        Assert.Equal(JpegAdobeTransform.Unknown, result.AdobeTransform);
+        Assert.Equal(new byte[] { 220, 30, 40 }, result.Pixels[..3]);
+    }
+
+    [Fact]
+    public void Decode_ColorTransform0WithNumericComponentIds_IsRawRgb()
+    {
+        // No APP14 marker, but the PDF's /DecodeParms /ColorTransform 0 says the same thing.
+        var data = CmykJpegFixture.BuildFlatThreeComponent(220, 30, 40, adobeTransform: null);
+
+        var result = JpegDecoder.Decode(data, PdfOptions.Default, diagnostics: null, subject: null, colorTransformOverride: JpegAdobeTransform.Unknown);
+
+        Assert.Equal(new byte[] { 220, 30, 40 }, result.Pixels[..3]);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData((byte)1)]
+    public void Decode_NumericComponentIdsWithoutExplicitTransform0_IsYCbCr(byte? adobeTransform)
+    {
+        // No marker (or Adobe transform 1) and JFIF-style ids: the samples are Y, Cb, Cr.
+        var data = CmykJpegFixture.BuildFlatThreeComponent(128, 128, 128, adobeTransform);
+
+        var result = JpegDecoder.Decode(data, PdfOptions.Default, diagnostics: null, subject: null);
+
+        Assert.Equal(new byte[] { 128, 128, 128 }, result.Pixels[..3]); // Y=128 with neutral chroma is mid gray either way...
+        var colored = JpegDecoder.Decode(CmykJpegFixture.BuildFlatThreeComponent(220, 30, 40, adobeTransform), PdfOptions.Default, diagnostics: null, subject: null);
+        Assert.NotEqual(new byte[] { 220, 30, 40 }, colored.Pixels[..3]); // ...but a saturated triple is converted, not passed through.
+    }
+
+    [Fact]
+    public void Decode_RgbComponentIdsWithoutMarker_IsRawRgb()
+    {
+        var data = CmykJpegFixture.BuildFlatThreeComponent(220, 30, 40, adobeTransform: null, componentIds: "RGB"u8.ToArray());
+
+        var result = JpegDecoder.Decode(data, PdfOptions.Default, diagnostics: null, subject: null);
+
+        Assert.Equal(new byte[] { 220, 30, 40 }, result.Pixels[..3]);
+    }
+
+    [Fact]
     public void Decode_ZeroHorizontalSamplingFactor_ThrowsPlume3203()
     {
         // ITU-T.81 Table B.2 reserves sampling-factor nibble value 0. Left unvalidated, a

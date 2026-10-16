@@ -15,27 +15,54 @@ namespace PlumePdf.Tests.Filters.Jpeg;
 /// flat color per channel: every AC coefficient is exactly zero for a constant block (DCT
 /// basis orthogonality), so only each component's DC coefficient is nonzero, keeping the
 /// entropy-coded payload to one Huffman-coded DC symbol + one EOB per component.
+/// <see cref="BuildFlatThreeComponent"/> builds the same shape with three components, the
+/// stored samples written as given, for the RGB-versus-YCbCr marker cases.
 /// </summary>
 public static class CmykJpegFixture
 {
     /// <summary>Builds an 8x8 CMYK JPEG whose single pixel block is the flat color (<paramref name="c"/>, <paramref name="m"/>, <paramref name="y"/>, <paramref name="k"/>).</summary>
-    public static byte[] BuildFlatColor(byte c, byte m, byte y, byte k)
+    public static byte[] BuildFlatColor(byte c, byte m, byte y, byte k) =>
+        BuildFlat([c, m, y, k], [1, 2, 3, 4], adobeTransform: 0);
+
+    /// <summary>
+    /// Builds an 8x8 3-component JPEG whose stored samples are exactly (<paramref name="first"/>,
+    /// <paramref name="second"/>, <paramref name="third"/>) - no encoder-side color transform is
+    /// applied, so what those samples mean (RGB or YCbCr) is up to the markers: an Adobe
+    /// <c>APP14</c> with <paramref name="adobeTransform"/> when it is non-null, and the frame's
+    /// <paramref name="componentIds"/> (1, 2, 3 by default, the JFIF convention).
+    /// <paramref name="commentBytes"/> adds a <c>COM</c> segment of that many bytes, for a
+    /// stream big enough that a re-encode of it comes out smaller.
+    /// </summary>
+    public static byte[] BuildFlatThreeComponent(byte first, byte second, byte third, byte? adobeTransform, byte[]? componentIds = null, int commentBytes = 0) =>
+        BuildFlat([first, second, third], componentIds ?? [1, 2, 3], adobeTransform, commentBytes);
+
+    private static byte[] BuildFlat(byte[] values, byte[] componentIds, byte? adobeTransform, int commentBytes = 0)
     {
         var bytes = new List<byte>();
         WriteMarkerOnly(bytes, 0xD8); // SOI
 
-        WriteAdobeApp14(bytes);
+        if (commentBytes > 0)
+        {
+            var comment = new byte[commentBytes];
+            Array.Fill(comment, (byte)'x');
+            WriteSegment(bytes, 0xFE, comment);
+        }
+
+        if (adobeTransform is { } transform)
+        {
+            WriteAdobeApp14(bytes, transform);
+        }
+
         WriteDqt(bytes);
-        WriteSof0(bytes);
+        WriteSof0(bytes, componentIds);
         WriteDht(bytes, 0, 0, JpegHuffmanTable.StandardLuminanceDcBits, JpegHuffmanTable.StandardLuminanceDcValues);
         WriteDht(bytes, 1, 0, JpegHuffmanTable.StandardLuminanceAcBits, JpegHuffmanTable.StandardLuminanceAcValues);
-        WriteSos(bytes);
+        WriteSos(bytes, componentIds);
 
         var entropy = new List<byte>();
         var bitBuffer = 0;
         var bitCount = 0;
-        var values = new[] { c, m, y, k };
-        var predictors = new int[4]; // One independent DC predictor per component (ISO/IEC 10918-1 §F.1.1.5.1) - a single shared predictor across C/M/Y/K would corrupt every component after the first.
+        var predictors = new int[values.Length]; // One independent DC predictor per component (ISO/IEC 10918-1 §F.1.1.5.1) - a single shared predictor across components would corrupt every component after the first.
         for (var i = 0; i < values.Length; i++)
         {
             EncodeFlatBlock(values[i], JpegHuffmanTable.StandardLuminanceDc, JpegHuffmanTable.StandardLuminanceAc, ref predictors[i], entropy, ref bitBuffer, ref bitCount);
@@ -134,7 +161,7 @@ public static class CmykJpegFixture
         bytes.AddRange(payload);
     }
 
-    private static void WriteAdobeApp14(List<byte> bytes)
+    private static void WriteAdobeApp14(List<byte> bytes, byte transform)
     {
         var payload = new byte[12];
         "Adobe"u8.CopyTo(payload);
@@ -142,7 +169,7 @@ public static class CmykJpegFixture
         payload[6] = 0; payload[7] = 0; // flags0
         payload[8] = 0; payload[9] = 0; // flags1
         payload[10] = 0; // padding (Adobe's marker is 6-byte version/flags then 1-byte transform at offset 11; offset 10 is the low byte of flags1, kept 0)
-        payload[11] = 0; // transform = 0: no color transform (direct CMYK).
+        payload[11] = transform; // 0: no color transform (direct CMYK/RGB); 1: YCbCr; 2: YCCK.
         WriteSegment(bytes, 0xEE, payload);
     }
 
@@ -158,17 +185,18 @@ public static class CmykJpegFixture
         WriteSegment(bytes, 0xDB, payload);
     }
 
-    private static void WriteSof0(List<byte> bytes)
+    private static void WriteSof0(List<byte> bytes, byte[] componentIds)
     {
-        var payload = new byte[6 + (4 * 3)];
+        var count = componentIds.Length;
+        var payload = new byte[6 + (count * 3)];
         payload[0] = 8; // precision.
         payload[1] = 0; payload[2] = 8; // height = 8.
         payload[3] = 0; payload[4] = 8; // width = 8.
-        payload[5] = 4; // component count.
-        for (var i = 0; i < 4; i++)
+        payload[5] = (byte)count; // component count.
+        for (var i = 0; i < count; i++)
         {
             var offset = 6 + (i * 3);
-            payload[offset] = (byte)(i + 1); // component ids 1-4 (C, M, Y, K).
+            payload[offset] = componentIds[i];
             payload[offset + 1] = 0x11; // 1x1 sampling - no subsampling.
             payload[offset + 2] = 0; // quant table id 0 for every component.
         }
@@ -185,17 +213,18 @@ public static class CmykJpegFixture
         WriteSegment(bytes, 0xC4, payload);
     }
 
-    private static void WriteSos(List<byte> bytes)
+    private static void WriteSos(List<byte> bytes, byte[] componentIds)
     {
-        var payload = new byte[4 + (4 * 2)];
-        payload[0] = 4;
-        for (var i = 0; i < 4; i++)
+        var count = componentIds.Length;
+        var payload = new byte[4 + (count * 2)];
+        payload[0] = (byte)count;
+        for (var i = 0; i < count; i++)
         {
-            payload[1 + (i * 2)] = (byte)(i + 1);
+            payload[1 + (i * 2)] = componentIds[i];
             payload[2 + (i * 2)] = 0x00; // DC table 0, AC table 0 for every component.
         }
 
-        var tail = 1 + (4 * 2);
+        var tail = 1 + (count * 2);
         payload[tail] = 0;
         payload[tail + 1] = 63;
         payload[tail + 2] = 0;
