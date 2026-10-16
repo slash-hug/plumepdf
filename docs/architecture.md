@@ -131,8 +131,8 @@ so memory follows the largest image rather than the file:
   repeated to a fixpoint so parents of merged children merge too. Metadata, cross-reference,
   object and external-file streams and Form XObjects are never merged. It reads only stream dictionaries and one-shot, uncached payloads, so the open
   document's object cache does not grow with image data; the plan holds object numbers and
-  sizes, never pixels. A page walk that is cut short (`PLUME6025`, `PLUME7010`) marks the
-  images it reaches unmeasured rather than guessing.
+  sizes, never pixels. A page walk that is cut short (`PLUME6025`, `PLUME7010`, or a content
+  stream it can't decode) marks the images it reaches unmeasured rather than guessing.
 - **Write-time stream transform.** The full-rewrite writer takes an internal
   `IStreamWriteTransform` (in `Objects/Writing`, with no Documents types), consulted at the one
   point a stream's value is chosen for writing, after any caller or page-removal override and

@@ -21,11 +21,12 @@ namespace PlumePdf.Documents.Compression;
 /// Content that can't be measured is marked rather than guessed: an image painted inside a
 /// tiling pattern is drawn in pattern space at a size the scan doesn't follow, and one inside a
 /// Type 3 glyph at the text size. A walk that stops early (a form cycle, the nesting or operator
-/// caps, malformed content refused under <see cref="PdfOptions.Strict"/>) may have missed a
-/// larger placement, so every image the page's resources can reach is then marked unmeasured
-/// too. A degenerate placement (a zero-area or non-finite CTM) is unmeasured as well. An image
-/// a page's resources reach but nothing draws is recorded as not placed, so every image a
-/// retained page lists has a fate in the plan.
+/// caps, a content stream it can't decode, malformed content refused under
+/// <see cref="PdfOptions.Strict"/>) may have missed a larger placement, so every image the
+/// page's resources can reach is then marked unmeasured too. A degenerate placement (a
+/// zero-area or non-finite CTM) is unmeasured as well. An image a page's resources reach but
+/// nothing draws is recorded as not placed, so every image a retained page lists has a fate in
+/// the plan.
 /// </para>
 /// <para>
 /// Only stream dictionaries are taken from the registry (<see cref="IObjectSource.ResolveForDiscovery"/>),
@@ -91,7 +92,7 @@ internal static class PlacementScanner
 
         try
         {
-            var content = ReadPageContent(scan, page.TryGetValue(ContentsName, out var c) ? c : null);
+            var content = ReadPageContent(walk, page.TryGetValue(ContentsName, out var c) ? c : null);
             Walk(walk, content, resources, PdfMatrix.Identity, WalkMode.Measured, depth: 0);
             WalkAnnotations(walk, page, resources);
         }
@@ -117,8 +118,9 @@ internal static class PlacementScanner
 
     // The page's /Contents, read uncached: each content stream's payload is read for this pass
     // and dropped, then the shared shape rules pick out the streams in order.
-    private static byte[] ReadPageContent(ScanState scan, PdfObject? contents)
+    private static byte[] ReadPageContent(PageWalk walk, PdfObject? contents)
     {
+        var scan = walk.Scan;
         if (contents is null)
         {
             return [];
@@ -157,7 +159,7 @@ internal static class PlacementScanner
         using var buffer = new MemoryStream();
         foreach (var stream in PageContents.ResolveStreams(resolved, scan.Objects))
         {
-            if (scan.TryDecode(stream, "A page content stream") is { } decoded)
+            if (walk.TryDecode(stream, "A page content stream") is { } decoded)
             {
                 buffer.Write(decoded);
                 buffer.WriteByte((byte)'\n');
@@ -298,7 +300,7 @@ internal static class PlacementScanner
             }
 
             var formResources = scan.ResolveDictionary(dictionary.TryGetValue(ResourcesName, out var r) ? r : null) ?? inheritedResources;
-            if (scan.TryDecode(stream, $"Object {reference}") is { } content)
+            if (walk.TryDecode(stream, $"Object {reference}") is { } content)
             {
                 Walk(walk, content, formResources, formCtm, mode, depth + 1);
             }
@@ -777,21 +779,6 @@ internal static class PlacementScanner
 
         public PdfDictionary? ResolveDictionary(PdfObject? value) => Resolve(value) as PdfDictionary;
 
-        // A content payload decoded under the document's caps; a stream that fails to decode
-        // paints nothing for any reader, so it places nothing here either.
-        public byte[]? TryDecode(PdfStream stream, string what)
-        {
-            try
-            {
-                return stream.GetDecodedBytes(Options.Filters, Options, r => Objects[r]);
-            }
-            catch (PlumePdfException ex)
-            {
-                Report(ex.Code, DiagnosticSeverity.Warning, $"{what} could not be decoded during the compression placement scan ({ex.Message}); it places nothing.", null);
-                return null;
-            }
-        }
-
         // One entry per (code, object): a cycle met on every page is reported once.
         public void Report(string code, DiagnosticSeverity severity, string message, IndirectReference? subject)
         {
@@ -829,6 +816,22 @@ internal static class PlacementScanner
         {
             Truncated = true;
             Scan.Report(code, DiagnosticSeverity.Warning, message, subject);
+        }
+
+        // A content payload decoded under the document's caps. A stream the scan can't decode
+        // may still draw images for a reader that can (one with another decoder, or lenient
+        // about a filter name's spelling), so the page's images are unmeasured, never "not drawn".
+        public byte[]? TryDecode(PdfStream stream, string what)
+        {
+            try
+            {
+                return stream.GetDecodedBytes(Scan.Options.Filters, Scan.Options, r => Scan.Objects[r]);
+            }
+            catch (PlumePdfException ex)
+            {
+                Truncate(ex.Code, $"{what} could not be decoded during the compression placement scan ({ex.Message}); the page's images are treated as unmeasured.", null);
+                return null;
+            }
         }
 
         public void Stop(string code, string message)

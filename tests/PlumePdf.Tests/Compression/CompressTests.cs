@@ -291,6 +291,49 @@ public class CompressTests
     }
 
     [Fact]
+    public void DanglingSoftMaskReference_UnderStrict_RefusesTheSaveAsSaveDoes()
+    {
+        // The image's own decode failure would be a skip, but the save still has to write the
+        // entry, and a Strict document refuses a reference it can't resolve (as Save does).
+        var strict = PdfOptions.Default with { Strict = true };
+        var pdf = OneImage(Image(extra: "/SMask 99 0 R"), FlateSamples());
+
+        var refused = Assert.Throws<PlumePdfException>(() => Compress(pdf, AllLevers, strict));
+        Assert.Equal("PLUME2060", refused.Code);
+
+        var source = Write(pdf);
+        var output = TempPath();
+        try
+        {
+            using var document = PdfDocument.Open(source, strict);
+            Assert.Equal("PLUME2060", Assert.Throws<PlumePdfException>(() => document.Save(output)).Code);
+        }
+        finally
+        {
+            Delete(source, output);
+        }
+
+        // Without Strict the same document compresses.
+        var (result, _) = Compress(pdf, AllLevers);
+        Assert.NotEmpty(result.Images);
+    }
+
+    [Fact]
+    public void ImageOnAPageWhoseContentCannotBeDecoded_IsReportedUnmeasured()
+    {
+        var pdf = new ScanTestPdf()
+            .Stream(10, Image(), FlateSamples())
+            .Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /XObject << /Im0 10 0 R >> >> /Contents 4 0 R >>")
+            .Stream(4, "/Filter /Flatedecode", $"q 144 0 0 144 0 0 cm /Im0 Do Q")
+            .PageNumber(3);
+
+        var (result, _) = Compress(pdf, new PdfCompressOptions { Images = new PdfImageCompression { MaxDpi = 100 } });
+
+        var decision = Decision(result, 10);
+        Assert.Equal((ImageCompressionAction.Skipped, ImageSkipReason.UnmeasuredPlacement), (decision.Action, decision.SkipReason));
+    }
+
+    [Fact]
     public void Deterministic_GivesByteIdenticalOutputAcrossRuns()
     {
         var pdf = new ScanTestPdf { MinimumStreamBytes = 2048 }
