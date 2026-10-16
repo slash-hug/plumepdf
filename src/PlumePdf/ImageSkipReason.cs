@@ -1,8 +1,9 @@
 namespace PlumePdf;
 
 /// <summary>
-/// Why <c>Pdf.Compress</c> left an image's samples alone even though an image lever was on
-/// (<see cref="ImageCompressionDecision.SkipReason"/>). Each reason is also counted in one
+/// Why <c>Pdf.Compress</c> left an image's samples alone, or would have to with an image lever
+/// on (<see cref="ImageCompressionDecision.SkipReason"/>). Images are classified on every call,
+/// so a lossless-only call reports these too. Each reason is also counted in one
 /// <c>PLUME6085</c> summary diagnostic on <see cref="CompressionResult.Diagnostics"/>
 /// (<c>PLUME6086</c> for <see cref="DecodeFailed"/>).
 /// </summary>

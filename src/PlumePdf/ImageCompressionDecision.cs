@@ -106,8 +106,9 @@ public sealed class ImageCompressionDecision
 
     /// <summary>
     /// The image's effective DPI in the input: pixels per inch at its largest placement, the
-    /// lower of the two axes. <see langword="null"/> when it has no measured placement (an
-    /// unplaced image, a soft mask, or one drawn only where placement can't be measured).
+    /// lower of the two axes. A soft mask is measured through the placements of the images it
+    /// masks. <see langword="null"/> when no placement is measured (an unplaced image, or one
+    /// drawn only where placement can't be measured).
     /// </summary>
     public double? EffectiveDpiBefore { get; }
 
@@ -115,9 +116,12 @@ public sealed class ImageCompressionDecision
     public double? EffectiveDpiAfter { get; }
 
     /// <summary>
-    /// For a JPEG source that was decoded, the quality estimated from its quantization tables,
-    /// clamped to 50–95; <see langword="null"/> when the image isn't a JPEG, wasn't decoded, or
-    /// its tables aren't IJG-scaled (a downsampled JPEG is then written at quality 85).
+    /// For a JPEG source whose header was read, the quality estimated from its quantization
+    /// tables, clamped to 50–95; it can be present on a skipped JPEG whose header was readable
+    /// but whose image data failed to decode. <see langword="null"/> when the image isn't a
+    /// JPEG on its own (a JPEG behind another filter included), no image lever applied to
+    /// it, or its tables aren't IJG-scaled; a downsampled JPEG is then written at quality 85,
+    /// counted in one <c>PLUME6091</c> summary.
     /// </summary>
     public int? EstimatedSourceQuality { get; }
 }
