@@ -1,4 +1,5 @@
 using System.Text;
+using PlumePdf.Documents.PdfA;
 using PlumePdf.Elements;
 using VerifyXunit;
 using Xunit;
@@ -6,10 +7,11 @@ using Xunit;
 namespace PlumePdf.CookbookTests;
 
 /// <summary>
-/// Cookbook recipe backing test for <c>docs/cookbook/compress.md</c>: a lossless-only call,
-/// then the image levers with the result read to tune them. The source is composed here — a
-/// 900-pixel noisy image drawn two inches wide (450 DPI) — so the recipe has no external
-/// fixture. Byte counts vary with the zlib build, so the snapshot records comparisons, not sizes.
+/// Cookbook recipe backing tests for <c>docs/cookbook/compress.md</c>: a lossless-only call,
+/// then the image levers with the result read to tune them, the async door with cancellation,
+/// and what a compressed tagged PDF/A source keeps. The sources are composed here — a
+/// 900-pixel noisy image drawn two inches wide (450 DPI) — so the recipes have no external
+/// fixture. Byte counts vary with the zlib build, so the snapshots record comparisons, not sizes.
 /// </summary>
 public partial class CookbookTests
 {
@@ -52,15 +54,92 @@ public partial class CookbookTests
         return Verifier.Verify(report.ToString());
     }
 
-    private static void BuildScanLikeSource(string path)
+    [Fact]
+    public async Task CompressAsync()
     {
-        const int pixels = 900;
+        var report = new StringBuilder();
+        BuildScanLikeSource("output/scan-for-async.pdf");
+        File.Delete("output/scan-cancelled.pdf");
+
+        // begin-snippet: compress-async
+        // CompressAsync runs on the thread pool and checks the token between pages while
+        // planning and between streams while writing, so a deadline stops a long run.
+        using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(8));
+        var result = await Pdf.CompressAsync("output/scan-for-async.pdf", "output/scan-async.pdf", new PdfCompressOptions
+        {
+            Images = new PdfImageCompression { MaxDpi = 200, JpegQuality = 70 },
+        }, cancellationToken: deadline.Token);
+        report.AppendLine($"Async saved bytes: {result.SavedBytes > 0}");
+
+        // A cancelled call throws OperationCanceledException. The output is written to a
+        // temporary file and moved into place only on success, so nothing is left behind.
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        try
+        {
+            await Pdf.CompressAsync("output/scan-for-async.pdf", "output/scan-cancelled.pdf", cancellationToken: cancelled.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            report.AppendLine($"Cancelled; output file exists: {File.Exists("output/scan-cancelled.pdf")}");
+        }
+        // end-snippet
+
+        await Verifier.Verify(report.ToString());
+    }
+
+    [Fact]
+    public Task CompressTaggedPdfA()
+    {
+        var report = new StringBuilder();
+        using (var source = new Manuscript
+        {
+            Language = "en-US",
+            Title = "Scanned record",
+            Sections = [new Section { Body = new Image(ScanLikeSamples(), pixelWidth: ScanPixels, pixelHeight: ScanPixels) { Width = 144, Height = 144, AltText = "Scanned page" } }],
+        }.Render(PdfOptions.Default with { PdfAConformance = PdfAConformance.A2b }))
+        {
+            source.Save("output/tagged-a2b.pdf");
+        }
+
+        // begin-snippet: compress-tagged-pdfa
+        // Compress rewrites image streams, not content operators or the structure tree,
+        // so tagging survives. It doesn't re-validate PDF/A: check the output yourself.
+        var result = Pdf.Compress("output/tagged-a2b.pdf", "output/tagged-a2b-small.pdf", new PdfCompressOptions
+        {
+            Images = new PdfImageCompression { MaxDpi = 200, JpegQuality = 70 },
+        });
+
+        using var compressed = PdfDocument.Open("output/tagged-a2b-small.pdf");
+        var structure = PdfStructureInfo.For(compressed);
+        var pdfa = PdfAValidator.Validate(compressed);
+        report.AppendLine($"Image actions: {string.Join(", ", result.Images.Select(static i => i.Action))}");
+        report.AppendLine($"Still tagged: {structure.IsTagged}, language: {structure.Language}");
+        report.AppendLine($"Declared: PDF/A-{pdfa.DeclaredPart}{pdfa.DeclaredConformance}, conformant (self-check): {pdfa.IsConformant}");
+        // end-snippet
+
+        return Verifier.Verify(report.ToString());
+    }
+
+    private const int ScanPixels = 900;
+
+    private static byte[] ScanLikeSamples()
+    {
+        const int pixels = ScanPixels;
         var random = new Random(7);
         var samples = new byte[pixels * pixels * 3];
         for (var i = 0; i < samples.Length; i++)
         {
             samples[i] = (byte)Math.Clamp(((i / 3 % pixels) * 255 / pixels) + random.Next(-12, 13), 0, 255);
         }
+
+        return samples;
+    }
+
+    private static void BuildScanLikeSource(string path)
+    {
+        const int pixels = ScanPixels;
+        var samples = ScanLikeSamples();
 
         using var document = PdfDocument.Compose(page =>
         {
