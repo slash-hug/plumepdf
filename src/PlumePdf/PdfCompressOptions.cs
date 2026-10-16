@@ -65,4 +65,41 @@ public sealed record PdfCompressOptions
     /// </code>
     /// </example>
     public bool AllowInvalidatingSignatures { get; init; }
+
+    /// <summary>
+    /// Where to report progress, or <see langword="null"/> (the default) for none. Reports
+    /// are <see cref="CompressionProgress"/> values: the stage running, how much is done and the
+    /// total when known (see <see cref="CompressionProgress"/> for each stage's unit). Reporting
+    /// never changes the output.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="IProgress{T}.Report"/> is called synchronously, on the thread doing the work
+    /// (a thread-pool thread for <c>CompressAsync</c>), between pages and between images, so a
+    /// slow callback slows the call. <see cref="Progress{T}"/> already posts each report to the
+    /// context it was created on (a UI thread, say) and returns at once; an implementation of
+    /// your own must be fast and thread-safe. An exception the callback throws propagates out of
+    /// <c>Compress</c> as itself, ending the call like any other failure: a path output is then
+    /// not written (the save is atomic), while a stream output may hold a partial document to
+    /// discard. To stop a call, cancel its token rather than throwing.
+    /// </para>
+    /// <para>
+    /// The refusals that come before any work (argument errors, <c>PLUME5018</c>,
+    /// <c>PLUME5001</c>, <c>PLUME6084</c>, <c>PLUME1006</c>) report nothing, except that a
+    /// non-seekable stream input has to be spooled before an encrypted or signed source can be
+    /// detected, so its <see cref="CompressionStage.Spooling"/> reports come first. As a record
+    /// member, it takes part in equality by reference: two options with different progress
+    /// instances are not equal.
+    /// </para>
+    /// </remarks>
+    /// <example>
+    /// <code>
+    /// var options = new PdfCompressOptions
+    /// {
+    ///     Progress = new Progress&lt;CompressionProgress&gt;(p => Console.WriteLine($"{p.Stage} {p.Completed}/{p.Total}")),
+    /// };
+    /// Pdf.Compress("report.pdf", "report-small.pdf", options);
+    /// </code>
+    /// </example>
+    public IProgress<CompressionProgress>? Progress { get; init; }
 }

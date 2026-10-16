@@ -64,13 +64,18 @@ internal static class PlacementScanner
     }
 
     /// <summary>Scans <paramref name="document"/>'s retained pages.</summary>
-    public static PlacementScan Scan(PdfDocument document, PdfOptions options, CancellationToken cancellationToken)
+    /// <param name="document">The document to scan.</param>
+    /// <param name="options">The effective save options.</param>
+    /// <param name="cancellationToken">Checked before each page.</param>
+    /// <param name="pageScanned">Called with the number of pages scanned so far after each page, or null.</param>
+    public static PlacementScan Scan(PdfDocument document, PdfOptions options, CancellationToken cancellationToken, Action<int>? pageScanned = null)
     {
         var scan = new ScanState(document.Objects, options);
         for (var pageIndex = 0; pageIndex < document.Pages.Count; pageIndex++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             ScanPage(scan, document.Pages[pageIndex].Dictionary, pageIndex);
+            pageScanned?.Invoke(pageIndex + 1);
         }
 
         var images = new Dictionary<int, ImagePlacementSummary>();
