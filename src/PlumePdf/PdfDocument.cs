@@ -508,7 +508,10 @@ public sealed class PdfDocument : IDisposable
     /// <summary>Opens a PDF document from a file path.</summary>
     /// <param name="path">The path to the PDF file.</param>
     /// <param name="options">Options controlling reading behavior. Defaults to <see cref="PdfOptions.Default"/>.</param>
-    /// <exception cref="PlumePdfException">The file could not be read, or its structure could not be recovered.</exception>
+    /// <exception cref="PlumePdfException">
+    /// The file doesn't exist (<c>PLUME1002</c>) or couldn't be accessed (<c>PLUME1001</c>) —
+    /// with or without <see cref="PdfOptions.PreferStreamIo"/> — or its structure could not be recovered.
+    /// </exception>
     /// <example>
     /// <code>
     /// using var document = PdfDocument.Open("input.pdf");
@@ -551,6 +554,7 @@ public sealed class PdfDocument : IDisposable
     /// non-blocking-I/O) mapping setup runs on the thread pool instead — a documented Phase
     /// 1 simplification, not sync-over-async.
     /// </summary>
+    /// <exception cref="PlumePdfException">As <see cref="Open(string, PdfOptions?)"/>: the file doesn't exist (<c>PLUME1002</c>) or couldn't be accessed (<c>PLUME1001</c>), or its structure could not be recovered.</exception>
     public static async Task<PdfDocument> OpenAsync(string path, PdfOptions? options = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
@@ -558,7 +562,7 @@ public sealed class PdfDocument : IDisposable
 
         if (opts.PreferStreamIo)
         {
-            var bytes = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
+            var bytes = await SourceFile.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
             return Open(bytes, opts);
         }
 
@@ -602,7 +606,13 @@ public sealed class PdfDocument : IDisposable
     /// byte-identical to the source, since renumbering is not the identity transform).
     /// Defaults to the options this document was opened with.
     /// </param>
-    /// <exception cref="PlumePdfException">This document's source is encrypted (<c>PLUME5001</c>) — Phase 1 does not support saving an encrypted source.</exception>
+    /// <exception cref="PlumePdfException">
+    /// This document's source is encrypted (<c>PLUME5001</c>) — Phase 1 does not support saving
+    /// an encrypted source; or <paramref name="path"/> can't be written (<c>PLUME1007</c> — a
+    /// missing directory, a path that is a directory, no write permission, a full disk; the
+    /// operating system's exception is the inner exception, no temporary file is left behind,
+    /// and an existing file at <paramref name="path"/> is untouched).
+    /// </exception>
     /// <example>
     /// <code>
     /// using var document = PdfDocument.Open("input.pdf");
@@ -632,26 +642,8 @@ public sealed class PdfDocument : IDisposable
         // (and its lazy resolver) stays fully readable off the in-memory copy.
         DetachMappedSourceIfSamePath(path);
 
-        var directory = Path.GetDirectoryName(Path.GetFullPath(path));
-        var tempPath = Path.Combine(string.IsNullOrEmpty(directory) ? "." : directory, $".{Path.GetFileName(path)}.plumepdf-tmp-{Guid.NewGuid():N}");
-
-        try
-        {
-            using (var tempStream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
-            {
-                WriteSave(tempStream, save, transform, aliases);
-            }
-
-            File.Move(tempPath, path, overwrite: true);
-            CompleteSave(save);
-        }
-        finally
-        {
-            if (File.Exists(tempPath))
-            {
-                File.Delete(tempPath);
-            }
-        }
+        OutputFile.Replace(path, stream => WriteSave(stream, save, transform, aliases));
+        CompleteSave(save);
     }
 
     /// <summary>
@@ -861,7 +853,9 @@ public sealed class PdfDocument : IDisposable
     /// than an assumption); this document has no backing byte source, e.g. the result of
     /// <c>Pdf.Merge</c> (<c>PLUME5003</c>); or the source's cross-reference data was recovered
     /// via brute-force scan and has no reliable prior <c>startxref</c> to chain onto
-    /// (<c>PLUME5005</c>) — call <see cref="Save"/> instead.
+    /// (<c>PLUME5005</c>) — call <see cref="Save"/> instead; or <paramref name="path"/> can't be
+    /// written (<c>PLUME1007</c> — a missing directory, a path that is a directory, no write
+    /// permission, a full disk; the operating system's exception is the inner exception).
     /// </exception>
     /// <example>
     /// <code>
@@ -933,12 +927,12 @@ public sealed class PdfDocument : IDisposable
 
         if (isSamePath)
         {
-            using var append = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.Read);
+            using var append = OutputFile.Open(path, FileMode.Append, FileShare.Read);
             IncrementalUpdateWriter.WriteAppendix(append, Objects, PagesTreeDirty, topPagesReference, pages, prevOffset, effectiveOptions, _securityHandler);
         }
         else
         {
-            using var output = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
+            using var output = OutputFile.Open(path, FileMode.Create, FileShare.None);
             _source.CopyTo(output);
             IncrementalUpdateWriter.WriteAppendix(output, Objects, PagesTreeDirty, topPagesReference, pages, prevOffset, effectiveOptions, _securityHandler);
         }
@@ -1037,7 +1031,7 @@ public sealed class PdfDocument : IDisposable
     {
         if (options.PreferStreamIo)
         {
-            return new StreamByteSource(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read), ownsStream: true);
+            return new StreamByteSource(SourceFile.OpenRead(path), ownsStream: true);
         }
 
         try
@@ -1048,7 +1042,7 @@ public sealed class PdfDocument : IDisposable
         {
             // Empty file, or the platform/filesystem couldn't memory-map it: fall back to
             // buffered stream I/O rather than failing outright.
-            return new StreamByteSource(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read), ownsStream: true);
+            return new StreamByteSource(SourceFile.OpenRead(path), ownsStream: true);
         }
     }
 

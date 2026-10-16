@@ -100,6 +100,24 @@ only by diffing output. Entries land in the same change as the behavior they des
 
 ### Changed
 
+- **File-system failures in PlumePDF's own file IO now throw `PlumePdfException` with a code,
+  not a bare `IOException` (#54).** Writing an output file to a path — `Save`, `SaveIncremental`,
+  `Pdf.Compress` and the other path verbs, signing, LTV and document timestamping — used to let
+  `DirectoryNotFoundException`, `IOException` (the path is a directory, the disk is full) and
+  `UnauthorizedAccessException` (no write permission) escape uncoded; they are now
+  `PLUME1007`, naming the output path, with the original exception as `InnerException`. As
+  before, no temporary file is left behind and an existing destination is untouched. Spooling a
+  non-seekable input for `Pdf.Compress(Stream, Stream)` to the temp directory now fails with
+  `PLUME1008` instead (nothing is written to the output and no spool file is left). Opening a
+  path with `PdfOptions.PreferStreamIo` (sync and `OpenAsync`), and the stream fallback after a
+  file can't be memory-mapped, now report a missing file or directory as `PLUME1002` and any
+  other file-system failure as `PLUME1001`, the codes the default memory-mapped open already
+  used, instead of a raw `FileNotFoundException`/`UnauthorizedAccessException`.
+  **`PlumePdfException` derives from `Exception`, not `IOException`, so a `catch (IOException)`
+  around these calls no longer catches these failures** — catch `PlumePdfException` (and check
+  `Code`, or `InnerException` for the operating-system error). Exceptions thrown by your own
+  streams (the `Compress(Stream, Stream)` input and output, `PdfDocument.Open(Stream)`) and
+  cancellation are unchanged.
 - **An indirect `/Length` no longer reports `PLUME2019`.** Every stream with an indirect
   `/Length` used to be recovered by scanning for `endstream`, recording `PLUME2019` and, under
   `PdfOptions.Strict`, refusing the document. The resolved length is now used directly, so these
