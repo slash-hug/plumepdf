@@ -312,6 +312,37 @@ public class RedactionTests
     }
 
     [Fact]
+    public void Redact_SignedFormSource_AllowInvalidatingSignatures_DropsSigFlags()
+    {
+        // The form keeps its other fields, so /AcroForm survives the strip; its /SigFlags
+        // must not keep claiming the document holds signatures.
+        var signedPath = Compression.CompressSignatureTests.SignedFormSource();
+        var outputPath = SignVerifyRoundTripTests.TempPdfPath();
+        try
+        {
+            using var signed = PdfDocument.Open(signedPath);
+            Assert.True(Compression.CompressSignatureTests.AcroForm(signed).ContainsKey(PdfName.SigFlags));
+
+            var result = RedactionEngine.Redact(signed, [RedactionTarget.Text("Body")], new PdfRedactOptions { AllowInvalidatingSignatures = true });
+            signed.Save(outputPath);
+
+            Assert.Equal(1, result.SignaturesStripped);
+            using var reopened = PdfDocument.Open(outputPath);
+            Assert.Empty(reopened.Signatures);
+            Assert.NotEmpty(reopened.Form.Fields);
+            Assert.False(Compression.CompressSignatureTests.AcroForm(reopened).ContainsKey(PdfName.SigFlags));
+        }
+        finally
+        {
+            File.Delete(signedPath);
+            if (File.Exists(outputPath))
+            {
+                File.Delete(outputPath);
+            }
+        }
+    }
+
+    [Fact]
     public void Redact_ImageIntersectingRegion_RemovesImageAndItIsNoLongerExtractable()
     {
         var pixels = new byte[64 * 64 * 3];

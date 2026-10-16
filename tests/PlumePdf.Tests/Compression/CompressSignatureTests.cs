@@ -87,6 +87,58 @@ public class CompressSignatureTests
         }
     }
 
+    [Fact]
+    public void AllowInvalidatingSignatures_DropsSigFlags_WhenOtherFieldsRemain()
+    {
+        // The form keeps its other fields, so /AcroForm survives; /SigFlags must not keep
+        // claiming the document holds signatures.
+        var signed = SignedFormSource();
+        var output = TempPath();
+        try
+        {
+            using (var source = PdfDocument.Open(signed))
+            {
+                Assert.True(AcroForm(source).ContainsKey(PdfName.SigFlags));
+            }
+
+            var result = Pdf.Compress(signed, output, new PdfCompressOptions { AllowInvalidatingSignatures = true });
+
+            using var compressed = PdfDocument.Open(output);
+            Assert.Empty(compressed.Signatures);
+            Assert.NotEmpty(compressed.Form.Fields);
+            Assert.False(AcroForm(compressed).ContainsKey(PdfName.SigFlags));
+        }
+        finally
+        {
+            Delete(signed, output);
+        }
+    }
+
+    /// <summary>A signed copy of a document whose form has other fields beside the signature.</summary>
+    internal static string SignedFormSource()
+    {
+        using var ca = new TestCertificateAuthority();
+        var source = Write(Forms.FormsTestDocuments.Build());
+        var signed = TempPath("signed");
+        try
+        {
+            using var document = PdfDocument.Open(source);
+            document.Signatures.Add(signed, new PdfSignOptions { Certificate = ca.LeafRsa });
+            return signed;
+        }
+        finally
+        {
+            Delete(source);
+        }
+    }
+
+    /// <summary>The document's resolved <c>/AcroForm</c> dictionary.</summary>
+    internal static PdfDictionary AcroForm(PdfDocument document)
+    {
+        var value = document.Catalog!.Dictionary[PdfName.AcroForm]!;
+        return (PdfDictionary)(value is PdfReference reference ? document.Objects[reference.Target] : value);
+    }
+
     private static async Task<string> SignedSource(Signing signing)
     {
         using var ca = new TestCertificateAuthority();

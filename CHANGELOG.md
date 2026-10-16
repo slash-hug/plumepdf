@@ -49,6 +49,11 @@ only by diffing output. Entries land in the same change as the behavior they des
   `DCTDecode` isn't the last filter (a JPEG that ends its filter chain is still returned as its
   own bytes, unchanged), and the colours `Pdf.Compress` writes when it re-encodes or
   downsamples them.
+- **`Redact` with `AllowInvalidatingSignatures` left `/SigFlags` behind.** When the signed
+  document's form had other fields, the stripped output kept its `/AcroForm` (correctly) along
+  with `/SigFlags`, which still said the document held signatures, so viewers could treat the
+  unsigned output as signed (append-only). `/SigFlags` is now removed once no signature field
+  is left in the form. `Pdf.Compress`'s `AllowInvalidatingSignatures` strips the same way.
 - **Streams whose `/Length` is an indirect reference read the rest of the file.** Below 2 GiB,
   resolving such a stream (common in Ghostscript, pdfTeX and scanner output) read from its
   offset to the end of the file — a 7.5 MB image in a 196 MB file allocated 642 MB; past 2 GiB

@@ -13,7 +13,8 @@ internal static class SignatureStripper
     // Strips every discovered signature/timestamp's machinery for real
     // ("strips signature fields", not merely their /V): the signature fields are removed from
     // the AcroForm /Fields tree, their widget annotations from every page's /Annots, and —
-    // when nothing else uses the form — the catalog's /AcroForm itself; plus the catalog's
+    // when nothing else uses the form — the catalog's /AcroForm itself (a surviving form loses
+    // /SigFlags once no signature field is left in it); plus the catalog's
     // /Perms (DocMDP/usage-rights signatures) and /DSS (LTV validation material for every
     // signature, whether or not it had a field). Every caller saves through a full rewrite, so the
     // detached field/widget/signature objects are then garbage-collected by Save rather than
@@ -44,6 +45,7 @@ internal static class SignatureStripper
 
         RemoveFromFieldTree(document, form, removal);
         RemoveFromPageAnnotations(document, removal);
+        RemoveStaleSigFlags(document);
 
         var stripped = 0;
         foreach (var signature in signatures)
@@ -108,6 +110,29 @@ internal static class SignatureStripper
         }
 
         if (fields.Count == 0 && document.Catalog is { } catalog && catalog.Dictionary.Remove(PdfName.AcroForm))
+        {
+            document.Objects.MarkDirty(catalog.Reference);
+        }
+    }
+
+    // A form that outlived the strip (it has other fields) must not keep /SigFlags claiming
+    // the document holds signatures once no signature field is left in it.
+    private static void RemoveStaleSigFlags(PdfDocument document)
+    {
+        var form = AcroFormReader.Read(document, new DiagnosticCollection());
+        if (form.AcroFormDictionary is not { } acroForm
+            || !acroForm.ContainsKey(PdfName.SigFlags)
+            || form.Fields.Any(static f => f.Kind == AcroFieldKind.Signature))
+        {
+            return;
+        }
+
+        acroForm.Remove(PdfName.SigFlags);
+        if (form.AcroFormReference is { } acroFormReference)
+        {
+            document.Objects.MarkDirty(acroFormReference);
+        }
+        else if (document.Catalog is { } catalog)
         {
             document.Objects.MarkDirty(catalog.Reference);
         }
