@@ -116,27 +116,7 @@ internal static class CompressionEngine
             return RunStream(input, output, compress, saveOptions, cancellationToken, hooks);
         }
 
-        var spool = SpoolPath(hooks);
-        CompressionResult result;
-        try
-        {
-            long spooled;
-            using (var file = SpoolFile.Create(spool))
-            {
-                CopyTo(input, file, CompressionProgressReporter.For(compress.Progress), cancellationToken);
-                spooled = file.Length;
-            }
-
-            result = RunSpooled(spool, spooled, output, compress, saveOptions, cancellationToken, hooks);
-        }
-        catch
-        {
-            SpoolFile.Delete(spool, failing: true);
-            throw;
-        }
-
-        SpoolFile.Delete(spool, failing: false);
-        return result;
+        return Spooled(input, compress, cancellationToken, hooks, (spool, spooled) => RunSpooled(spool, spooled, output, compress, saveOptions, cancellationToken, hooks));
     }
 
     /// <summary>
@@ -159,28 +139,73 @@ internal static class CompressionEngine
             return await Task.Run(() => RunStream(input, output, compress, saveOptions, cancellationToken, hooks), cancellationToken).ConfigureAwait(false);
         }
 
-        var spool = SpoolPath(hooks);
-        CompressionResult result;
-        try
-        {
-            long spooled;
-            var file = SpoolFile.Create(spool, asynchronous: true);
-            await using (file.ConfigureAwait(false))
-            {
-                await CopyToAsync(input, file, CompressionProgressReporter.For(compress.Progress), cancellationToken).ConfigureAwait(false);
-                spooled = file.Length;
-            }
+        return await SpooledAsync(input, compress, cancellationToken, hooks, (spool, spooled) => RunSpooled(spool, spooled, output, compress, saveOptions, cancellationToken, hooks)).ConfigureAwait(false);
+    }
 
-            result = await Task.Run(() => RunSpooled(spool, spooled, output, compress, saveOptions, cancellationToken, hooks), cancellationToken).ConfigureAwait(false);
-        }
-        catch
+    /// <summary>
+    /// Opens <paramref name="path"/> and estimates what
+    /// <see cref="Compress(string, string, PdfCompressOptions?, PdfOptions?, CancellationToken, CompressionHooks?)"/>
+    /// would write, writing nothing.
+    /// </summary>
+    public static CompressionEstimate Estimate(
+        string path,
+        PdfCompressOptions? compressOptions,
+        PdfOptions? options,
+        CancellationToken cancellationToken,
+        CompressionHooks? hooks = null)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(path);
+        var compress = compressOptions ?? PdfCompressOptions.Default;
+        Validate(compress);
+
+        var saveOptions = options ?? PdfOptions.Default;
+        RefuseLinearize(saveOptions);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var document = PdfDocument.Open(path, options);
+        return Estimate(document, document.Source?.Length ?? new FileInfo(path).Length, compress, saveOptions, cancellationToken, hooks);
+    }
+
+    /// <summary>
+    /// Reads <paramref name="input"/> and estimates what Compress would write for it, writing
+    /// nothing. A seekable input is opened in place; a non-seekable one is spooled to a
+    /// temporary file first, deleted before this returns.
+    /// </summary>
+    public static CompressionEstimate Estimate(
+        Stream input,
+        PdfCompressOptions? compressOptions,
+        PdfOptions? options,
+        CancellationToken cancellationToken,
+        CompressionHooks? hooks = null)
+    {
+        var (compress, saveOptions) = ValidateInput(input, compressOptions, options);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        return input.CanSeek
+            ? EstimateStream(input, compress, saveOptions, cancellationToken, hooks)
+            : Spooled(input, compress, cancellationToken, hooks, (spool, spooled) => EstimateSpooled(spool, spooled, compress, saveOptions, cancellationToken, hooks));
+    }
+
+    /// <summary>
+    /// <see cref="Estimate(Stream, PdfCompressOptions?, PdfOptions?, CancellationToken, CompressionHooks?)"/>
+    /// with a non-seekable input spooled asynchronously, then the estimate run on the thread pool.
+    /// </summary>
+    public static async Task<CompressionEstimate> EstimateAsync(
+        Stream input,
+        PdfCompressOptions? compressOptions,
+        PdfOptions? options,
+        CancellationToken cancellationToken,
+        CompressionHooks? hooks = null)
+    {
+        var (compress, saveOptions) = ValidateInput(input, compressOptions, options);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (input.CanSeek)
         {
-            SpoolFile.Delete(spool, failing: true);
-            throw;
+            return await Task.Run(() => EstimateStream(input, compress, saveOptions, cancellationToken, hooks), cancellationToken).ConfigureAwait(false);
         }
 
-        SpoolFile.Delete(spool, failing: false);
-        return result;
+        return await SpooledAsync(input, compress, cancellationToken, hooks, (spool, spooled) => EstimateSpooled(spool, spooled, compress, saveOptions, cancellationToken, hooks)).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -219,20 +244,7 @@ internal static class CompressionEngine
         CancellationToken cancellationToken,
         CompressionHooks? hooks)
     {
-        Validate(compress);
-        RefuseLinearize(saveOptions);
-
-        if (document.HasEncryptedSource)
-        {
-            throw new PlumePdfException("PLUME5001", "Compress is not supported on a document opened from an encrypted source: compression is a full rewrite, and PlumePDF does not write encrypted documents in this release. Decrypt the source with another tool first.");
-        }
-
-        var signatures = SignatureDictionaryReader.ReadAll(document);
-        if (signatures.Count > 0 && !compress.AllowInvalidatingSignatures)
-        {
-            var names = string.Join(", ", signatures.Select(static s => s.FieldName));
-            throw new PlumePdfException("PLUME6084", $"Compress would invalidate {signatures.Count} existing signature(s)/timestamp(s) ({names}): compression is a full rewrite, which moves the bytes their /ByteRange covers. Pass PdfCompressOptions.AllowInvalidatingSignatures to strip them and write an honestly unsigned output.");
-        }
+        var signatures = RefuseSource(document, compress, saveOptions);
 
         var samePathLimit = hooks?.SamePathSourceLimit ?? int.MaxValue;
         if (target.Path is { } outputPath && inputBytes > samePathLimit && document.BuffersSourceToSaveOver(outputPath))
@@ -249,20 +261,7 @@ internal static class CompressionEngine
         // Each stage opens at zero and closes at its total; the reporter drops a closing report
         // that repeats the last step. No reporter (and no callback delegate) without a sink.
         var progress = CompressionProgressReporter.For(compress.Progress);
-        long pages = document.Pages.Count;
-        progress?.Report(CompressionStage.Planning, 0, pages);
-        hooks?.Planning?.Invoke();
-        var plan = CompressionPlanner.Plan(
-            document,
-            settings,
-            effective,
-            cancellationToken,
-            progress is null ? null : scanned => progress.Report(CompressionStage.Planning, scanned, pages));
-        progress?.Report(CompressionStage.Planning, pages, pages);
-        foreach (var diagnostic in plan.Diagnostics)
-        {
-            diagnostics.Add(diagnostic);
-        }
+        var plan = Plan(document, settings, effective, progress, diagnostics, cancellationToken, hooks);
 
         long plannedImages = plan.Images.Count;
         progress?.Report(CompressionStage.Writing, 0, plannedImages);
@@ -290,8 +289,126 @@ internal static class CompressionEngine
         progress?.Report(CompressionStage.Writing, plannedImages, plannedImages);
 
         var images = Decisions(document.Objects, plan, transform.Written);
-        Summarize(images, transform.Written, settings, diagnostics);
+        Summarize(images, transform.Written, settings, diagnostics, estimate: false);
         return new CompressionResult(inputBytes, outputBytes, images, diagnostics, signaturesStripped);
+    }
+
+    /// <summary>
+    /// Estimates compressing an already-open <paramref name="document"/>, whose source is
+    /// <paramref name="inputBytes"/> long: Compress's refusals, effective options, signature
+    /// stripping (on this document only, which is the estimate's own) and plan, then the
+    /// sampled trial encodes and the extrapolated report. Nothing is written.
+    /// </summary>
+    private static CompressionEstimate Estimate(
+        PdfDocument document,
+        long inputBytes,
+        PdfCompressOptions compress,
+        PdfOptions saveOptions,
+        CancellationToken cancellationToken,
+        CompressionHooks? hooks)
+    {
+        var signatures = RefuseSource(document, compress, saveOptions);
+
+        var diagnostics = new DiagnosticCollection();
+        var settings = new CompressionSettings(compress.Lossless, compress.Images?.MaxDpi, compress.Images?.JpegQuality);
+        var effective = EffectiveOptions(document, saveOptions, settings, diagnostics);
+
+        if (signatures.Count > 0)
+        {
+            SignatureStripper.Strip(document, signatures);
+        }
+
+        var progress = CompressionProgressReporter.For(compress.Progress);
+        var plan = Plan(document, settings, effective, progress, diagnostics, cancellationToken, hooks);
+
+        var sampled = CompressionEstimator.Run(document.Objects, plan, settings, effective, progress, cancellationToken);
+        var decisions = Decisions(document.Objects, plan, sampled.Records);
+        Summarize(decisions, sampled.Records, settings, diagnostics, estimate: true);
+
+        var images = new List<PlannedImageCompression>(decisions.Count);
+        long saved = 0;
+        foreach (var decision in decisions)
+        {
+            var isSampled = decision.SourceReference is { } reference
+                && decision.Action != ImageCompressionAction.Deduplicated
+                && sampled.Sampled.ContainsKey(reference.Number);
+            if (decision.SourceReference is not null)
+            {
+                saved += decision.BytesBefore - decision.BytesAfter;
+            }
+
+            images.Add(new PlannedImageCompression(
+                decision.SourceReference,
+                decision.PageIndex,
+                decision.Action,
+                decision.SkipReason,
+                decision.DuplicateOf,
+                decision.BytesBefore,
+                decision.WidthBefore,
+                decision.HeightBefore,
+                decision.WidthAfter,
+                decision.HeightAfter,
+                decision.EffectiveDpiBefore,
+                decision.EffectiveDpiAfter,
+                decision.EncodingBefore,
+                decision.EncodingAfter,
+                decision.BytesAfter,
+                isSampled));
+        }
+
+        var duplicates = CompressionEstimator.NonImageDuplicateBytes(document.Objects, plan);
+        return new CompressionEstimate(inputBytes, inputBytes - saved - duplicates, sampled.Sampled.Count, images, diagnostics);
+    }
+
+    // The refusals that need the opened source, in Compress's order (argument errors and
+    // PLUME5018 come first, before it is opened): an encrypted source, then a signed one
+    // without AllowInvalidatingSignatures. Returns the signatures to strip.
+    private static IReadOnlyList<SignatureDictionaryInfo> RefuseSource(PdfDocument document, PdfCompressOptions compress, PdfOptions saveOptions)
+    {
+        Validate(compress);
+        RefuseLinearize(saveOptions);
+
+        if (document.HasEncryptedSource)
+        {
+            throw new PlumePdfException("PLUME5001", "Compress is not supported on a document opened from an encrypted source: compression is a full rewrite, and PlumePDF does not write encrypted documents in this release. Decrypt the source with another tool first.");
+        }
+
+        var signatures = SignatureDictionaryReader.ReadAll(document);
+        if (signatures.Count > 0 && !compress.AllowInvalidatingSignatures)
+        {
+            var names = string.Join(", ", signatures.Select(static s => s.FieldName));
+            throw new PlumePdfException("PLUME6084", $"Compress would invalidate {signatures.Count} existing signature(s)/timestamp(s) ({names}): compression is a full rewrite, which moves the bytes their /ByteRange covers. Pass PdfCompressOptions.AllowInvalidatingSignatures to strip them and write an honestly unsigned output.");
+        }
+
+        return signatures;
+    }
+
+    // The planning pass, reporting pages scanned; its diagnostics join the call's.
+    private static CompressionPlan Plan(
+        PdfDocument document,
+        CompressionSettings settings,
+        PdfOptions effective,
+        CompressionProgressReporter? progress,
+        DiagnosticCollection diagnostics,
+        CancellationToken cancellationToken,
+        CompressionHooks? hooks)
+    {
+        long pages = document.Pages.Count;
+        progress?.Report(CompressionStage.Planning, 0, pages);
+        hooks?.Planning?.Invoke();
+        var plan = CompressionPlanner.Plan(
+            document,
+            settings,
+            effective,
+            cancellationToken,
+            progress is null ? null : scanned => progress.Report(CompressionStage.Planning, scanned, pages));
+        progress?.Report(CompressionStage.Planning, pages, pages);
+        foreach (var diagnostic in plan.Diagnostics)
+        {
+            diagnostics.Add(diagnostic);
+        }
+
+        return plan;
     }
 
     // Argument errors and the refusals that come before the input is read, in the path
@@ -320,6 +437,91 @@ internal static class CompressionEngine
         var saveOptions = options ?? PdfOptions.Default;
         RefuseLinearize(saveOptions);
         return (compress, saveOptions);
+    }
+
+    // The stream estimate's argument errors and early refusals: the input's checks, then the
+    // options', as for Compress; a non-seekable input is never spooled for a call that would refuse.
+    private static (PdfCompressOptions Compress, PdfOptions SaveOptions) ValidateInput(Stream input, PdfCompressOptions? compressOptions, PdfOptions? options)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        if (!input.CanRead)
+        {
+            throw new ArgumentException("The input stream must be readable (it is write-only or disposed).", nameof(input));
+        }
+
+        var compress = compressOptions ?? PdfCompressOptions.Default;
+        Validate(compress);
+        var saveOptions = options ?? PdfOptions.Default;
+        RefuseLinearize(saveOptions);
+        return (compress, saveOptions);
+    }
+
+    // A non-seekable input copied to a unique temporary file, 'run' over it, and the file
+    // deleted whether 'run' returns or throws.
+    private static T Spooled<T>(Stream input, PdfCompressOptions compress, CancellationToken cancellationToken, CompressionHooks? hooks, Func<string, long, T> run)
+    {
+        var spool = SpoolPath(hooks);
+        T result;
+        try
+        {
+            long spooled;
+            using (var file = SpoolFile.Create(spool))
+            {
+                CopyTo(input, file, CompressionProgressReporter.For(compress.Progress), cancellationToken);
+                spooled = file.Length;
+            }
+
+            result = run(spool, spooled);
+        }
+        catch
+        {
+            SpoolFile.Delete(spool, failing: true);
+            throw;
+        }
+
+        SpoolFile.Delete(spool, failing: false);
+        return result;
+    }
+
+    // Spooled's asynchronous twin: the copy is asynchronous, then 'run' goes to the thread pool.
+    private static async Task<T> SpooledAsync<T>(Stream input, PdfCompressOptions compress, CancellationToken cancellationToken, CompressionHooks? hooks, Func<string, long, T> run)
+    {
+        var spool = SpoolPath(hooks);
+        T result;
+        try
+        {
+            long spooled;
+            var file = SpoolFile.Create(spool, asynchronous: true);
+            await using (file.ConfigureAwait(false))
+            {
+                await CopyToAsync(input, file, CompressionProgressReporter.For(compress.Progress), cancellationToken).ConfigureAwait(false);
+                spooled = file.Length;
+            }
+
+            result = await Task.Run(() => run(spool, spooled), cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            SpoolFile.Delete(spool, failing: true);
+            throw;
+        }
+
+        SpoolFile.Delete(spool, failing: false);
+        return result;
+    }
+
+    // A seekable input, opened in place from position 0, for an estimate.
+    private static CompressionEstimate EstimateStream(Stream input, PdfCompressOptions compress, PdfOptions saveOptions, CancellationToken cancellationToken, CompressionHooks? hooks)
+    {
+        using var document = PdfDocument.Open(input, saveOptions);
+        return Estimate(document, input.Length, compress, saveOptions, cancellationToken, hooks);
+    }
+
+    // A non-seekable input, spooled to 'spool' and opened from there, for an estimate.
+    private static CompressionEstimate EstimateSpooled(string spool, long spooledBytes, PdfCompressOptions compress, PdfOptions saveOptions, CancellationToken cancellationToken, CompressionHooks? hooks)
+    {
+        using var document = PdfDocument.Open(spool, saveOptions);
+        return Estimate(document, spooledBytes, compress, saveOptions, cancellationToken, hooks);
     }
 
     // A seekable input, opened in place from position 0 (PdfDocument.Open(Stream)).
@@ -626,9 +828,12 @@ internal static class CompressionEngine
     // One summary per kind of outcome, with a count: per skip reason (PLUME6085, or PLUME6086
     // for decode failures, with the first failure's reason), images kept under the
     // never-larger rule (PLUME6087), JPEGs written at the fallback quality (PLUME6091), and
-    // the no-lossy-lever hint (PLUME6090).
-    private static void Summarize(List<ImageCompressionDecision> images, IReadOnlyDictionary<int, WrittenImage> written, CompressionSettings settings, DiagnosticCollection diagnostics)
+    // the no-lever hint (PLUME6090). An estimate raises the same codes in the conditional
+    // ("Compress would..."): its decode failures, kept originals and fallback-quality JPEGs are
+    // those its trial encodes found.
+    private static void Summarize(List<ImageCompressionDecision> images, IReadOnlyDictionary<int, WrittenImage> written, CompressionSettings settings, DiagnosticCollection diagnostics, bool estimate)
     {
+        var imagesProperty = estimate ? "CompressionEstimate.Images" : "CompressionResult.Images";
         foreach (var group in images.Where(static i => i.SkipReason is not null).GroupBy(static i => i.SkipReason!.Value).OrderBy(static g => g.Key))
         {
             var count = group.Count();
@@ -636,30 +841,41 @@ internal static class CompressionEngine
             if (group.Key == ImageSkipReason.DecodeFailed)
             {
                 var detail = first.SourceReference is { } reference && written.TryGetValue(reference.Number, out var record) ? record.Detail : null;
-                diagnostics.Add(new PdfDiagnostic("PLUME6086", DiagnosticSeverity.Warning, $"Compress could not decode {count} image(s) and wrote their samples unchanged ({group.Key}); the first, object {first.SourceReference?.Number}: {detail ?? "no detail"}.", subject: first.SourceReference));
+                var what = estimate ? $"Compress would fail to decode {count} image(s) and write their samples unchanged" : $"Compress could not decode {count} image(s) and wrote their samples unchanged";
+                diagnostics.Add(new PdfDiagnostic("PLUME6086", DiagnosticSeverity.Warning, $"{what} ({group.Key}); the first, object {first.SourceReference?.Number}: {detail ?? "no detail"}.", subject: first.SourceReference));
             }
             else
             {
-                diagnostics.Add(new PdfDiagnostic("PLUME6085", DiagnosticSeverity.Info, $"Compress left the samples of {count} image(s) unchanged ({group.Key}): {Describe(group.Key)} See CompressionResult.Images for each one.", subject: first.SourceReference));
+                var what = estimate ? "Compress would leave" : "Compress left";
+                diagnostics.Add(new PdfDiagnostic("PLUME6085", DiagnosticSeverity.Info, $"{what} the samples of {count} image(s) unchanged ({group.Key}): {Describe(group.Key)} See {imagesProperty} for each one.", subject: first.SourceReference));
             }
         }
 
         var kept = images.Count(static i => i.Action == ImageCompressionAction.KeptOriginal);
         if (kept > 0)
         {
-            diagnostics.Add(new PdfDiagnostic("PLUME6087", DiagnosticSeverity.Info, $"Compress kept the original encoding of {kept} image(s): the new encoding was not smaller."));
+            diagnostics.Add(new PdfDiagnostic("PLUME6087", DiagnosticSeverity.Info, estimate
+                ? $"Compress would keep the original encoding of {kept} sampled image(s): the trial encoding was not smaller."
+                : $"Compress kept the original encoding of {kept} image(s): the new encoding was not smaller."));
         }
 
         var fallback = written.Values.Count(static w => w.UsedFallbackQuality);
         if (fallback > 0)
         {
-            diagnostics.Add(new PdfDiagnostic("PLUME6091", DiagnosticSeverity.Info, $"Compress wrote {fallback} JPEG image(s) at quality {ImageReencoder.FallbackJpegQuality}: their own quality couldn't be estimated (non-standard quantization tables, or a JPEG behind another filter). Set PdfImageCompression.JpegQuality to choose the quality."));
+            var what = estimate ? $"Compress would write {fallback} sampled JPEG image(s)" : $"Compress wrote {fallback} JPEG image(s)";
+            diagnostics.Add(new PdfDiagnostic("PLUME6091", DiagnosticSeverity.Info, $"{what} at quality {ImageReencoder.FallbackJpegQuality}: their own quality couldn't be estimated (non-standard quantization tables, or a JPEG behind another filter). Set PdfImageCompression.JpegQuality to choose the quality."));
         }
 
         if (settings.MaxDpi is null && settings.JpegQuality is null)
         {
             var levers = settings.Lossless ? "only the lossless levers ran" : "no lever was set";
-            diagnostics.Add(new PdfDiagnostic("PLUME6090", DiagnosticSeverity.Info, $"Compress ran with no image lever set, so {levers}; images are rarely made smaller this way. Set PdfCompressOptions.Images (MaxDpi, JpegQuality) to downsample or re-encode them."));
+            if (estimate)
+            {
+                levers = settings.Lossless ? "only the lossless levers would run" : "no lever is set";
+            }
+
+            var what = estimate ? "Compress would run" : "Compress ran";
+            diagnostics.Add(new PdfDiagnostic("PLUME6090", DiagnosticSeverity.Info, $"{what} with no image lever set, so {levers}; images are rarely made smaller this way. Set PdfCompressOptions.Images (MaxDpi, JpegQuality) to downsample or re-encode them."));
         }
     }
 

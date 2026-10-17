@@ -1,7 +1,8 @@
 namespace PlumePdf;
 
 /// <summary>
-/// One progress report from <c>Pdf.Compress</c> or <c>CompressAsync</c>, passed to
+/// One progress report from <c>Pdf.Compress</c>, <c>Pdf.EstimateCompression</c> or their
+/// <c>Async</c> twins, passed to
 /// <see cref="PdfCompressOptions.Progress"/>: which stage is running, how much of it is done,
 /// and how much there is, when that is known.
 /// </summary>
@@ -10,7 +11,7 @@ namespace PlumePdf;
 /// Each stage that runs reports first with <see cref="Completed"/> 0, then as it advances; when
 /// it has a <see cref="Total"/>, its last report has <see cref="Completed"/> equal to it. Within
 /// a stage <see cref="Completed"/> only grows and <see cref="Total"/> never changes, and no
-/// report repeats the one before it. Stages come in <see cref="CompressionStage"/> order.
+/// report repeats the one before it. Stages come in the order <see cref="CompressionStage"/> declares them.
 /// </para>
 /// <para>
 /// The units, by stage. <see cref="CompressionStage.Spooling"/>: bytes copied from a
@@ -26,6 +27,8 @@ namespace PlumePdf;
 /// <see cref="ImageCompressionDecision.SourceReference"/> whose action isn't
 /// <see cref="ImageCompressionAction.Deduplicated"/>. One report follows each image as it is
 /// written, and a last one, at the total, when the save completes.
+/// <see cref="CompressionStage.Sampling"/> (an estimate only, in place of writing): sampled
+/// images trial-encoded, out of the number sampled, one report after each.
 /// </para>
 /// <para>
 /// A value type, so reporting allocates nothing.

@@ -623,6 +623,155 @@ public static class Pdf
         CompressionEngine.CompressAsync(input, output, compressOptions, options, cancellationToken);
 
     /// <summary>
+    /// A dry run of <see cref="Compress(string, string, PdfCompressOptions?, PdfOptions?)"/>:
+    /// opens the document at <paramref name="path"/>, plans exactly what Compress would do with
+    /// the same options, trial-encodes a small, capped sample of the images it would rewrite,
+    /// and estimates the output size — without writing anything. On a large scan, planning takes
+    /// seconds while writing takes minutes, so an estimate is a cheap way to choose levers, or to
+    /// decide whether compressing is worth it, before paying for the write.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The refusals and argument checks are Compress's, in the same order and with the same
+    /// codes, except those about the output (there is none): an encrypted source refuses
+    /// (<c>PLUME5001</c>), and so do a signed source without
+    /// <see cref="PdfCompressOptions.AllowInvalidatingSignatures"/> (<c>PLUME6084</c>) and
+    /// <see cref="PdfOptions.Linearize"/> (<c>PLUME5018</c>), since the Compress call being
+    /// estimated would refuse. With <see cref="PdfCompressOptions.AllowInvalidatingSignatures"/>
+    /// the signatures are stripped only from the estimate's own copy of the document, never
+    /// from the file. The writer's own late refusal under <see cref="PdfOptions.Strict"/>
+    /// (<c>PLUME2060</c>, a reference the document can't resolve) isn't predicted: the estimate
+    /// never runs the writer.
+    /// </para>
+    /// <para>
+    /// At most sixteen images are trial-encoded, one at a time, through the same code Compress
+    /// writes them with, so memory is bounded by the largest sampled image as Compress's is by
+    /// the largest image. <see cref="PdfCompressOptions.Progress"/> reports
+    /// <see cref="CompressionStage.Planning"/> then <see cref="CompressionStage.Sampling"/>.
+    /// How the sample is chosen and the rest extrapolated, and the exact definition of
+    /// <see cref="CompressionEstimate.EstimatedOutputBytes"/>, are in
+    /// <see cref="CompressionEstimate"/>'s remarks; the estimate is conservative (it tends to be
+    /// at or above what Compress writes). For an exact size, run Compress to a stream that only
+    /// counts what is written to it.
+    /// </para>
+    /// </remarks>
+    /// <param name="path">The path to open and estimate.</param>
+    /// <param name="compressOptions">The levers Compress would apply. Defaults to <see cref="PdfCompressOptions.Default"/> (lossless only).</param>
+    /// <param name="options">Options controlling the open and the planned save, as for Compress. Defaults to <see cref="PdfOptions.Default"/>.</param>
+    /// <returns>The input size, the estimated output size, one planned decision per image, and the call's result-scoped diagnostics.</returns>
+    /// <exception cref="ArgumentException"><paramref name="path"/> is null or empty.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><see cref="PdfImageCompression.MaxDpi"/> is not a positive finite number, or <see cref="PdfImageCompression.JpegQuality"/> is outside 1–100.</exception>
+    /// <exception cref="PlumePdfException">
+    /// <paramref name="options"/> asks for <see cref="PdfOptions.Linearize"/> (<c>PLUME5018</c>);
+    /// the source is encrypted (<c>PLUME5001</c>); the source is signed and
+    /// <see cref="PdfCompressOptions.AllowInvalidatingSignatures"/> is not set (<c>PLUME6084</c>);
+    /// or the source path can't be opened (<c>PLUME1001</c>/<c>PLUME1002</c>). An image that
+    /// can't be decoded is never a refusal: a sampled one is reported (<c>PLUME6086</c>).
+    /// </exception>
+    /// <example>
+    /// <code>
+    /// var levers = new PdfCompressOptions { Images = new PdfImageCompression { MaxDpi = 150, JpegQuality = 70 } };
+    /// var estimate = Pdf.EstimateCompression("scan.pdf", levers);
+    /// Console.WriteLine($"{estimate.InputBytes:N0} -> about {estimate.EstimatedOutputBytes:N0} bytes");
+    /// if (estimate.EstimatedOutputBytes &lt; 500_000_000)
+    /// {
+    ///     Pdf.Compress("scan.pdf", "scan-small.pdf", levers);
+    /// }
+    /// </code>
+    /// </example>
+    public static CompressionEstimate EstimateCompression(string path, PdfCompressOptions? compressOptions = null, PdfOptions? options = null) =>
+        CompressionEngine.Estimate(path, compressOptions, options, CancellationToken.None);
+
+    /// <summary>
+    /// Asynchronous equivalent of <see cref="EstimateCompression(string, PdfCompressOptions?, PdfOptions?)"/>,
+    /// run on the thread pool, with cooperative cancellation: <paramref name="cancellationToken"/>
+    /// is checked between pages while planning and between sampled images. A cancelled call
+    /// throws <see cref="OperationCanceledException"/>.
+    /// </summary>
+    /// <param name="path">The path to open and estimate.</param>
+    /// <param name="compressOptions">The levers Compress would apply. Defaults to <see cref="PdfCompressOptions.Default"/> (lossless only).</param>
+    /// <param name="options">Options controlling the open and the planned save. Defaults to <see cref="PdfOptions.Default"/>.</param>
+    /// <param name="cancellationToken">Stops the call between pages or sampled images.</param>
+    /// <returns>The same estimate <see cref="EstimateCompression(string, PdfCompressOptions?, PdfOptions?)"/> returns.</returns>
+    /// <exception cref="PlumePdfException">See <see cref="EstimateCompression(string, PdfCompressOptions?, PdfOptions?)"/>.</exception>
+    /// <example>
+    /// <code>
+    /// var estimate = await Pdf.EstimateCompressionAsync("scan.pdf", new PdfCompressOptions
+    /// {
+    ///     Images = new PdfImageCompression { MaxDpi = 150, JpegQuality = 70 },
+    /// }, cancellationToken: timeout.Token);
+    /// </code>
+    /// </example>
+    public static Task<CompressionEstimate> EstimateCompressionAsync(string path, PdfCompressOptions? compressOptions = null, PdfOptions? options = null, CancellationToken cancellationToken = default) =>
+        Task.Run(() => CompressionEngine.Estimate(path, compressOptions, options, cancellationToken), cancellationToken);
+
+    /// <summary>
+    /// A dry run of <see cref="Compress(Stream, Stream, PdfCompressOptions?, PdfOptions?)"/>
+    /// for a document that arrives as a stream: the same estimate
+    /// <see cref="EstimateCompression(string, PdfCompressOptions?, PdfOptions?)"/> makes, with
+    /// nothing written.
+    /// </summary>
+    /// <remarks>
+    /// A seekable <paramref name="input"/> is read in place from position 0 and left as it was
+    /// (its position may move). A non-seekable one is first copied to a temporary file in
+    /// <see cref="Path.GetTempPath"/>, as Compress does, and that file is deleted when the call
+    /// returns or throws; <see cref="CompressionEstimate.InputBytes"/> is then the number of
+    /// bytes copied, and <see cref="PdfCompressOptions.Progress"/> reports
+    /// <see cref="CompressionStage.Spooling"/> first. Because the input can then be read only
+    /// once, estimating and then compressing a non-seekable stream means reading it twice:
+    /// copy it to a file and pass paths instead. <paramref name="input"/> is not disposed.
+    /// </remarks>
+    /// <param name="input">A readable stream holding the document. Seekable or not.</param>
+    /// <param name="compressOptions">The levers Compress would apply. Defaults to <see cref="PdfCompressOptions.Default"/> (lossless only).</param>
+    /// <param name="options">Options controlling the open and the planned save. Defaults to <see cref="PdfOptions.Default"/>.</param>
+    /// <returns>The input size, the estimated output size, one planned decision per image, and the call's result-scoped diagnostics.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="input"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="input"/> can't be read (a write-only or disposed stream).</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><see cref="PdfImageCompression.MaxDpi"/> is not a positive finite number, or <see cref="PdfImageCompression.JpegQuality"/> is outside 1–100.</exception>
+    /// <exception cref="PlumePdfException">
+    /// As for <see cref="EstimateCompression(string, PdfCompressOptions?, PdfOptions?)"/>
+    /// (<c>PLUME5018</c> before <paramref name="input"/> is read); the input couldn't be read as
+    /// a PDF; or a non-seekable <paramref name="input"/> can't be spooled to the temp directory
+    /// (<c>PLUME1008</c>). An exception thrown by <paramref name="input"/> itself propagates unchanged.
+    /// </exception>
+    /// <example>
+    /// <code>
+    /// await using var download = await http.GetStreamAsync(sourceUrl);
+    /// var estimate = Pdf.EstimateCompression(download, new PdfCompressOptions
+    /// {
+    ///     Images = new PdfImageCompression { MaxDpi = 150, JpegQuality = 70 },
+    /// });
+    /// Console.WriteLine($"about {estimate.EstimatedSavedBytes:N0} bytes would be saved");
+    /// </code>
+    /// </example>
+    public static CompressionEstimate EstimateCompression(Stream input, PdfCompressOptions? compressOptions = null, PdfOptions? options = null) =>
+        CompressionEngine.Estimate(input, compressOptions, options, CancellationToken.None);
+
+    /// <summary>
+    /// Asynchronous equivalent of <see cref="EstimateCompression(Stream, PdfCompressOptions?, PdfOptions?)"/>:
+    /// a non-seekable <paramref name="input"/> is copied to its temporary file asynchronously,
+    /// then the estimate runs on the thread pool, with cooperative cancellation —
+    /// <paramref name="cancellationToken"/> is checked while copying, between pages while
+    /// planning and between sampled images.
+    /// </summary>
+    /// <param name="input">A readable stream holding the document. Seekable or not.</param>
+    /// <param name="compressOptions">The levers Compress would apply. Defaults to <see cref="PdfCompressOptions.Default"/> (lossless only).</param>
+    /// <param name="options">Options controlling the open and the planned save. Defaults to <see cref="PdfOptions.Default"/>.</param>
+    /// <param name="cancellationToken">Stops the call while copying the input, or between pages or sampled images.</param>
+    /// <returns>The same estimate <see cref="EstimateCompression(Stream, PdfCompressOptions?, PdfOptions?)"/> returns.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="input"/> is null.</exception>
+    /// <exception cref="ArgumentException">See <see cref="EstimateCompression(Stream, PdfCompressOptions?, PdfOptions?)"/>.</exception>
+    /// <exception cref="PlumePdfException">See <see cref="EstimateCompression(Stream, PdfCompressOptions?, PdfOptions?)"/>.</exception>
+    /// <example>
+    /// <code>
+    /// await using var download = await http.GetStreamAsync(sourceUrl, timeout.Token);
+    /// var estimate = await Pdf.EstimateCompressionAsync(download, cancellationToken: timeout.Token);
+    /// </code>
+    /// </example>
+    public static Task<CompressionEstimate> EstimateCompressionAsync(Stream input, PdfCompressOptions? compressOptions = null, PdfOptions? options = null, CancellationToken cancellationToken = default) =>
+        CompressionEngine.EstimateAsync(input, compressOptions, options, cancellationToken);
+
+    /// <summary>
     /// Opens the document at <paramref name="path"/> and runs PlumePDF's in-process PDF/A
     /// structural self-check over it (<c>PdfAValidator</c>): the enumerated
     /// 1b/2b subset — encryption absent, version ceiling, <c>pdfaid</c> identification,

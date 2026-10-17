@@ -1,9 +1,11 @@
 namespace PlumePdf;
 
 /// <summary>
-/// A stage of one <c>Pdf.Compress</c> call, as <see cref="CompressionProgress.Stage"/> reports
-/// it. Stages are reported in this order, each at most once; a call that doesn't spool reports
-/// <see cref="Planning"/> first.
+/// A stage of one <c>Pdf.Compress</c> or <c>Pdf.EstimateCompression</c> call, as
+/// <see cref="CompressionProgress.Stage"/> reports it. Stages are reported in the order they are
+/// declared here, each at most once; a call that doesn't spool reports <see cref="Planning"/>
+/// first. Compress then reports <see cref="Writing"/>, and EstimateCompression
+/// <see cref="Sampling"/>; neither reports the other's.
 /// </summary>
 /// <example>
 /// <code>
@@ -33,7 +35,15 @@ public enum CompressionStage
     Planning = 1,
 
     /// <summary>
-    /// The full-rewrite save. The unit is planned images written, and the total is the number
+    /// <c>Pdf.EstimateCompression</c> only: trial-encoding the sampled images. The unit is
+    /// sampled images encoded, and the total is the number sampled
+    /// (<see cref="CompressionEstimate.SampledImages"/>, at most sixteen; zero when there is
+    /// nothing to sample, reported as one 0-of-0 report).
+    /// </summary>
+    Sampling = 3,
+
+    /// <summary>
+    /// <c>Pdf.Compress</c> only: the full-rewrite save. The unit is planned images written, and the total is the number
     /// of image XObjects the plan holds (see <see cref="CompressionProgress"/>).
     /// </summary>
     Writing = 2,

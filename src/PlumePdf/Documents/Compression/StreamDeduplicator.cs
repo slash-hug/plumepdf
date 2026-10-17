@@ -279,7 +279,7 @@ internal static class StreamDeduplicator
 
     // The /Length the dictionary declares, to bucket by before any payload is read; -1 when it
     // can't be read as an integer (the payload hash still decides).
-    private static long DeclaredLength(ObjectRegistry objects, PdfDictionary dictionary)
+    internal static long DeclaredLength(ObjectRegistry objects, PdfDictionary dictionary)
     {
         if (!dictionary.TryGetValue(PdfName.Length, out var length))
         {

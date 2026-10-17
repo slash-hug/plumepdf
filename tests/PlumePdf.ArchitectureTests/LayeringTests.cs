@@ -113,6 +113,8 @@ public class LayeringTests
         ("PlumePdf.ImageCompressionDecision", 6),
         ("PlumePdf.ImageCompressionAction", 6),
         ("PlumePdf.ImageSkipReason", 6),
+        ("PlumePdf.CompressionEstimate", 6),
+        ("PlumePdf.PlannedImageCompression", 6),
     ];
 
     public static TheoryData<string, string> ForbiddenDependencies()
