@@ -316,10 +316,7 @@ internal static class CompressionEngine
         var settings = new CompressionSettings(compress.Lossless, compress.Images?.MaxDpi, compress.Images?.JpegQuality);
         var effective = EffectiveOptions(document, saveOptions, settings, diagnostics);
 
-        if (signatures.Count > 0)
-        {
-            SignatureStripper.Strip(document, signatures);
-        }
+        var signaturesToStrip = signatures.Count > 0 ? SignatureStripper.Strip(document, signatures) : 0;
 
         var progress = CompressionProgressReporter.For(compress.Progress);
         var plan = Plan(document, settings, effective, progress, diagnostics, cancellationToken, hooks);
@@ -329,7 +326,7 @@ internal static class CompressionEngine
         Summarize(decisions, sampled.Records, settings, diagnostics, estimate: true);
 
         var images = new List<PlannedImageCompression>(decisions.Count);
-        long saved = 0;
+        long saved = 0, extrapolated = sampled.ExtrapolatedStreamSavedBytes;
         foreach (var decision in decisions)
         {
             var isSampled = decision.SourceReference is { } reference
@@ -338,6 +335,10 @@ internal static class CompressionEngine
             if (decision.SourceReference is not null)
             {
                 saved += decision.BytesBefore - decision.BytesAfter;
+                if (!isSampled && decision.Action != ImageCompressionAction.Deduplicated)
+                {
+                    extrapolated += decision.BytesBefore - decision.BytesAfter;
+                }
             }
 
             images.Add(new PlannedImageCompression(
@@ -356,10 +357,22 @@ internal static class CompressionEngine
                 decision.EncodingBefore,
                 decision.EncodingAfter,
                 decision.BytesAfter,
-                isSampled));
+                isSampled,
+                decision.EstimatedSourceQuality));
         }
 
-        return new CompressionEstimate(inputBytes, inputBytes - saved - sampled.NonImageSavedBytes, sampled.Sampled.Count, sampled.NonImageSavedBytes, sampled.SampledStreams, images, diagnostics);
+        var growth = sampled.StructureGrowthBytes;
+        return new CompressionEstimate(
+            inputBytes,
+            inputBytes - saved - sampled.NonImageSavedBytes + growth,
+            sampled.Sampled.Count,
+            sampled.NonImageSavedBytes,
+            sampled.SampledStreams,
+            extrapolated,
+            growth,
+            signaturesToStrip,
+            images,
+            diagnostics);
     }
 
     // The refusals that need the opened source, in Compress's order (argument errors and

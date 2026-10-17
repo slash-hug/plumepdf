@@ -346,7 +346,7 @@ public class CompressEstimateTests(ITestOutputHelper output)
         var estimate = Estimate(pdf, options);
 
         var saved = estimate.Images.Where(static i => i.SourceReference is not null).Sum(static i => i.BytesBefore - i.EstimatedBytesAfter);
-        Assert.Equal(estimate.InputBytes - saved - estimate.EstimatedNonImageSavedBytes, estimate.EstimatedOutputBytes);
+        Assert.Equal(estimate.InputBytes - saved - estimate.EstimatedNonImageSavedBytes + estimate.EstimatedStructureGrowthBytes, estimate.EstimatedOutputBytes);
         Assert.Equal(estimate.InputBytes - estimate.EstimatedOutputBytes, estimate.EstimatedSavedBytes);
 
         // The fixtures repeat no stream but images and page content: with the lossless levers
@@ -500,6 +500,136 @@ public class CompressEstimateTests(ITestOutputHelper output)
 
         output.WriteLine($"{fixture}: estimated {estimate.EstimatedOutputBytes}, actual {actual.OutputBytes}");
         Assert.True(estimate.EstimatedOutputBytes >= actual.OutputBytes, $"estimated {estimate.EstimatedOutputBytes} < actual {actual.OutputBytes}");
+    }
+
+    // ---- Regressions from the corpus review ----
+
+    [Fact]
+    public void ASampleKeptUnderNeverLarger_FeedsItsTrialSize_NotItsOriginal_IntoTheRatio()
+    {
+        // Every image is kept (JPEG is larger for all of them), and the samples are the
+        // smallest originals: estimating the rest from those originals would shrink them.
+        var options = new PdfCompressOptions { Images = new PdfImageCompression { JpegQuality = 80 } };
+        var estimate = Estimate(KeptTextGroup(), options);
+        var (actual, _) = Compress(KeptTextGroup(), options, Deterministic);
+
+        Assert.All(actual.Images, static i => Assert.Equal(ImageCompressionAction.KeptOriginal, i.Action));
+        Assert.Equal(3, estimate.SampledImages);
+        Assert.Equal(actual.Images.Sum(static i => i.BytesAfter), estimate.Images.Sum(static i => i.EstimatedBytesAfter));
+    }
+
+    [Fact]
+    public void AnUnrepresentativeSample_LeavesThePointEstimateUnder_ButTheCautiousFigureCoversTheOutput()
+    {
+        var options = ScanLevers with { Lossless = false };
+        var estimate = Estimate(BlankSamplesAmongNoisyPages(), options);
+        var (actual, _) = Compress(BlankSamplesAmongNoisyPages(), options, Deterministic);
+
+        output.WriteLine($"estimated {estimate.EstimatedOutputBytes}, extrapolated saving {estimate.ExtrapolatedSavedBytes}, actual {actual.OutputBytes}");
+        Assert.True(estimate.EstimatedOutputBytes < actual.OutputBytes, "the blank samples make the rest look smaller than they are");
+        Assert.True(estimate.EstimatedOutputBytes + estimate.ExtrapolatedSavedBytes >= actual.OutputBytes);
+        Assert.Equal(
+            estimate.Images.Where(static i => i.SourceReference is not null && !i.Sampled && i.PlannedAction != ImageCompressionAction.Deduplicated).Sum(static i => i.BytesBefore - i.EstimatedBytesAfter),
+            estimate.ExtrapolatedSavedBytes);
+    }
+
+    [Fact]
+    public void WithEverythingSampled_NothingIsExtrapolated()
+    {
+        var estimate = Estimate(Mixed(), AllLevers);
+
+        Assert.Equal(0, estimate.ExtrapolatedSavedBytes);
+    }
+
+    [Fact]
+    public void AnUnsampledStreamsSaving_CountsAsExtrapolated()
+    {
+        var pdf = new ScanTestPdf();
+        for (var page = 0; page < 40; page++)
+        {
+            pdf.Page(3 + (2 * page), ContentOperators(page, 200 + (page * 10)));
+        }
+
+        var estimate = Estimate(pdf, null);
+
+        Assert.InRange(estimate.ExtrapolatedSavedBytes, 1, estimate.EstimatedNonImageSavedBytes - 1);
+    }
+
+    [Fact]
+    public void WithoutPacking_AnObjectStreamSource_IsEstimatedToGrow()
+    {
+        var source = ObjectStreamPackedSource();
+        var options = new PdfCompressOptions { Lossless = false };
+        var input = Write(source);
+        var outputPath = TempPath();
+        try
+        {
+            var estimate = Pdf.EstimateCompression(input, options, Deterministic);
+            var actual = Pdf.Compress(input, outputPath, options, Deterministic);
+
+            var error = (double)(estimate.EstimatedOutputBytes - actual.OutputBytes) / actual.OutputBytes;
+            output.WriteLine($"input {estimate.InputBytes}, growth {estimate.EstimatedStructureGrowthBytes}, estimated {estimate.EstimatedOutputBytes}, actual {actual.OutputBytes}, error {error:P2}");
+            Assert.True(actual.OutputBytes > estimate.InputBytes, "unpacking grows the file");
+            Assert.True(estimate.EstimatedStructureGrowthBytes > 0);
+            Assert.InRange(error, -0.03, 0.05);
+        }
+        finally
+        {
+            Delete(input, outputPath);
+        }
+    }
+
+    [Fact]
+    public void PackedOutput_EstimatesNoStructureGrowth()
+    {
+        var estimate = Estimate(Mixed(), AllLevers);
+
+        Assert.Equal(0, estimate.EstimatedStructureGrowthBytes);
+    }
+
+    [Fact]
+    public void SignaturesToStrip_IsWhatCompressWouldStrip()
+    {
+        var signed = CompressSignatureTests.SignedFormSource();
+        var output = TempPath();
+        try
+        {
+            var allow = new PdfCompressOptions { AllowInvalidatingSignatures = true };
+            var estimate = Pdf.EstimateCompression(signed, allow);
+            var actual = Pdf.Compress(signed, output, allow);
+
+            Assert.Equal(actual.SignaturesStripped, estimate.SignaturesToStrip);
+            Assert.Equal(1, estimate.SignaturesToStrip);
+            Assert.Equal(0, Estimate(Mixed(), AllLevers).SignaturesToStrip);
+        }
+        finally
+        {
+            Delete(signed, output);
+        }
+    }
+
+    [Theory]
+    [InlineData("scan", "all")]
+    [InlineData("scan", "dpi")]
+    [InlineData("mixed", "all")]
+    [InlineData("many", "all")]
+    public void EstimatedSourceQuality_IsCompresssForEveryImage(string fixture, string levers)
+    {
+        var estimate = Estimate(Fixture(fixture), Levers(levers));
+        var (actual, _) = Compress(Fixture(fixture), Levers(levers), Deterministic);
+
+        Assert.Equal(actual.Images.Select(static i => i.EstimatedSourceQuality), estimate.Images.Select(static i => i.EstimatedSourceQuality));
+        if (fixture == "scan")
+        {
+            Assert.Contains(estimate.Images, static i => i.EstimatedSourceQuality is not null && !i.Sampled);
+        }
+    }
+
+    [Fact]
+    public void CompressionStage_ValuesFollowTheirDeclaredOrder()
+    {
+        Assert.Equal([0, 1, 2, 3], new[] { CompressionStage.Spooling, CompressionStage.Planning, CompressionStage.Sampling, CompressionStage.Writing }.Select(static s => (int)s));
+        Assert.Equal([CompressionStage.Spooling, CompressionStage.Planning, CompressionStage.Sampling, CompressionStage.Writing], Enum.GetValues<CompressionStage>());
     }
 
     // ---- Diagnostics ----
@@ -758,8 +888,8 @@ public class CompressEstimateTests(ITestOutputHelper output)
 
     private static string Describe(CompressionEstimate estimate) =>
         string.Join('\n', [
-            $"{estimate.InputBytes} {estimate.EstimatedOutputBytes} {estimate.SampledImages} {estimate.EstimatedNonImageSavedBytes} {estimate.SampledNonImageStreams}",
-            .. estimate.Images.Select(static i => $"{i.SourceReference} {i.PageIndex} {i.PlannedAction} {i.SkipReason} {i.DuplicateOf} {i.BytesBefore} {i.EstimatedBytesAfter} {i.Sampled} {i.WidthAfter}x{i.HeightAfter} {i.EncodingBefore}>{i.EncodingAfter} {i.EffectiveDpiAfter}"),
+            $"{estimate.InputBytes} {estimate.EstimatedOutputBytes} {estimate.SampledImages} {estimate.EstimatedNonImageSavedBytes} {estimate.SampledNonImageStreams} {estimate.ExtrapolatedSavedBytes} {estimate.EstimatedStructureGrowthBytes} {estimate.SignaturesToStrip}",
+            .. estimate.Images.Select(static i => $"{i.SourceReference} {i.PageIndex} {i.PlannedAction} {i.SkipReason} {i.DuplicateOf} {i.BytesBefore} {i.EstimatedBytesAfter} {i.Sampled} {i.WidthAfter}x{i.HeightAfter} {i.EncodingBefore}>{i.EncodingAfter} {i.EffectiveDpiAfter} {i.EstimatedSourceQuality}"),
             .. estimate.Diagnostics.Select(static d => $"{d.Code} {d.Message}"),
         ]);
 

@@ -41,11 +41,11 @@ public enum CompressionStage
     /// <see cref="CompressionEstimate.SampledNonImageStreams"/>, at most 16 + 32; zero when there
     /// is nothing to sample, reported as one 0-of-0 report).
     /// </summary>
-    Sampling = 3,
+    Sampling = 2,
 
     /// <summary>
     /// <c>Pdf.Compress</c> only: the full-rewrite save. The unit is planned images written, and the total is the number
     /// of image XObjects the plan holds (see <see cref="CompressionProgress"/>).
     /// </summary>
-    Writing = 2,
+    Writing = 3,
 }

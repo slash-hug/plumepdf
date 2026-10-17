@@ -650,8 +650,10 @@ public static class Pdf
     /// <see cref="CompressionStage.Planning"/> then <see cref="CompressionStage.Sampling"/>.
     /// How the sample is chosen and the rest extrapolated, and the exact definition of
     /// <see cref="CompressionEstimate.EstimatedOutputBytes"/>, are in
-    /// <see cref="CompressionEstimate"/>'s remarks; the estimate is conservative (it tends to be
-    /// at or above what Compress writes). For an exact size, run Compress to a stream that only
+    /// <see cref="CompressionEstimate"/>'s remarks. Sampled images and streams and duplicates are
+    /// exact; extrapolated parts can be off in either direction when a group's members are
+    /// unlike its samples, so use <see cref="CompressionEstimate.EstimatedOutputBytes"/> +
+    /// <see cref="CompressionEstimate.ExtrapolatedSavedBytes"/> for a cautious figure. For an exact size, run Compress to a stream that only
     /// counts what is written to it.
     /// </para>
     /// </remarks>
@@ -673,7 +675,7 @@ public static class Pdf
     /// var levers = new PdfCompressOptions { Images = new PdfImageCompression { MaxDpi = 150, JpegQuality = 70 } };
     /// var estimate = Pdf.EstimateCompression("scan.pdf", levers);
     /// Console.WriteLine($"{estimate.InputBytes:N0} -> about {estimate.EstimatedOutputBytes:N0} bytes");
-    /// if (estimate.EstimatedOutputBytes &lt; 500_000_000)
+    /// if (estimate.EstimatedOutputBytes + estimate.ExtrapolatedSavedBytes &lt; 500_000_000)
     /// {
     ///     Pdf.Compress("scan.pdf", "scan-small.pdf", levers);
     /// }

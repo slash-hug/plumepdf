@@ -100,6 +100,75 @@ internal static class CompressEstimateFixtures
         return pdf;
     }
 
+    /// <summary>
+    /// Seven gray Flate images drawn at 72 DPI (re-encoded only, never downsampled), all of which
+    /// JPEG makes larger, so Compress keeps every original. The three the estimate samples
+    /// (indices 1, 3 and 5) are dense text, whose originals are tiny; the rest are speckle noise,
+    /// whose originals are not.
+    /// </summary>
+    public static ScanTestPdf KeptTextGroup()
+    {
+        var pdf = new ScanTestPdf();
+        for (var i = 0; i < 7; i++)
+        {
+            var number = 10 + (i * 3);
+            var samples = i % 2 == 1 ? TextSamples(120, 120, density: 10, seed: i) : Speckle(120, 120, seed: i);
+            pdf.Stream(number, Image(120, 120, colorSpace: "/DeviceGray"), Flate(samples));
+            pdf.Page(number + 1, Draw("Im0", 120), xobjects: $"/Im0 {number} 0 R");
+        }
+
+        return pdf;
+    }
+
+    /// <summary>
+    /// Nine JPEG scan pages like <see cref="JpegScan"/>'s, but the three the estimate samples
+    /// (indices 1, 4 and 7) are blank: an unrepresentative sample that makes the rest look far
+    /// more compressible than they are.
+    /// </summary>
+    public static ScanTestPdf BlankSamplesAmongNoisyPages()
+    {
+        var pdf = new ScanTestPdf();
+        for (var page = 0; page < 9; page++)
+        {
+            var image = 10 + (page * 3);
+            var samples = page % 3 == 1 ? Enumerable.Repeat((byte)250, 900 * 1100 * 3).ToArray() : ScanSamples(900, 1100, 3, (page * 7) + 4);
+            pdf.Stream(image, Image(900, 1100, filter: "/DCTDecode"), JpegEncoder.Encode(samples, 900, 1100, 3, 85));
+            pdf.Page(image + 1, Draw("Im0", 288), xobjects: $"/Im0 {image} 0 R");
+        }
+
+        return pdf;
+    }
+
+    /// <summary>
+    /// A document whose 300 small dictionaries are packed into object streams with a
+    /// cross-reference stream (written by Compress's lossless levers), so a save that doesn't
+    /// pack has to write each one out as its own object, with a classic cross-reference table.
+    /// </summary>
+    public static byte[] ObjectStreamPackedSource()
+    {
+        var pdf = new ScanTestPdf();
+        var annotations = new List<string>();
+        for (var i = 0; i < 300; i++)
+        {
+            var number = 100 + i;
+            pdf.Object(number, $"<< /Type /Annot /Subtype /Text /Rect [{i} {i} {i + 20} {i + 20}] /Contents (Note {i} on the page) /NM (note-{i}) >>");
+            annotations.Add($"{number} 0 R");
+        }
+
+        pdf.Page(3, "0 0 10 10 re f", extra: $"/Annots [{string.Join(' ', annotations)}]");
+        var source = Write(pdf);
+        var packed = TempPath("packed");
+        try
+        {
+            Pdf.Compress(source, packed);
+            return File.ReadAllBytes(packed);
+        }
+        finally
+        {
+            Delete(source, packed);
+        }
+    }
+
     /// <summary>Scan-like samples: a paper-coloured background, noise and dark text-like bars, varying with <paramref name="seed"/>.</summary>
     public static byte[] ScanSamples(int width, int height, int channels, int seed)
     {
@@ -125,17 +194,30 @@ internal static class CompressEstimateFixtures
         return samples;
     }
 
-    /// <summary>Gray, text-like samples: black strokes on white, the kind JPEG handles badly.</summary>
-    public static byte[] TextSamples(int width, int height)
+    /// <summary>Gray, text-like samples: black strokes on white, the kind JPEG handles badly; a higher <paramref name="density"/> (1–10) inks more.</summary>
+    public static byte[] TextSamples(int width, int height, int density = 8, int seed = 0)
     {
         var samples = new byte[width * height];
         for (var y = 0; y < height; y++)
         {
             for (var x = 0; x < width; x++)
             {
-                var stroke = y % 24 < 12 && (x / 5) % 3 != 0 && ((x * 7) + (y * 3)) % 11 > 2;
+                var stroke = y % 24 < 12 && (x / 5) % 3 != 0 && ((x * 7) + (y * 3) + seed) % 11 > 10 - density;
                 samples[(y * width) + x] = stroke ? (byte)0 : (byte)255;
             }
+        }
+
+        return samples;
+    }
+
+    /// <summary>White with about one pixel in twenty black, at random: hard for Flate, harder for JPEG.</summary>
+    public static byte[] Speckle(int width, int height, int seed)
+    {
+        var random = new Random(seed);
+        var samples = new byte[width * height];
+        for (var i = 0; i < samples.Length; i++)
+        {
+            samples[i] = random.Next(20) == 0 ? (byte)0 : (byte)255;
         }
 
         return samples;

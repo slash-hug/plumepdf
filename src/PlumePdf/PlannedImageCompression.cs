@@ -48,8 +48,10 @@ public sealed class PlannedImageCompression
         ImageEncoding encodingBefore,
         ImageEncoding encodingAfter,
         long estimatedBytesAfter,
-        bool sampled)
+        bool sampled,
+        int? estimatedSourceQuality)
     {
+        EstimatedSourceQuality = estimatedSourceQuality;
         SourceReference = sourceReference;
         PageIndex = pageIndex;
         PlannedAction = plannedAction;
@@ -112,6 +114,15 @@ public sealed class PlannedImageCompression
 
     /// <summary>The planned effective DPI, measured the same way; <see langword="null"/> when <see cref="EffectiveDpiBefore"/> is.</summary>
     public double? EffectiveDpiAfter { get; }
+
+    /// <summary>
+    /// For a JPEG source a lever would rewrite, the quality estimated from its quantization
+    /// tables, clamped to 50–95 — what <see cref="ImageCompressionDecision.EstimatedSourceQuality"/>
+    /// would report. <see langword="null"/> when the image isn't a JPEG on its own, no image lever
+    /// applies to it, or its tables aren't IJG-scaled (or, for a sampled image, its header couldn't
+    /// be read).
+    /// </summary>
+    public int? EstimatedSourceQuality { get; }
 
     /// <summary>The encoding family of the image as read (see <see cref="ImageCompressionDecision.EncodingBefore"/>).</summary>
     public ImageEncoding EncodingBefore { get; }
