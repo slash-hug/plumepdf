@@ -257,7 +257,7 @@ internal static class ImageExtractor
         // and degraded to raw bytes + a diagnostic.
         try
         {
-            var decoded = options.Filters.Decode(dict, stream.RawBytes.Span, options, diagnostics, reference, ResolverFor(objects));
+            var decoded = options.Filters.DecodePayload(dict, stream.RawBytes, options, diagnostics, reference, ResolverFor(objects));
             return new ExtractedImage(reference, width, height, bpc, colorSpace, decode, softMask, filters, decoded, isJpeg: false, isRawEncoded: false);
         }
         catch (PlumePdfException ex)
@@ -353,7 +353,7 @@ internal static class ImageExtractor
                 : parmsValue);
         }
 
-        return options.Filters.Decode(prefixDict, raw.Span, options, diagnostics, reference, ResolverFor(objects));
+        return options.Filters.DecodePayload(prefixDict, raw, options, diagnostics, reference, ResolverFor(objects));
     }
 
     private static List<string> GetFilterChain(PdfDictionary dict)
