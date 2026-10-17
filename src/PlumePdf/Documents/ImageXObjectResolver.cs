@@ -250,7 +250,7 @@ internal static class ImageXObjectResolver
         if (isDct)
         {
             var jpegBytes = filterChain.Count == 1
-                ? stream.RawBytes.ToArray()
+                ? stream.RawBytes
                 : ImageExtractor.DecodePrefixFilters(dict, stream.RawBytes, filterChain.Count - 1, options, diagnostics, reference: null, objects);
 
             // Honor the terminal DCT stage's /DecodeParms /ColorTransform exactly as the
@@ -587,7 +587,7 @@ internal static class ImageXObjectResolver
                 // is silently swallowed even though the pixels it would have painted are
                 // genuinely missing.
                 var diagnosticCountBeforeDecode = diagnostics.Count;
-                rawDecoded = options.Filters.Decode(WithCcittRowsBound(dict, objects, height, isCcittTerminal: filterChain.Count > 0 && filterChain[^1] is "CCITTFaxDecode" or "CCF", filterChain.Count), stream.RawBytes.Span, options, diagnostics, subject: null, resolver: r => objects[r]);
+                rawDecoded = options.Filters.DecodePayload(WithCcittRowsBound(dict, objects, height, isCcittTerminal: filterChain.Count > 0 && filterChain[^1] is "CCITTFaxDecode" or "CCF", filterChain.Count), stream.RawBytes, options, diagnostics, subject: null, resolver: r => objects[r]);
                 MarkDegradedIfDiagnosed(diagnostics, diagnosticCountBeforeDecode);
             }
             catch (PlumePdfException ex)
@@ -841,7 +841,7 @@ internal static class ImageXObjectResolver
         // diagnostics-less convenience overload would swallow it and ship wrong alpha with no
         // record.
         var subIsCcitt = subFilterChain.Count > 0 && subFilterChain[^1] is "CCITTFaxDecode" or "CCF";
-        var rawDecoded = options.Filters.Decode(WithCcittRowsBound(subDict, objects, height, subIsCcitt, subFilterChain.Count), subStream.RawBytes.Span, options, diagnostics, subject: null, resolver: r => objects[r]);
+        var rawDecoded = options.Filters.DecodePayload(WithCcittRowsBound(subDict, objects, height, subIsCcitt, subFilterChain.Count), subStream.RawBytes, options, diagnostics, subject: null, resolver: r => objects[r]);
 
         var bytesPerRow = ((long)width * bpc + 7) / 8;
         var expectedLength = bytesPerRow * height;

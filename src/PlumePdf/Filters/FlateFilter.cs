@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.IO.Compression;
+using System.Runtime.InteropServices;
 
 namespace PlumePdf.Filters;
 
@@ -16,14 +17,32 @@ namespace PlumePdf.Filters;
 internal static class FlateFilter
 {
     /// <summary>Decodes <paramref name="data"/>, trying zlib framing first and raw DEFLATE second.</summary>
-    public static byte[] Decode(ReadOnlySpan<byte> data, long maxDecompressedBytes, DiagnosticCollection? diagnostics, IndirectReference? subject)
+    public static byte[] Decode(ReadOnlySpan<byte> data, long maxDecompressedBytes, DiagnosticCollection? diagnostics, IndirectReference? subject) =>
+        DecodeFrom(new MemoryStream(data.ToArray(), writable: false), maxDecompressedBytes, diagnostics, subject);
+
+    /// <summary>
+    /// <see cref="Decode"/> over a payload held as memory, read in place when it is backed by an
+    /// array (a <see cref="PdfStream.RawBytes"/> always is) rather than copied first.
+    /// </summary>
+    public static byte[] DecodeMemory(ReadOnlyMemory<byte> data, long maxDecompressedBytes, DiagnosticCollection? diagnostics, IndirectReference? subject) =>
+        DecodeFrom(
+            MemoryMarshal.TryGetArray(data, out var segment) && segment.Array is { } array
+                ? new MemoryStream(array, segment.Offset, segment.Count, writable: false)
+                : new MemoryStream(data.ToArray(), writable: false),
+            maxDecompressedBytes,
+            diagnostics,
+            subject);
+
+    private static byte[] DecodeFrom(MemoryStream input, long maxDecompressedBytes, DiagnosticCollection? diagnostics, IndirectReference? subject)
     {
-        var result = TryDecode(data, useZlibHeader: true, maxDecompressedBytes, out var truncated);
+        using var payload = input;
+        var result = TryDecode(payload, useZlibHeader: true, maxDecompressedBytes, out var truncated);
 
         if (result is null)
         {
             diagnostics?.Add(new PdfDiagnostic("PLUME3001", DiagnosticSeverity.Warning, "FlateDecode: zlib-wrapped stream failed to decode; retrying as raw DEFLATE (missing or corrupt zlib header).", subject: subject));
-            result = TryDecode(data, useZlibHeader: false, maxDecompressedBytes, out truncated);
+            payload.Position = 0;
+            result = TryDecode(payload, useZlibHeader: false, maxDecompressedBytes, out truncated);
         }
 
         if (result is null)
@@ -39,17 +58,16 @@ internal static class FlateFilter
         return result;
     }
 
-    private static byte[]? TryDecode(ReadOnlySpan<byte> data, bool useZlibHeader, long maxDecompressedBytes, out bool truncated)
+    private static byte[]? TryDecode(MemoryStream input, bool useZlibHeader, long maxDecompressedBytes, out bool truncated)
     {
         truncated = false;
-        using var input = new MemoryStream(data.ToArray());
 
         Stream decompressor;
         try
         {
             decompressor = useZlibHeader
-                ? new ZLibStream(input, CompressionMode.Decompress)
-                : new DeflateStream(input, CompressionMode.Decompress);
+                ? new ZLibStream(input, CompressionMode.Decompress, leaveOpen: true)
+                : new DeflateStream(input, CompressionMode.Decompress, leaveOpen: true);
         }
         catch (InvalidDataException)
         {
@@ -139,5 +157,5 @@ internal sealed class FlateFilterAdapter : IPdfFilter
 {
     /// <inheritdoc/>
     public byte[] Decode(ReadOnlyMemory<byte> data, PdfOptions options, DiagnosticCollection? diagnostics, IndirectReference? subject) =>
-        FlateFilter.Decode(data.Span, options.MaxDecompressedStreamBytes, diagnostics, subject);
+        FlateFilter.DecodeMemory(data, options.MaxDecompressedStreamBytes, diagnostics, subject);
 }

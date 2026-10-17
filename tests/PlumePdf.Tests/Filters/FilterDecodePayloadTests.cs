@@ -52,6 +52,21 @@ public sealed class FilterDecodePayloadTests
     }
 
     [Fact]
+    public void GetDecodedBytes_SlicedPayload_NextStageSeesOnlyTheSlice()
+    {
+        // An inline image's stream is a slice of its page's content bytes. A filter that hands
+        // back the whole backing array must not leak the bytes around the slice into the next stage.
+        var content = "44414243>"u8.ToArray();
+        var registry = PdfFilterRegistry.CreateDefault();
+        registry.Register("PassThrough", new PassThroughFilter());
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Filter, new PdfArray([PdfName.Get("PassThrough"), PdfName.Get("ASCIIHexDecode")]));
+        var stream = new PdfStream(dictionary, content.AsMemory(2));
+
+        Assert.Equal("ABC"u8.ToArray(), stream.GetDecodedBytes(registry));
+    }
+
+    [Fact]
     public void GetDecodedBytes_ChainedFilters_StillDecodeInOrder()
     {
         var stream = new PdfStream(FilterArray("ASCIIHexDecode", "RunLengthDecode"), "0241424380>"u8.ToArray());
@@ -73,7 +88,10 @@ public sealed class FilterDecodePayloadTests
         return dictionary;
     }
 
-    /// <summary>Returns the very array it was given, as a do-nothing filter legitimately may.</summary>
+    /// <summary>
+    /// Returns the array behind what it was given, ignoring any slice bounds: a careless
+    /// caller-registered filter that worked when every filter was handed an exact-length copy.
+    /// </summary>
     private sealed class PassThroughFilter : IPdfFilter
     {
         public byte[] Decode(ReadOnlyMemory<byte> data, PdfOptions options, DiagnosticCollection? diagnostics, IndirectReference? subject) =>

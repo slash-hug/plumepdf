@@ -279,11 +279,12 @@ public sealed class PdfFilterRegistry
 
         if (filterNames.Count == 0)
         {
-            return payloadIsCopy && MemoryMarshal.TryGetArray(rawBytes, out var segment) && segment is { Offset: 0, Array: { } array } && array.Length == segment.Count
+            return payloadIsCopy && MemoryMarshal.TryGetArray(rawBytes, out var copy) && copy is { Offset: 0, Array: { } array } && array.Length == copy.Count
                 ? array
                 : rawBytes.ToArray();
         }
 
+        var source = MemoryMarshal.TryGetArray(rawBytes, out var segment) ? segment.Array : null;
         var input = rawBytes;
         byte[] current = [];
         for (var i = 0; i < filterNames.Count; i++)
@@ -297,14 +298,22 @@ public sealed class PdfFilterRegistry
             current = filter is IPdfFilterWithDecodeParms parmsAwareFilter
                 ? parmsAwareFilter.Decode(input, decodeParms[i], options, diagnostics, subject, resolver)
                 : filter.Decode(input, options, diagnostics, subject);
+
+            // A filter may hand back the array it was given, and one written when every filter
+            // got an exact-length copy may hand back the whole array behind a slice. Read either
+            // as "unchanged": take a copy of exactly the payload, so the next stage never sees
+            // bytes outside it and the caller never gets the stream's own RawBytes.
+            if (source is not null && ReferenceEquals(current, source))
+            {
+                current = rawBytes.ToArray();
+                source = null;
+            }
+
             current = ApplyPredictor(current, decodeParms[i]);
             input = current;
         }
 
-        // A filter may hand back its input unchanged; never return the caller's own payload.
-        return !payloadIsCopy && MemoryMarshal.TryGetArray(rawBytes, out var source) && ReferenceEquals(source.Array, current)
-            ? rawBytes.ToArray()
-            : current;
+        return current;
     }
 
     private static byte[] ApplyPredictor(byte[] data, PdfDictionary? parms)
