@@ -3,7 +3,9 @@
 `Pdf.Compress(path, outputPath, compressOptions, options)` makes a document smaller with the
 levers you choose, and reports what it did to every image in a `CompressionResult`. Nothing
 lossy happens unless you ask for it. `Pdf.Compress(input, output, ...)` does the same from one
-`Stream` to another — a download to an upload, say ([below](#streams-in-and-out)).
+`Stream` to another — a download to an upload, say ([below](#streams-in-and-out)), and
+`Pdf.EstimateCompression` is its dry run: it says how big the output would be without writing
+it ([Estimate before you compress](#estimate-before-you-compress)).
 
 **Set expectations first:** with no options, compression is lossless — unfiltered streams are
 Flate-compressed, objects are packed into object streams, and byte-identical streams are
@@ -148,7 +150,8 @@ the `CompressionStage` running, how much of it is done (`Completed`) and how muc
 |---|---|---|---|
 | `Spooling` | bytes copied | null | only a non-seekable input stream; at most once per 1 MiB chunk |
 | `Planning` | pages scanned | the page count | every call |
-| `Writing` | planned images written | the image XObjects the plan holds | every call |
+| `Writing` | planned images written | the image XObjects the plan holds | every `Compress` call |
+| `Sampling` | sampled images, then non-image streams, trial-encoded | the number sampled (at most 16 + 32) | every `EstimateCompression` call, in place of `Writing` |
 
 The writing total counts every image XObject the pages reach, drawn or only listed, soft masks
 on their own, whether it is rewritten or skipped. It leaves out a duplicate merged into its
@@ -230,6 +233,165 @@ work. `Progress<T>`'s `Report` returns at once and runs your handler later on th
 thread-safe. Reporting never changes the output bytes. A sink that throws ends the call with its
 exception: a path output is not written, while a stream output may hold a partial document to
 discard. Cancel the token to stop a run rather than throwing.
+
+## Estimate before you compress
+
+`Pdf.EstimateCompression(path, compressOptions, options)` (and its `Stream` and `…Async`
+overloads) is a dry run of `Compress` with the same options. It makes the same plan, trial-encodes
+a small sample of the images Compress would rewrite and of the unfiltered streams it would
+Flate — through the same code that writes them — extrapolates the rest, and returns a `CompressionEstimate`; nothing is written and the source is
+never touched. On a 2.36 GB scan, Compress's planning took seconds and its write about three
+minutes: an estimate costs roughly the planning plus up to 16 image encodes and 32 MiB of
+stream Flating, so you can try
+levers, or decide whether compressing is worth it, before paying for the write.
+
+<!-- snippet: compress-estimate -->
+<a id='snippet-compress-estimate'></a>
+```cs
+// A dry run: the plan Compress would make, a few images trial-encoded exactly as
+// Compress would write them, the rest extrapolated, and nothing written. It takes
+// about as long as Compress's planning pass, where the write can take minutes.
+var levers = new PdfCompressOptions { Images = new PdfImageCompression { MaxDpi = 200, JpegQuality = 70 } };
+var estimate = Pdf.EstimateCompression("output/scans.pdf", levers);
+
+report.AppendLine($"Images: {estimate.Images.Count}, trial-encoded: {estimate.SampledImages}");
+report.AppendLine($"Estimated saving: {estimate.EstimatedSavedBytes > 0}");
+// The other streams' share (duplicates written once, unfiltered streams Flated) has a
+// sample of its own. This source's streams are all compressed already, so none is
+// sampled; its repeated streams, written once, still count.
+report.AppendLine($"Non-image streams trial-Flated: {estimate.SampledNonImageStreams}, saving: {estimate.EstimatedNonImageSavedBytes > 0}");
+foreach (var group in estimate.Images.GroupBy(static i => (i.PlannedAction, i.Sampled)))
+{
+    report.AppendLine($"{group.Key.PlannedAction}, sampled {group.Key.Sampled}: {group.Count()}");
+}
+
+// Samples and duplicates are exact; extrapolated savings can be off either way. Against
+// a size cap, hold the cautious figure: the output if none of them materialised.
+var cautious = estimate.EstimatedOutputBytes + estimate.ExtrapolatedSavedBytes;
+if (cautious < estimate.InputBytes)
+{
+    var result = Pdf.Compress("output/scans.pdf", "output/scans-small.pdf", levers);
+    var error = (double)(estimate.EstimatedOutputBytes - result.OutputBytes) / result.OutputBytes;
+    report.AppendLine($"Estimate within 10% of the output: {Math.Abs(error) < 0.10}");
+    report.AppendLine($"Output within the cautious figure: {result.OutputBytes <= cautious}");
+}
+```
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L203-L231' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-estimate' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
+
+<!-- snippet: CookbookTests.CompressEstimate.verified.txt -->
+<a id='snippet-CookbookTests.CompressEstimate.verified.txt'></a>
+```txt
+Images: 8, trial-encoded: 3
+Estimated saving: True
+Non-image streams trial-Flated: 0, saving: True
+DownsampledAndReencoded, sampled False: 5
+DownsampledAndReencoded, sampled True: 3
+Estimate within 10% of the output: True
+Output within the cautious figure: True
+Exact size, nothing kept: True
+```
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.CompressEstimate.verified.txt#L1-L8' title='Snippet source file'>snippet source</a> | <a href='#snippet-CookbookTests.CompressEstimate.verified.txt' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
+
+`estimate.Images` has one `PlannedImageCompression` per image Compress would report, in the
+same order: its `PlannedAction` and `SkipReason`, sizes and effective DPI before and planned,
+`EncodingBefore` and the planned `EncodingAfter`, `EstimatedBytesAfter`, and `Sampled`. How the
+numbers are made — deterministically, so the same input and options always give the same estimate:
+
+- **Sampled images** are real trial encodes: `EstimatedBytesAfter` is exactly what Compress
+  writes for them, and `PlannedAction` is what Compress does, including `KeptOriginal` (the
+  never-larger rule) or `Skipped` with `DecodeFailed`. Images a lossy lever rewrites are grouped
+  by (`EncodingBefore`, planned action, soft mask or not); groups are taken largest first by
+  bytes, one sample each in turn, up to 3 per group and 16 per call, spread evenly across each
+  group in object-number order. With the lossless levers on, unfiltered images no lossy lever
+  changes form groups too (their sample shows what the Flate lever saves).
+- **Unsampled rewritten images** are extrapolated from their group: the samples' encoded bytes
+  (a sample kept under the never-larger rule counts its trial encoding, not the original) over
+  their planned pixels, times the image's planned pixels, never more than its bytes
+  before. A group left unsampled by the cap borrows the most similar sampled group's ratio among
+  those writing the same encoding; with none, the image is assumed unchanged. Their
+  `PlannedAction` is the plan's — `KeptOriginal` appears only for sampled images.
+- **Images left as they are** are estimated at their bytes before (an unsampled unfiltered one
+  too, though Compress might Flate it), a `Deduplicated` image at 0, inline images at 0.
+- **Other streams** (`EstimatedNonImageSavedBytes`, with the lossless levers on): a non-image
+  stream written once as a duplicate saves its payload, and the unfiltered streams the
+  lossless Flate lever would consider — those the write reaches, other than the reported
+  images, with no filter, their own data, and not XMP metadata, cross-reference or object
+  streams — are sampled: largest first, each that still fits in 32 MiB of payload read, up to
+  32 (`SampledNonImageStreams`), Flated through the same code the write uses. Each sampled
+  stream saves exactly what the write saves (its bytes less the Flated bytes and the 21-byte
+  `/Filter /FlateDecode` entry, when that is smaller); every other one,
+  `before − min(before, round(before × ratio) + 21)`, with `ratio` the samples' total bytes
+  written over bytes read.
+- **Unpacking** (`EstimatedStructureGrowthBytes`): when the save doesn't pack objects
+  (`Lossless = false`, or PDF/A-1) and the source keeps objects in object streams, every one the
+  save reaches is written as its own object: counted at its exact serialized size, less the
+  object and cross-reference streams no longer written, plus a classic cross-reference table at
+  20 bytes per object. Zero otherwise.
+- **`EstimatedOutputBytes`** is exactly `InputBytes`, less each image entry's
+  `BytesBefore - EstimatedBytesAfter`, less `EstimatedNonImageSavedBytes`, plus
+  `EstimatedStructureGrowthBytes`.
+
+**How far to trust it.** Sampled images and streams and the duplicates written once are exact:
+they are the bytes Compress writes. Extrapolated parts — unsampled images and streams,
+`ExtrapolatedSavedBytes` in all — can be off in either direction when a group's members are
+unlike its samples (a blank page sampled among noisy ones makes the rest look tiny). For a
+cautious figure, use `EstimatedOutputBytes + ExtrapolatedSavedBytes`: the output if none of the
+extrapolated saving materialised. Left out, and so making the output smaller than estimated:
+object-stream packing (usually a few percent) and the objects a full rewrite drops — those
+nothing reaches, and the superseded revisions of an incrementally updated file, which can be
+most of it. Also left out: the few hundred bytes of structure a rewrite can add to a very small
+file. `estimate.SignaturesToStrip` says what `result.SignaturesStripped` would be, and each
+image's `EstimatedSourceQuality` what Compress would report.
+
+**Measured accuracy** (the repository's tests, `MaxDpi` 100 or 150 and `JpegQuality` 70–80):
+a 24-page JPEG scan whose pages differ in noise, estimated from 3 samples, came out 6.5 %
+above the written size (its images alone 5.9 % above); a mixed document of photos, a
+text-like image, soft masks, a duplicate and skipped images, with every rewritten image
+sampled, 1.3 % above (its images exact); a document with more groups than the cap allows,
+3.7 % above (its images 1.4 % below); 40 pages of unfiltered text content, 32 of them sampled,
+4.3 % above; an object-stream source saved with `Lossless = false`, 0.3 % below. Across a
+sample of 295 files from the conformance corpora (most of them small and image-free), with
+`MaxDpi = 150` and `JpegQuality = 70`, the error (estimate against what Compress wrote) was:
+
+| Files | Lossless on: median / p90 / max | most under | `Lossless = false`: median / p90 / max | most under |
+|---|---|---|---|---|
+| 100 KB or more (15) | 0.4 % / 29 % / 118 % | none | 0.03 % / 22 % / 105 % | −0.2 % |
+| 10 KB or more (90) | 6.1 % / 63 % / 407 % | none | 0.7 % / 41 % / 359 % | −4.1 % |
+| all (295) | 8.6 % / 39 % / 407 % | −63 % | 1.4 % / 9.3 % / 359 % | −58 % |
+
+The large over-estimates are what the estimate leaves out (superseded revisions of
+incrementally updated files, then object-stream packing); the large under-estimates are files
+under 1 KB that a rewrite grows by a few hundred bytes. With the lossless levers on, the
+cautious figure covered the output for every file of 10 KB or more.
+
+`estimate.Diagnostics` carries the same result-scoped summaries Compress raises, in the
+conditional ("Compress would leave …"): `PLUME6088`/`6089`/`6090` about the options,
+`PLUME6085` per skip reason, and `PLUME6086`/`6087`/`6091` for what the trial encodes found.
+The refusals are Compress's, in the same order (`PLUME5018`, `PLUME5001`, `PLUME6084` — with
+`AllowInvalidatingSignatures`, signatures are stripped only from the estimate's own copy), less
+those about the output: an estimate saving over its own path doesn't exist, so `PLUME1006`
+never applies. `PdfCompressOptions.Progress` reports `Spooling` (a non-seekable stream only),
+`Planning`, then `Sampling`. A non-seekable stream is spooled to a temporary file as Compress
+does, so estimating then compressing one reads it twice: save it to a file and pass paths.
+
+For an exact size, there is no shortcut: run Compress. To a stream that only counts bytes —
+`Stream.Null` will do, since `OutputBytes` is the bytes written — nothing is kept:
+
+<!-- snippet: compress-estimate-exact -->
+<a id='snippet-compress-estimate-exact'></a>
+```cs
+// An exact size means running Compress itself: to Stream.Null, which keeps nothing,
+// OutputBytes is still the number of bytes written.
+using (var input = File.OpenRead("output/scans.pdf"))
+{
+    var counted = Pdf.Compress(input, Stream.Null, levers);
+    report.AppendLine($"Exact size, nothing kept: {counted.OutputBytes == new FileInfo("output/scans-small.pdf").Length}");
+}
+```
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L233-L241' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-estimate-exact' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
 
 ## Streams in and out
 
@@ -370,7 +532,7 @@ report.AppendLine($"Image actions: {string.Join(", ", result.Images.Select(stati
 report.AppendLine($"Still tagged: {structure.IsTagged}, language: {structure.Language}");
 report.AppendLine($"Declared: PDF/A-{pdfa.DeclaredPart}{pdfa.DeclaredConformance}, conformant (self-check): {pdfa.IsConformant}");
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L213-L227' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-tagged-pdfa' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L276-L290' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-tagged-pdfa' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 <!-- snippet: CookbookTests.CompressTaggedPdfA.verified.txt -->
@@ -438,7 +600,8 @@ after planning; no output file is written.
 
 ## Not built in
 
-There is no size target (shrink until under N bytes): pick `MaxDpi` and `JpegQuality`, then
+There is no size target (shrink until under N bytes): pick `MaxDpi` and `JpegQuality`, check
+them with `Pdf.EstimateCompression` ([above](#estimate-before-you-compress)), then
 check `result.OutputBytes`. Progress reports how far a run has got, not how long it has left:
 the stages' units differ, and one image can take far longer than another.
 

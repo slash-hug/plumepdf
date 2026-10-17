@@ -15,6 +15,8 @@ document.Save("output.pdf"); // throws PlumePdfException, Code = "PLUME5001"
 `Pdf.Compress` raises the same code for an encrypted source, before any planning: compression
 is a full rewrite.
 
+`Pdf.EstimateCompression` (the dry run of `Compress`) raises the same code for an encrypted source, at the same point: the `Compress` call it estimates would refuse.
+
 **Fix:** There is no supported way to save an encrypted-source document in Phase 1. If you
 only need the decrypted content, extract what you need through `doc.Objects` (which returns
 the still-encrypted bytes/strings in Phase 1 — full transparent decryption is a follow-up)

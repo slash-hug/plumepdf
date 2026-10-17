@@ -1,0 +1,8 @@
+﻿Images: 8, trial-encoded: 3
+Estimated saving: True
+Non-image streams trial-Flated: 0, saving: True
+DownsampledAndReencoded, sampled False: 5
+DownsampledAndReencoded, sampled True: 3
+Estimate within 10% of the output: True
+Output within the cautious figure: True
+Exact size, nothing kept: True

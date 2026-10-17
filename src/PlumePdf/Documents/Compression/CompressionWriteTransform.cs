@@ -15,6 +15,7 @@ namespace PlumePdf.Documents.Compression;
 /// <param name="EncodingBefore">The source stream's encoding family.</param>
 /// <param name="EncodingAfter">The written stream's encoding family.</param>
 /// <param name="UsedFallbackQuality">The written JPEG used <see cref="ImageReencoder.FallbackJpegQuality"/> because the source's quality couldn't be estimated.</param>
+/// <param name="TrialBytes">The re-encoder's new encoding's length, written or not (see <see cref="ImageReencodeResult.TrialBytes"/>); null when it encoded nothing.</param>
 internal sealed record WrittenImage(
     ImageReencodeOutcome Outcome,
     PlannedSkip Skip,
@@ -26,7 +27,8 @@ internal sealed record WrittenImage(
     int? EstimatedSourceQuality,
     ImageEncoding EncodingBefore,
     ImageEncoding EncodingAfter,
-    bool UsedFallbackQuality = false);
+    bool UsedFallbackQuality = false,
+    long? TrialBytes = null);
 
 /// <summary>
 /// The write-time half of a compressing save: offered each stream as the full-rewrite writer
@@ -52,8 +54,8 @@ internal sealed class CompressionWriteTransform : IStreamWriteTransform
     private static readonly PdfName ObjStmName = PdfName.Get("ObjStm");
     private static readonly PdfName FlateDecodeName = PdfName.Get("FlateDecode");
 
-    // What the written dictionary grows by: the " /Filter /FlateDecode" entry.
-    private static readonly int FilterEntryBytes = " /Filter /FlateDecode".Length;
+    /// <summary>What a Flated stream's written dictionary grows by: the <c> /Filter /FlateDecode</c> entry.</summary>
+    internal static readonly int FilterEntryBytes = " /Filter /FlateDecode".Length;
 
     private readonly ObjectRegistry _objects;
     private readonly CompressionPlan _plan;
@@ -125,7 +127,8 @@ internal sealed class CompressionWriteTransform : IStreamWriteTransform
             reencoded.EstimatedSourceQuality,
             ImageEncodings.OfStream(original.Dictionary, _objects),
             ImageEncodings.OfStream(written.Dictionary, _objects),
-            reencoded.UsedFallbackQuality);
+            reencoded.UsedFallbackQuality,
+            reencoded.TrialBytes);
         _imageWritten?.Invoke(_written.Count);
         return written;
     }
@@ -161,10 +164,7 @@ internal sealed class CompressionWriteTransform : IStreamWriteTransform
     private PdfStream FlateIfSmaller(PdfStream original)
     {
         var dictionary = original.Dictionary;
-        if (HasFilter(dictionary)
-            || dictionary.ContainsKey(FName)
-            || (dictionary.TryGetValue(PdfName.Type, out var type) && type is PdfName name
-                && (ReferenceEquals(name, MetadataName) || ReferenceEquals(name, XRefName) || ReferenceEquals(name, ObjStmName))))
+        if (!IsFlateCandidate(dictionary))
         {
             return original;
         }
@@ -188,6 +188,17 @@ internal sealed class CompressionWriteTransform : IStreamWriteTransform
         rewritten.Set(PdfName.Filter, FlateDecodeName);
         return new PdfStream(rewritten, encoded);
     }
+
+    /// <summary>
+    /// Whether the lossless lever considers a stream with this dictionary at all: it has no
+    /// filter, holds its own data (no <c>/F</c>), and isn't XMP metadata, a cross-reference
+    /// stream or an object stream. Such a stream is then Flated only if that is smaller.
+    /// </summary>
+    internal static bool IsFlateCandidate(PdfDictionary dictionary) =>
+        !HasFilter(dictionary)
+        && !dictionary.ContainsKey(FName)
+        && !(dictionary.TryGetValue(PdfName.Type, out var type) && type is PdfName name
+            && (ReferenceEquals(name, MetadataName) || ReferenceEquals(name, XRefName) || ReferenceEquals(name, ObjStmName)));
 
     // An empty /Filter array filters nothing; anything else (a name, a non-empty array, or a
     // reference this check doesn't follow) counts as filtered and is left alone.

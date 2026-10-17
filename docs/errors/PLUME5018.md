@@ -21,6 +21,8 @@ full-rewrite writer, neither of which the linearized writer does. Compress first
 `Pdf.Linearize` on the result if needed: the image and Flate savings carry over, the
 object-stream packing doesn't (linearized output uses classic cross-reference tables).
 
+`Pdf.EstimateCompression` (the dry run of `Compress`) raises the same code when `PdfOptions.Linearize` is set, before reading the input: the `Compress` call it estimates would refuse.
+
 **Fix:** Pick one. `Linearize` when the goal is fast first-page display over a byte-range
 capable transport (the file is already ordered for that); `Optimize` when the goal is a smaller
 file. Object-stream-packed linearized output is a possible future enhancement, not a v1.0

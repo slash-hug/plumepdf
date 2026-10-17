@@ -41,6 +41,7 @@ internal sealed record ImageReencodeRequest(int TargetWidth, int TargetHeight, i
 /// <param name="Height">The written image's height.</param>
 /// <param name="EstimatedSourceQuality">A JPEG source's estimated quality, clamped to 50–95, or null when it isn't a JPEG or its tables aren't IJG-scaled.</param>
 /// <param name="UsedFallbackQuality">The JPEG was written at <see cref="ImageReencoder.FallbackJpegQuality"/> because the source's quality couldn't be estimated.</param>
+/// <param name="TrialBytes">The new encoding's length when one was made — written, or dropped under the never-larger rule (<see cref="ImageReencodeOutcome.KeptOriginal"/>); null when nothing was encoded.</param>
 internal sealed record ImageReencodeResult(
     PdfStream Stream,
     ImageReencodeOutcome Outcome,
@@ -49,7 +50,8 @@ internal sealed record ImageReencodeResult(
     int Width,
     int Height,
     int? EstimatedSourceQuality,
-    bool UsedFallbackQuality);
+    bool UsedFallbackQuality,
+    long? TrialBytes = null);
 
 /// <summary>
 /// Resizes and re-encodes one image XObject: decode to native samples, box-downsample, release
@@ -170,7 +172,7 @@ internal static class ImageReencoder
 
         if (encoded.Length >= image.RawBytes.Length)
         {
-            return Unchanged(image, ImageReencodeOutcome.KeptOriginal, PlannedSkip.None, null, width, height, estimated);
+            return Unchanged(image, ImageReencodeOutcome.KeptOriginal, PlannedSkip.None, null, width, height, estimated) with { TrialBytes = encoded.Length };
         }
 
         var outcome = (resize, toJpeg) switch
@@ -181,7 +183,7 @@ internal static class ImageReencoder
         };
 
         var rewritten = Rewrite(dictionary, targetWidth, targetHeight, PdfName.Get(writeJpeg ? "DCTDecode" : "FlateDecode"), dropDecode: bakeDecode);
-        return new ImageReencodeResult(new PdfStream(rewritten, encoded), outcome, PlannedSkip.None, null, targetWidth, targetHeight, estimated, usedFallback);
+        return new ImageReencodeResult(new PdfStream(rewritten, encoded), outcome, PlannedSkip.None, null, targetWidth, targetHeight, estimated, usedFallback, encoded.Length);
     }
 
     // Applies a /Decode array (one Dmin Dmax pair per channel, over 8-bit samples) in place,

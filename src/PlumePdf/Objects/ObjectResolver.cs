@@ -139,6 +139,9 @@ internal sealed class ObjectResolver : IObjectSource
     internal bool HasLiveEntry(int number) =>
         _table.EntriesByObjectNumber.TryGetValue(number, out var entry) && entry.Kind != CrossReferenceEntryKind.Free;
 
+    /// <summary>The merged cross-reference table's entries, by object number.</summary>
+    internal IReadOnlyDictionary<int, CrossReferenceEntry> Entries => _table.EntriesByObjectNumber;
+
     /// <summary>How many objects this resolver has cached.</summary>
     internal int CachedObjectCount => _cache.Count;
 

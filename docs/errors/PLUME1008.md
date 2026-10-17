@@ -19,6 +19,8 @@ as your stream threw it.
 await Pdf.CompressAsync(httpResponseBody, upload);
 ```
 
+`Pdf.EstimateCompression(Stream)` (or `EstimateCompressionAsync`) spools a non-seekable input the same way, and raises the same code when it can't.
+
 **Fix:** Make sure the temp directory exists, is writable and has room for a copy of the whole
 input (on Unix, `TMPDIR`; on Windows, `TEMP`/`TMP`). Or give `Compress` a seekable input — a
 `FileStream` or a `MemoryStream` — which is read in place and never copied.

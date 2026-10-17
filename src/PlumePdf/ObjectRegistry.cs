@@ -345,6 +345,12 @@ public sealed class ObjectRegistry : IObjectSource
         || fileResolver.HasLiveEntry(reference.Number);
 
     /// <summary>
+    /// The underlying file's merged cross-reference entries, by object number (which objects are
+    /// stored in object streams, and in which), or null for an in-memory source.
+    /// </summary>
+    internal IReadOnlyDictionary<int, CrossReferenceEntry>? CrossReferenceEntries => _resolver is ObjectResolver fileResolver ? fileResolver.Entries : null;
+
+    /// <summary>
     /// How many objects the underlying source holds in its resolution cache — what a reading
     /// pass that promises not to retain payloads is measured against. Zero for an in-memory
     /// source, which holds every object anyway.

@@ -13,6 +13,8 @@ var result = Pdf.Compress("scan.pdf", "scan-small.pdf");
 // result.Diagnostics: PLUME6090 "Compress ran with no image lever set ..."
 ```
 
+`Pdf.EstimateCompression` (the dry run of `Compress`) records the same entry on `CompressionEstimate.Diagnostics`, worded "Compress would run with no image lever set ...".
+
 **Fix:** To make images smaller, opt in to the lossy levers:
 
 ```csharp

@@ -67,6 +67,39 @@ only by diffing output. Entries land in the same change as the behavior they des
   `CompressionProgress` is a `readonly record struct`, so reporting allocates nothing per
   report. `CompressAsync`'s spool copy is now a chunked loop instead of `Stream.CopyToAsync`,
   still cancellable between chunks.
+- **`Pdf.EstimateCompression` is a dry run of `Pdf.Compress`** (#49), for the path and `Stream`
+  overloads, each with an `…Async` twin. It applies Compress's refusals in the same order and
+  with the same codes (less those about the output), makes the same plan, trial-encodes a
+  deterministic sample of the images Compress would rewrite through the same encoder (at most 3
+  per group of encoding read × planned action × soft mask, 16 per call, groups dealt one each
+  in turn, largest first), extrapolates every other image by its group's bytes per planned
+  pixel (never larger than its bytes before), and returns a `CompressionEstimate`
+  (`InputBytes`, `EstimatedOutputBytes`, `EstimatedSavedBytes`, `SampledImages`,
+  `EstimatedNonImageSavedBytes`, `SampledNonImageStreams`, `ExtrapolatedSavedBytes`,
+  `EstimatedStructureGrowthBytes`, `SignaturesToStrip`, and one `PlannedImageCompression` per
+  image with `PlannedAction`, planned sizes and encodings, `EstimatedSourceQuality`,
+  `EstimatedBytesAfter` and `Sampled`) — without writing anything or touching the source; with
+  `AllowInvalidatingSignatures`, signatures are stripped only from its own copy. A sample kept
+  under the never-larger rule feeds its trial encoding's size, not its original's, into its
+  group's ratio. With the lossless levers on it also estimates their saving on non-image
+  streams: duplicates written once, and the unfiltered streams the Flate lever would compress
+  (the largest that fit 32 streams / 32 MiB trial-Flated through the same code, the rest by the
+  samples' ratio). When the save doesn't pack objects and the source has object streams, it
+  estimates the growth from unpacking them. Sampled images and streams and duplicates are
+  exact; extrapolated parts can be off in either direction when a group's members are unlike
+  its samples, so `EstimatedOutputBytes + ExtrapolatedSavedBytes` is the cautious figure for a
+  size cap. Object-stream packing and the objects a full rewrite drops (unreached, or
+  superseded by incremental updates) are not counted. Measured on the repository's test
+  documents: +6.5 % on a 24-page JPEG scan, +1.3 % on a mixed document, +3.7 % with the image
+  sample cap hit, +4.3 % on 40 pages of unfiltered content, −0.3 % on an object-stream source
+  saved with `Lossless = false`; on a 295-file corpus sample, files of 100 KB or more were
+  0.4 % off at the median and 29 % at p90 with the lossless levers on (none under), and
+  0.03 % / 22 % with `Lossless = false` (at worst 0.2 % under). A new `CompressionStage.Sampling`
+  reports the trial encodes, and the stages are now numbered in their declared order
+  (`Spooling` 0, `Planning` 1, `Sampling` 2, `Writing` 3; `Writing` was 2 before this
+  release); `Compress` never reports `Sampling`, and an estimate never reports `Writing`. Its
+  diagnostics are Compress's summaries in the conditional ("Compress would ..."), on the
+  estimate. `Compress`'s own output is byte-identical to before.
 
 ### Fixed
 

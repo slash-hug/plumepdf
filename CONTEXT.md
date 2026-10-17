@@ -489,15 +489,31 @@ _Avoid_: optimize (that is Optimization, structure only), shrink/minify (informa
 stream-payload encoding
 
 **Compression stage**:
-One of the three phases a Compress call reports through `PdfCompressOptions.Progress`
+One of the phases a Compress call reports through `PdfCompressOptions.Progress`
 (`CompressionStage`): **Spooling** (copying a non-seekable input stream to a temporary file,
 in bytes), **Planning** (the pass that measures every image's placements and finds duplicate
 streams before anything is written, in pages) and **Writing** (the full-rewrite save, in
 **planned images**: the image XObjects the plan holds — every one the pages reach, soft masks
 included, whether rewritten or skipped — less duplicates merged into a canonical copy; inline
-images are never planned).
+images are never planned). A **Compression estimate** reports **Sampling** (sampled images
+trial-encoded) in place of Writing.
 _Avoid_: phase, step (in Compress's reporting vocabulary), "images processed" for the Writing
 count (a skipped image counts; a merged duplicate doesn't)
+
+**Compression estimate**:
+The dry run of Compress (`Pdf.EstimateCompression` → `CompressionEstimate`): the same refusals
+and plan, a deterministic, capped **sample** of the images that would be rewritten
+trial-encoded exactly as Compress writes them (at most 3 per group of encoding read × planned
+action × soft mask, 16 per call), every other image's size **extrapolated** from its group's
+bytes per planned pixel, the same done for the unfiltered non-image streams the lossless Flate
+lever would compress (at most 32 sampled, 32 MiB read, the rest by the samples' ratio), and an
+estimated output size — with nothing written. Sampled images and streams and duplicates are
+exact; the **extrapolated** parts (`ExtrapolatedSavedBytes`) can be off in either direction when a
+group's members are unlike its samples, so `EstimatedOutputBytes + ExtrapolatedSavedBytes` is the
+**cautious figure** for a size cap. Object-stream packing and the objects a full rewrite drops
+are not counted; unpacking a source's object streams, when the save won't repack, is.
+_Avoid_: preview, simulation, analysis (it runs real encodes on a sample), "dry-run compress"
+as a mode of Compress (it is its own verb, and never writes)
 
 **Effective DPI**:
 An image's pixels per inch as drawn: its pixel count along an axis divided by the length, in

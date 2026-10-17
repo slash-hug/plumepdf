@@ -1,0 +1,664 @@
+using PlumePdf.Filters;
+using PlumePdf.Objects;
+
+namespace PlumePdf.Documents.Compression;
+
+/// <summary>What an estimate found: a record for every planned image, the subset that came from real trial encodes, and the non-image savings.</summary>
+/// <param name="Records">Every planned image's record, by original number: the trial encode's for a sampled one, the extrapolated or assumed one otherwise.</param>
+/// <param name="Sampled">The trial encodes' own records, by original number.</param>
+/// <param name="NonImageSavedBytes">The estimated saving on every stream the image entries don't cover: duplicates written once, and the lossless Flate lever.</param>
+/// <param name="SampledStreams">How many of those streams were trial-Flated.</param>
+/// <param name="ExtrapolatedStreamSavedBytes">The part of <paramref name="NonImageSavedBytes"/> extrapolated to unsampled streams.</param>
+/// <param name="StructureGrowthBytes">How much unpacking the source's object streams adds, when the save doesn't pack.</param>
+internal sealed record EstimatedImages(IReadOnlyDictionary<int, WrittenImage> Records, IReadOnlyDictionary<int, WrittenImage> Sampled, long NonImageSavedBytes, int SampledStreams, long ExtrapolatedStreamSavedBytes, long StructureGrowthBytes);
+
+/// <summary>
+/// The sampling half of <c>Pdf.EstimateCompression</c>: given Compress's plan, it trial-encodes
+/// a small, deterministic sample of the images, and of the unfiltered non-image streams, through
+/// the write-time transform itself (so a sample is encoded exactly as Compress writes it) and
+/// extrapolates the rest from the samples.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Groups: images a lossy lever rewrites are grouped by (encoding read, planned outcome, soft
+/// mask). With the lossless levers on, unfiltered images no lossy lever changes form groups of
+/// the same shape, since the lossless Flate lever can shrink them. Groups are taken largest
+/// first by their bytes before (the lowest object number breaking a tie), and samples are dealt
+/// out one per group in turn, up to <see cref="SamplesPerGroup"/> per group and
+/// <see cref="SamplesPerCall"/> in all, so every group gets one before any gets two. Within a
+/// group, ordered by object number, the samples are spread evenly
+/// (<see cref="SpreadIndices"/>).
+/// </para>
+/// <para>
+/// Extrapolation, for an unsampled image a lossy lever rewrites: its group's samples' encoded
+/// bytes (a sample kept under never-larger counts its trial encoding) over their planned pixels
+/// (samples that failed to decode left out), times its own
+/// planned pixels, rounded, capped at its bytes before. A group with no usable sample borrows
+/// the ratio of the most similar group that has one and plans the same written encoding
+/// (soft-mask flag, then encoding read, then outcome matching; a tie to the larger group); with
+/// none, the image is assumed unchanged. Any other unsampled image is assumed unchanged.
+/// </para>
+/// <para>
+/// Non-image streams, with the lossless levers on: the streams the writer's discovery walk
+/// would reach (from the trailer's <c>/Root</c> and <c>/Info</c>, through canonical copies),
+/// less the planned images, that pass the lossless lever's own eligibility rule
+/// (<see cref="CompressionWriteTransform.IsFlateCandidate"/>). Largest first, each fitting the
+/// <see cref="StreamSampleBudget"/> is trial-Flated through the transform, up to
+/// <see cref="StreamSamplesPerCall"/>; the rest use the samples' aggregate ratio
+/// (<see cref="ExtrapolatedFlateSaving"/>). Duplicate non-image streams count their payload.
+/// </para>
+/// <para>
+/// Memory: one sample is read, decoded and encoded at a time and nothing but a small record is
+/// kept, as when writing; payloads are read without joining the object cache.
+/// </para>
+/// </remarks>
+internal static class CompressionEstimator
+{
+    /// <summary>The most images sampled from one group.</summary>
+    public const int SamplesPerGroup = 3;
+
+    /// <summary>The most images sampled in one call.</summary>
+    public const int SamplesPerCall = 16;
+
+    /// <summary>The most non-image streams trial-Flated in one call.</summary>
+    public const int StreamSamplesPerCall = 32;
+
+    /// <summary>The most payload bytes read for non-image stream samples in one call (32 MiB).</summary>
+    public const long StreamSampleBudget = 32L << 20;
+
+    /// <summary>What a Flated stream's dictionary grows by (<c> /Filter /FlateDecode</c>), as the write counts it.</summary>
+    public static readonly int FilterEntryBytes = CompressionWriteTransform.FilterEntryBytes;
+
+    /// <summary>
+    /// Which streams to trial-Flate, given their payload sizes largest first: each in turn that
+    /// still fits in <paramref name="budget"/> bytes read (one that doesn't is passed over, a
+    /// smaller one after it may still fit), until <paramref name="maximum"/> are chosen.
+    /// </summary>
+    public static int[] StreamSamples(IReadOnlyList<long> sizes, long budget, int maximum)
+    {
+        var chosen = new List<int>();
+        long read = 0;
+        for (var i = 0; i < sizes.Count && chosen.Count < maximum; i++)
+        {
+            if (read + sizes[i] <= budget)
+            {
+                chosen.Add(i);
+                read += sizes[i];
+            }
+        }
+
+        return [.. chosen];
+    }
+
+    /// <summary>
+    /// An unsampled eligible stream's estimated saving: its <paramref name="before"/> bytes, less
+    /// what it would be written as, <c>min(before, round(before × ratio) + FilterEntryBytes)</c> —
+    /// the write's own rule (Flate only when that, counting the added <c>/Filter</c> entry, is smaller).
+    /// </summary>
+    public static long ExtrapolatedFlateSaving(long before, double ratio) =>
+        before - Math.Min(before, (long)Math.Round(before * ratio) + FilterEntryBytes);
+
+    /// <summary>Samples the plan's images and estimates the rest, reporting <see cref="CompressionStage.Sampling"/>.</summary>
+    /// <param name="objects">The source document's objects (after any signature stripping).</param>
+    /// <param name="plan">Compress's plan.</param>
+    /// <param name="settings">The levers Compress would apply.</param>
+    /// <param name="options">The effective save options.</param>
+    /// <param name="progress">Reports sampled images and streams encoded, or null.</param>
+    /// <param name="cancellationToken">Checked before each sample.</param>
+    /// <param name="streamBudget">The payload bytes non-image stream samples may read (a test seam; <see cref="StreamSampleBudget"/> otherwise).</param>
+    public static EstimatedImages Run(
+        ObjectRegistry objects,
+        CompressionPlan plan,
+        CompressionSettings settings,
+        PdfOptions options,
+        CompressionProgressReporter? progress,
+        CancellationToken cancellationToken,
+        long streamBudget = StreamSampleBudget)
+    {
+        var candidates = plan.Images.OrderBy(static p => p.Key).Select(p => Describe(objects, p.Key, p.Value, settings)).ToList();
+        var groups = candidates
+            .Where(c => IsLever(c.Outcome) || (settings.Lossless && c.EncodingBefore == ImageEncoding.Uncompressed))
+            .GroupBy(static c => c.Key)
+            .Select(static g => g.ToList())
+            .OrderByDescending(static g => g.Sum(static c => c.BytesBefore))
+            .ThenBy(static g => g[0].Number)
+            .ToList();
+
+        var counts = SampleCounts([.. groups.Select(static g => g.Count)]);
+        var chosen = new List<int>();
+        for (var i = 0; i < groups.Count; i++)
+        {
+            chosen.AddRange(SpreadIndices(groups[i].Count, counts[i]).Select(index => groups[i][index].Number));
+        }
+
+        chosen.Sort();
+
+        // The lossless Flate lever's candidates beyond the images: every stream the write would
+        // reach and offer to it, largest first.
+        (HashSet<int> Reachable, List<(int Number, long Bytes)> Candidates)? walk = settings.Lossless || !options.Optimize ? Walk(objects, plan) : null;
+        var streams = settings.Lossless ? walk!.Value.Candidates : [];
+        var streamChosen = StreamSamples([.. streams.Select(static c => c.Bytes)], streamBudget, StreamSamplesPerCall);
+
+        var transform = new CompressionWriteTransform(objects, plan, settings, options, cancellationToken);
+        var total = chosen.Count + streamChosen.Length;
+        progress?.Report(CompressionStage.Sampling, 0, total);
+        var sampled = Sample(objects, transform, chosen, progress, total, 0, cancellationToken);
+        var (flateSaving, extrapolatedStreams, sampledStreams) = FlateSaving(objects, transform, streams, streamChosen, progress, total, chosen.Count, cancellationToken);
+
+        // Bytes encoded and planned pixels per group, over the samples that encoded: a sample kept
+        // under the never-larger rule counts its trial encoding, not the original it kept, so an
+        // unsampled sibling is estimated at what its own encoding would be, then capped.
+        var ratios = new List<GroupRatio>();
+        foreach (var group in groups.Where(static g => IsLever(g[0].Outcome)))
+        {
+            long bytes = 0, pixels = 0;
+            foreach (var candidate in group)
+            {
+                if (sampled.TryGetValue(candidate.Number, out var record) && record.Outcome != ImageReencodeOutcome.Skipped)
+                {
+                    bytes += record.TrialBytes ?? record.BytesAfter;
+                    pixels += candidate.TargetPixels;
+                }
+            }
+
+            if (pixels > 0)
+            {
+                ratios.Add(new GroupRatio(group[0].Key, group[0].EncodingAfter, (double)bytes / pixels));
+            }
+        }
+
+        var records = new Dictionary<int, WrittenImage>(candidates.Count);
+        foreach (var c in candidates)
+        {
+            if (sampled.TryGetValue(c.Number, out var record))
+            {
+                records[c.Number] = record;
+                continue;
+            }
+
+            var estimated = IsLever(c.Outcome) && Ratio(ratios, c.Key, c.EncodingAfter) is double ratio
+                ? Math.Min(c.BytesBefore, (long)Math.Round(ratio * c.TargetPixels))
+                : c.BytesBefore;
+            records[c.Number] = new WrittenImage(c.Outcome, c.Skip, c.Detail, c.BytesBefore, estimated, c.TargetWidth, c.TargetHeight, IsLever(c.Outcome) ? SourceQuality(objects, c.Number) : null, c.EncodingBefore, c.EncodingAfter);
+        }
+
+        var growth = !options.Optimize ? UnpackingGrowth(objects, walk!.Value.Reachable) : 0;
+        return new EstimatedImages(records, sampled, NonImageDuplicateBytes(objects, plan) + flateSaving, sampledStreams, extrapolatedStreams, growth);
+    }
+
+    /// <summary>
+    /// How many samples each group gets, the groups given in priority order with their sizes:
+    /// one per group in turn, up to <see cref="SamplesPerGroup"/> each (and never more than the
+    /// group holds), until <see cref="SamplesPerCall"/> are dealt.
+    /// </summary>
+    public static int[] SampleCounts(IReadOnlyList<int> groupSizes)
+    {
+        var counts = new int[groupSizes.Count];
+        var dealt = 0;
+        for (var round = 0; round < SamplesPerGroup; round++)
+        {
+            for (var i = 0; i < counts.Length && dealt < SamplesPerCall; i++)
+            {
+                if (groupSizes[i] > round)
+                {
+                    counts[i]++;
+                    dealt++;
+                }
+            }
+        }
+
+        return counts;
+    }
+
+    /// <summary>
+    /// <paramref name="samples"/> indices spread evenly over <paramref name="count"/> items: the
+    /// middle of each of <paramref name="samples"/> equal slices, <c>(2i + 1) · count / (2 · samples)</c>.
+    /// </summary>
+    public static int[] SpreadIndices(int count, int samples)
+    {
+        var indices = new int[samples];
+        for (var i = 0; i < samples; i++)
+        {
+            indices[i] = (int)((((2L * i) + 1) * count) / (2L * samples));
+        }
+
+        return indices;
+    }
+
+    /// <summary>
+    /// The payload bytes of every stream the lossless levers would write once as a duplicate of
+    /// an identical stream, less image streams (which the per-image entries account for).
+    /// </summary>
+    private static long NonImageDuplicateBytes(ObjectRegistry objects, CompressionPlan plan)
+    {
+        long bytes = 0;
+        foreach (var duplicate in plan.Aliases.Keys)
+        {
+            var (dictionary, isStream) = Dictionary(objects, duplicate);
+            if (isStream && dictionary is not null && !(dictionary.TryGetValue(PdfName.Subtype, out var subtype) && ReferenceEquals(subtype, PdfName.Image)))
+            {
+                bytes += PayloadLength(objects, duplicate, dictionary);
+            }
+        }
+
+        return bytes;
+    }
+
+    // One trial encode per chosen image, in object-number order, through the write-time
+    // transform; an image whose payload can't be read is left unsampled.
+    private static Dictionary<int, WrittenImage> Sample(
+        ObjectRegistry objects,
+        CompressionWriteTransform transform,
+        List<int> chosen,
+        CompressionProgressReporter? progress,
+        int total,
+        int done,
+        CancellationToken cancellationToken)
+    {
+        for (var i = 0; i < chosen.Count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (ReadOnce(objects, chosen[i]) is { } original)
+            {
+                // Only the record is kept; the encoded stream is dropped here.
+                transform.Transform(chosen[i], original);
+            }
+
+            progress?.Report(CompressionStage.Sampling, done + i + 1, total);
+        }
+
+        return new Dictionary<int, WrittenImage>(transform.Written);
+    }
+
+    // The Flate lever's estimated saving over 'streams': the chosen ones trial-Flated through
+    // the transform (their saving is the write's: payload less the Flated payload and the
+    // /Filter entry, when that is smaller), the rest by the samples' aggregate ratio of bytes
+    // written to bytes read. No usable sample: no saving counted.
+    private static (long Saving, long Extrapolated, int Sampled) FlateSaving(
+        ObjectRegistry objects,
+        CompressionWriteTransform transform,
+        List<(int Number, long Bytes)> streams,
+        int[] chosen,
+        CompressionProgressReporter? progress,
+        int total,
+        int done,
+        CancellationToken cancellationToken)
+    {
+        long saving = 0, extrapolated = 0, before = 0, after = 0;
+        var sampled = new HashSet<int>();
+        for (var i = 0; i < chosen.Length; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var (number, _) = streams[chosen[i]];
+            if (ReadOnce(objects, number) is { } original)
+            {
+                var written = transform.Transform(number, original);
+                var bytes = original.RawBytes.Length;
+                var flated = !ReferenceEquals(written, original);
+                before += bytes;
+                after += flated ? written.RawBytes.Length : bytes;
+                saving += flated ? bytes - (written.RawBytes.Length + FilterEntryBytes) : 0;
+                sampled.Add(chosen[i]);
+            }
+
+            progress?.Report(CompressionStage.Sampling, done + i + 1, total);
+        }
+
+        if (before > 0)
+        {
+            var ratio = (double)after / before;
+            for (var i = 0; i < streams.Count; i++)
+            {
+                if (!sampled.Contains(i))
+                {
+                    extrapolated += ExtrapolatedFlateSaving(streams[i].Bytes, ratio);
+                }
+            }
+        }
+
+        return (saving + extrapolated, extrapolated, sampled.Count);
+    }
+
+    // The objects the full-rewrite writer would reach — the same walk its discovery makes, from
+    // the trailer's /Root and /Info, following a stream's dictionary only, through canonical
+    // copies — and among them every stream it would offer to the lossless lever, other than the
+    // planned images (whose entries account for them): largest first, then by number.
+    private static (HashSet<int> Reachable, List<(int Number, long Bytes)> Candidates) Walk(ObjectRegistry objects, CompressionPlan plan)
+    {
+        int Canonical(int number) => plan.Aliases.TryGetValue(number, out var canonical) ? canonical : number;
+
+        var seen = new HashSet<int>();
+        var pending = new Queue<int>();
+        foreach (var root in new[] { PdfName.Root, PdfName.Info })
+        {
+            if (objects.Trailer.TryGetValue(root, out var value) && value is PdfReference reference && seen.Add(Canonical(reference.Target.Number)))
+            {
+                pending.Enqueue(Canonical(reference.Target.Number));
+            }
+        }
+
+        var candidates = new List<(int Number, long Bytes)>();
+        while (pending.Count > 0)
+        {
+            var number = pending.Dequeue();
+            PdfObject value;
+            bool isStream;
+            try
+            {
+                value = ((IObjectSource)objects).ResolveForDiscovery(new IndirectReference(number, 0), out isStream);
+            }
+            catch (PlumePdfException)
+            {
+                continue;
+            }
+
+            var dictionary = value as PdfDictionary ?? (value as PdfStream)?.Dictionary;
+            if (isStream && dictionary is not null && !plan.Images.ContainsKey(number) && CompressionWriteTransform.IsFlateCandidate(dictionary))
+            {
+                candidates.Add((number, PayloadLength(objects, number, dictionary)));
+            }
+
+            var references = isStream && dictionary is not null
+                ? FullRewriteWriter.FindStreamDictionaryReferences(dictionary)
+                : FullRewriteWriter.FindReferences(value);
+            foreach (var reference in references)
+            {
+                var target = Canonical(reference.Target.Number);
+                if (seen.Add(target))
+                {
+                    pending.Enqueue(target);
+                }
+            }
+        }
+
+        return (seen, [.. candidates.OrderByDescending(static c => c.Bytes).ThenBy(static c => c.Number)]);
+    }
+
+    /// <summary>
+    /// What a save that doesn't pack adds by unpacking the source's object streams: every
+    /// reachable object stored in one is written as its own <c>N G obj … endobj</c> (its exact
+    /// serialized size), the object streams and cross-reference streams are not written (their
+    /// payloads and framing come off), and a classic cross-reference table of 20 bytes per
+    /// written object goes on. Zero for a source with no object streams. Signed: a source whose
+    /// object streams compressed little can come out smaller.
+    /// </summary>
+    internal static long UnpackingGrowth(ObjectRegistry objects, IReadOnlySet<int> reachable)
+    {
+        if (objects.CrossReferenceEntries is not { } entries)
+        {
+            return 0;
+        }
+
+        var containers = new HashSet<int>();
+        using var counter = new CountingWriteStream();
+        foreach (var (number, entry) in entries.OrderBy(static e => e.Key))
+        {
+            if (entry.Kind != CrossReferenceEntryKind.InObjectStream)
+            {
+                continue;
+            }
+
+            containers.Add(entry.StreamObjectNumber);
+            if (reachable.Contains(number))
+            {
+                try
+                {
+                    ObjectSerializer.WriteIndirectObject(counter, number, 0, ((IObjectSource)objects).ResolveForDiscovery(new IndirectReference(number, 0), out _));
+                }
+                catch (PlumePdfException)
+                {
+                    // An unreadable member is written as the writer manages; counted as nothing here.
+                }
+            }
+        }
+
+        if (containers.Count == 0)
+        {
+            return 0;
+        }
+
+        long removed = 0;
+        foreach (var (number, entry) in entries.OrderBy(static e => e.Key))
+        {
+            if (entry.Kind != CrossReferenceEntryKind.InFile)
+            {
+                continue;
+            }
+
+            var isContainer = containers.Contains(number);
+            if (!isContainer && reachable.Contains(number))
+            {
+                continue;
+            }
+
+            var (dictionary, isStream) = Dictionary(objects, number);
+            if (!isStream || dictionary is null)
+            {
+                continue;
+            }
+
+            var isXRef = dictionary.TryGetValue(PdfName.Type, out var type) && type is PdfName name && name.Value == "XRef";
+            if (isContainer || isXRef)
+            {
+                // The payload, its dictionary, and the object's own framing.
+                removed += PayloadLength(objects, number, dictionary) + StreamFramingBytes + Serialized(dictionary);
+            }
+        }
+
+        return counter.Position - removed + (ClassicEntryBytes * (reachable.Count + 1));
+    }
+
+    // "N 0 obj\n" ... "\nendobj\n" around a stream, with "stream\n" and "\nendstream".
+    private const int StreamFramingBytes = 36;
+
+    // One classic cross-reference entry: "0000000000 00000 n \n".
+    private const int ClassicEntryBytes = 20;
+
+    private static long Serialized(PdfDictionary dictionary)
+    {
+        using var counter = new CountingWriteStream();
+        ObjectSerializer.WriteValue(counter, dictionary);
+        return counter.Position;
+    }
+
+    // A stream read once, not cached; null when it can't be read or isn't a stream.
+    private static PdfStream? ReadOnce(ObjectRegistry objects, int number)
+    {
+        try
+        {
+            return ((IObjectSource)objects).ReadPayloadOnce(new IndirectReference(number, 0));
+        }
+        catch (PlumePdfException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The bytes-per-pixel ratio for an unsampled image of group <paramref name="key"/>, planned
+    /// to be written as <paramref name="encodingAfter"/>: its own group's when that has a usable
+    /// sample; otherwise the most similar group's that writes the same encoding (soft-mask flag
+    /// matching counts most, then encoding read, then outcome; a tie goes to the earlier group in
+    /// <paramref name="ratios"/>, which is in priority order); null when none writes it.
+    /// </summary>
+    public static double? Ratio(IReadOnlyList<GroupRatio> ratios, GroupKey key, ImageEncoding encodingAfter)
+    {
+        var best = -1;
+        double? ratio = null;
+        foreach (var group in ratios)
+        {
+            if (group.Key == key)
+            {
+                return group.Ratio;
+            }
+
+            if (group.EncodingAfter != encodingAfter)
+            {
+                continue;
+            }
+
+            var score = (group.Key.SoftMask == key.SoftMask ? 4 : 0)
+                + (group.Key.EncodingBefore == key.EncodingBefore ? 2 : 0)
+                + (group.Key.Outcome == key.Outcome ? 1 : 0);
+            if (score > best)
+            {
+                (best, ratio) = (score, group.Ratio);
+            }
+        }
+
+        return ratio;
+    }
+
+    // What the plan means for one image, worked out the way ImageReencoder will before it
+    // decodes anything: the target clamped to the image's size, a re-encode only for a
+    // non-mask with a quality set, and nothing at all when neither applies.
+    private static Candidate Describe(ObjectRegistry objects, int number, PlannedImage planned, CompressionSettings settings)
+    {
+        var (dictionary, _) = Dictionary(objects, number);
+        var encodingBefore = dictionary is null ? ImageEncoding.Uncompressed : ImageEncodings.OfStream(dictionary, objects);
+        var bytesBefore = PayloadLength(objects, number, dictionary);
+
+        if (planned.Action == PlannedImageAction.Keep)
+        {
+            var outcome = planned.Skip == PlannedSkip.None ? ImageReencodeOutcome.Unchanged : ImageReencodeOutcome.Skipped;
+            return new Candidate(number, bytesBefore, encodingBefore, outcome, planned.Skip, planned.SkipDetail, encodingBefore, planned.Width, planned.Height, planned.IsSoftMask);
+        }
+
+        if (planned.Width <= 0 || planned.Height <= 0)
+        {
+            return new Candidate(number, bytesBefore, encodingBefore, ImageReencodeOutcome.Skipped, PlannedSkip.DecodeFailed, "Missing or non-positive /Width or /Height.", encodingBefore, 0, 0, planned.IsSoftMask);
+        }
+
+        var targetWidth = Math.Clamp(planned.TargetWidth, 1, planned.Width);
+        var targetHeight = Math.Clamp(planned.TargetHeight, 1, planned.Height);
+        var resize = targetWidth < planned.Width || targetHeight < planned.Height;
+        var toJpeg = !planned.IsSoftMask && settings.JpegQuality is not null
+            && planned.Action is PlannedImageAction.Reencode or PlannedImageAction.DownsampleAndReencode;
+        if (!resize && !toJpeg)
+        {
+            return new Candidate(number, bytesBefore, encodingBefore, ImageReencodeOutcome.Unchanged, PlannedSkip.None, null, encodingBefore, planned.Width, planned.Height, planned.IsSoftMask);
+        }
+
+        var outcomeAfter = (resize, toJpeg) switch
+        {
+            (true, true) => ImageReencodeOutcome.DownsampledAndReencoded,
+            (true, false) => ImageReencodeOutcome.Downsampled,
+            _ => ImageReencodeOutcome.Reencoded,
+        };
+        var writesJpeg = toJpeg || (!planned.IsSoftMask && dictionary is not null && IsDct(dictionary, objects));
+        return new Candidate(number, bytesBefore, encodingBefore, outcomeAfter, PlannedSkip.None, null, writesJpeg ? ImageEncoding.Jpeg : ImageEncoding.Flate, targetWidth, targetHeight, planned.IsSoftMask);
+    }
+
+    // A JPEG-only source's quality estimated from its header, clamped, as ImageReencoder reads it
+    // before decoding; null for anything else. Reads the payload once, uncached.
+    private static int? SourceQuality(ObjectRegistry objects, int number)
+    {
+        var (dictionary, _) = Dictionary(objects, number);
+        if (dictionary is null || !IsDctOnly(dictionary, objects) || ReadOnce(objects, number) is not { } stream)
+        {
+            return null;
+        }
+
+        return JpegQualityEstimator.TryEstimate(stream.RawBytes.Span, out var raw)
+            ? Math.Clamp(raw, ImageReencoder.MinEstimatedQuality, ImageReencoder.MaxEstimatedQuality)
+            : null;
+    }
+
+    private static bool IsDctOnly(PdfDictionary dictionary, ObjectRegistry objects)
+    {
+        try
+        {
+            return NativeImageSamples.IsDctEncoded(dictionary, objects, out var jpegOnly) && jpegOnly;
+        }
+        catch (PlumePdfException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsDct(PdfDictionary dictionary, ObjectRegistry objects)
+    {
+        try
+        {
+            return NativeImageSamples.IsDctEncoded(dictionary, objects, out _);
+        }
+        catch (PlumePdfException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsLever(ImageReencodeOutcome outcome) =>
+        outcome is ImageReencodeOutcome.Downsampled or ImageReencodeOutcome.Reencoded or ImageReencodeOutcome.DownsampledAndReencoded;
+
+    // A stream's dictionary as the save's discovery walk reads it (without its payload when
+    // possible), or null when the object isn't a dictionary or stream.
+    private static (PdfDictionary? Dictionary, bool IsStream) Dictionary(ObjectRegistry objects, int number)
+    {
+        try
+        {
+            var value = ((IObjectSource)objects).ResolveForDiscovery(new IndirectReference(number, 0), out var isStream);
+            return (value as PdfDictionary ?? (value as PdfStream)?.Dictionary, isStream);
+        }
+        catch (PlumePdfException)
+        {
+            return (null, false);
+        }
+    }
+
+    // The encoded payload's length, as the writer will read it: the declared /Length when the
+    // discovery read trusted it, otherwise the payload read once (not cached); 0 when unreadable.
+    private static long PayloadLength(ObjectRegistry objects, int number, PdfDictionary? dictionary)
+    {
+        var reference = new IndirectReference(number, 0);
+        try
+        {
+            var value = ((IObjectSource)objects).ResolveForDiscovery(reference, out var isStream);
+            if (value is PdfStream stream)
+            {
+                return stream.RawBytes.Length;
+            }
+
+            if (isStream && dictionary is not null && StreamDeduplicator.DeclaredLength(objects, dictionary) is >= 0 and var declared)
+            {
+                return declared;
+            }
+
+            return ((IObjectSource)objects).ReadPayloadOnce(reference)?.RawBytes.Length ?? 0;
+        }
+        catch (PlumePdfException)
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>A sampling group: images of one encoding as read, one planned outcome, and soft masks or not.</summary>
+    /// <param name="EncodingBefore">The images' encoding family as read.</param>
+    /// <param name="Outcome">What the plan does to them.</param>
+    /// <param name="SoftMask">Whether they are other images' soft masks.</param>
+    internal readonly record struct GroupKey(ImageEncoding EncodingBefore, ImageReencodeOutcome Outcome, bool SoftMask);
+
+    /// <summary>A sampled group's bytes written per planned pixel, and the encoding it writes.</summary>
+    /// <param name="Key">The group.</param>
+    /// <param name="EncodingAfter">The encoding family its images are planned to be written as.</param>
+    /// <param name="Ratio">Its usable samples' encoded bytes over their planned pixels.</param>
+    internal sealed record GroupRatio(GroupKey Key, ImageEncoding EncodingAfter, double Ratio);
+
+    /// <summary>One planned image as the estimate sees it.</summary>
+    private sealed record Candidate(
+        int Number,
+        long BytesBefore,
+        ImageEncoding EncodingBefore,
+        ImageReencodeOutcome Outcome,
+        PlannedSkip Skip,
+        string? Detail,
+        ImageEncoding EncodingAfter,
+        int TargetWidth,
+        int TargetHeight,
+        bool SoftMask)
+    {
+        public GroupKey Key => new(EncodingBefore, Outcome, SoftMask);
+
+        public long TargetPixels => (long)TargetWidth * TargetHeight;
+    }
+}

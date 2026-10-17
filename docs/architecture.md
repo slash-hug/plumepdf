@@ -164,6 +164,26 @@ stream opens in place (`PdfDocument.Open(Stream)`); a non-seekable one is spoole
 temporary file first, deleted when the call ends, and opened like a path. For the same input
 and options, under `Deterministic`, the two targets write the same bytes.
 
+`Pdf.EstimateCompression` (`CompressionEngine.Estimate`, `CompressionEstimator`) is the dry run
+over the same pieces: the same refusals, effective options, signature stripping (on its own
+opened document only) and planning pass, then, instead of the save, a sampling step that hands
+at most 16 planned images — three per group of (encoding read, planned action, soft mask),
+groups dealt one sample each in turn, largest first — to the write-time transform itself, one
+at a time and read without caching, keeping only each one's small written-image record. Every
+other image's size is extrapolated from its group's bytes per planned pixel. With the lossless
+levers on, it also walks the graph the writer's discovery would (from `/Root` and `/Info`,
+dictionaries only, through canonical copies, with the writer's own `FindReferences`), keeps the
+non-image streams the lossless lever's own `IsFlateCandidate` rule admits, trial-Flates the
+largest that fit a 32-stream / 32 MiB budget through the same transform, and extrapolates the
+rest by the samples' ratio. A sample kept under the never-larger rule contributes its trial
+encoding's size (carried as `WrittenImage.TrialBytes`) to its group's ratio. When the effective
+save doesn't pack and the source has object streams, the same walk feeds an unpacking estimate
+from the cross-reference entries: reachable members serialized exactly, less the object and
+cross-reference streams, plus a classic table. Object-stream packing and the objects a rewrite
+drops (unreached, or superseded by an incremental update) are not estimated. The report is
+built by the same decision and summary code Compress's result is, so the two can't drift apart.
+Nothing reaches the writer, so the estimate can't predict the save's own late `PLUME2060`.
+
 **Mutation and the dirty-object set (Phase 4):**
 `ObjectRegistry` (`doc.Objects`) gains a general-purpose `MarkDirty(reference)` (for a
 `PdfDictionary`/`PdfArray`/`PdfStream` already mutated in place — these containers were always

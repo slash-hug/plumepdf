@@ -22,6 +22,8 @@ var result = Pdf.Compress("damaged-scan.pdf", "small.pdf", new PdfCompressOption
 // result.Diagnostics: PLUME6086 "Compress could not decode 1 image(s) and wrote their samples unchanged ..."
 ```
 
+`Pdf.EstimateCompression` (the dry run of `Compress`) records the same summary on `CompressionEstimate.Diagnostics`, worded "Compress would fail to decode ...", for the images it trial-encoded (`PlannedImageCompression.Sampled`) that failed to decode; an image it didn't sample may still fail when `Compress` runs.
+
 **Fix:** Nothing is required — the image's samples are written unchanged (with the lossless
 levers on, an unfiltered stream may still be Flate-compressed losslessly; see `BytesAfter`).
 If the image should have decoded, inspect the source object the message names

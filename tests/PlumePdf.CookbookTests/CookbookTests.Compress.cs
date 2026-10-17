@@ -193,6 +193,69 @@ public partial class CookbookTests
         await Verifier.Verify(report.ToString());
     }
 
+    [Fact]
+    public Task CompressEstimate()
+    {
+        var report = new StringBuilder();
+        BuildMultiPageScan("output/scans.pdf", pages: 8);
+        File.Delete("output/scans-small.pdf");
+
+        // begin-snippet: compress-estimate
+        // A dry run: the plan Compress would make, a few images trial-encoded exactly as
+        // Compress would write them, the rest extrapolated, and nothing written. It takes
+        // about as long as Compress's planning pass, where the write can take minutes.
+        var levers = new PdfCompressOptions { Images = new PdfImageCompression { MaxDpi = 200, JpegQuality = 70 } };
+        var estimate = Pdf.EstimateCompression("output/scans.pdf", levers);
+
+        report.AppendLine($"Images: {estimate.Images.Count}, trial-encoded: {estimate.SampledImages}");
+        report.AppendLine($"Estimated saving: {estimate.EstimatedSavedBytes > 0}");
+        // The other streams' share (duplicates written once, unfiltered streams Flated) has a
+        // sample of its own. This source's streams are all compressed already, so none is
+        // sampled; its repeated streams, written once, still count.
+        report.AppendLine($"Non-image streams trial-Flated: {estimate.SampledNonImageStreams}, saving: {estimate.EstimatedNonImageSavedBytes > 0}");
+        foreach (var group in estimate.Images.GroupBy(static i => (i.PlannedAction, i.Sampled)))
+        {
+            report.AppendLine($"{group.Key.PlannedAction}, sampled {group.Key.Sampled}: {group.Count()}");
+        }
+
+        // Samples and duplicates are exact; extrapolated savings can be off either way. Against
+        // a size cap, hold the cautious figure: the output if none of them materialised.
+        var cautious = estimate.EstimatedOutputBytes + estimate.ExtrapolatedSavedBytes;
+        if (cautious < estimate.InputBytes)
+        {
+            var result = Pdf.Compress("output/scans.pdf", "output/scans-small.pdf", levers);
+            var error = (double)(estimate.EstimatedOutputBytes - result.OutputBytes) / result.OutputBytes;
+            report.AppendLine($"Estimate within 10% of the output: {Math.Abs(error) < 0.10}");
+            report.AppendLine($"Output within the cautious figure: {result.OutputBytes <= cautious}");
+        }
+        // end-snippet
+
+        // begin-snippet: compress-estimate-exact
+        // An exact size means running Compress itself: to Stream.Null, which keeps nothing,
+        // OutputBytes is still the number of bytes written.
+        using (var input = File.OpenRead("output/scans.pdf"))
+        {
+            var counted = Pdf.Compress(input, Stream.Null, levers);
+            report.AppendLine($"Exact size, nothing kept: {counted.OutputBytes == new FileInfo("output/scans-small.pdf").Length}");
+        }
+        // end-snippet
+
+        return Verifier.Verify(report.ToString());
+    }
+
+    // 'pages' pages, each with its own noisy 900-pixel image drawn two inches wide (450 DPI).
+    private static void BuildMultiPageScan(string path, int pages)
+    {
+        using var document = new Manuscript
+        {
+            Sections = [.. Enumerable.Range(0, pages).Select(static page => new Section
+            {
+                Body = new Image(ScanLikeSamples(seed: page, noise: 6 + (page % 4 * 4)), pixelWidth: ScanPixels, pixelHeight: ScanPixels) { Width = 144, Height = 144 },
+            })],
+        }.Render();
+        document.Save(path);
+    }
+
     // An HTTP response body stand-in: readable, not seekable.
     private static Stream OpenDownload(string path) => new ForwardOnlyReadStream(File.OpenRead(path));
 
@@ -231,14 +294,14 @@ public partial class CookbookTests
 
     private const int ScanPixels = 900;
 
-    private static byte[] ScanLikeSamples()
+    private static byte[] ScanLikeSamples(int seed = 7, int noise = 12)
     {
         const int pixels = ScanPixels;
-        var random = new Random(7);
+        var random = new Random(seed);
         var samples = new byte[pixels * pixels * 3];
         for (var i = 0; i < samples.Length; i++)
         {
-            samples[i] = (byte)Math.Clamp(((i / 3 % pixels) * 255 / pixels) + random.Next(-12, 13), 0, 255);
+            samples[i] = (byte)Math.Clamp(((i / 3 % pixels) * 255 / pixels) + random.Next(-noise, noise + 1), 0, 255);
         }
 
         return samples;
