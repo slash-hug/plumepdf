@@ -9,8 +9,8 @@ namespace PlumePdf.CookbookTests;
 /// <summary>
 /// Cookbook recipe backing tests for <c>docs/cookbook/compress.md</c>: a lossless-only call,
 /// then the image levers with the result read to tune them, the async door with cancellation,
-/// streams in and out (a non-seekable download to an upload), and what a compressed tagged
-/// PDF/A source keeps. The sources are composed here — a
+/// progress reporting through a synchronous sink, streams in and out (a non-seekable download
+/// to an upload), and what a compressed tagged PDF/A source keeps. The sources are composed here — a
 /// 900-pixel noisy image drawn two inches wide (450 DPI) — so the recipes have no external
 /// fixture. Byte counts vary with the zlib build, so the snapshots record comparisons, not sizes.
 /// </summary>
@@ -92,6 +92,66 @@ public partial class CookbookTests
 
         await Verifier.Verify(report.ToString());
     }
+
+    [Fact]
+    public Task CompressProgress()
+    {
+        var report = new StringBuilder();
+        BuildScanLikeSource("output/scan-for-progress.pdf");
+
+        // begin-snippet: compress-progress
+        // Progress reports each stage as it runs: pages while planning, images while writing
+        // (and bytes, with no total, while a non-seekable input stream is spooled). Each stage
+        // starts at 0 and, when it has a total, ends at it. Reporting never changes the output.
+        var log = new ProgressLog();
+        var result = Pdf.Compress("output/scan-for-progress.pdf", "output/scan-progress.pdf", new PdfCompressOptions
+        {
+            Images = new PdfImageCompression { MaxDpi = 200, JpegQuality = 70 },
+            Progress = log,
+        });
+        // end-snippet
+
+        report.AppendLine($"Saved bytes: {result.SavedBytes > 0}");
+        foreach (var line in log.Lines)
+        {
+            report.AppendLine(line);
+        }
+
+        return Verifier.Verify(report.ToString());
+    }
+
+    // begin-snippet: compress-progress-sink
+    // Your own IProgress is called synchronously, on the thread doing the work: keep it fast
+    // and thread-safe. Progress<T> instead posts each report to the context it was created on
+    // (a UI thread), so it suits a UI. An exception thrown here ends the call: to stop a run,
+    // cancel its token instead.
+    private sealed class ProgressLog : IProgress<CompressionProgress>
+    {
+        private readonly List<string> _lines = [];
+
+        public IReadOnlyList<string> Lines
+        {
+            get
+            {
+                lock (_lines)
+                {
+                    return [.. _lines];
+                }
+            }
+        }
+
+        public void Report(CompressionProgress value)
+        {
+            var line = value.Total is long total
+                ? $"{value.Stage}: {value.Completed} of {total}"
+                : $"{value.Stage}: {value.Completed:N0} bytes";
+            lock (_lines)
+            {
+                _lines.Add(line);
+            }
+        }
+    }
+    // end-snippet
 
     [Fact]
     public async Task CompressStream()

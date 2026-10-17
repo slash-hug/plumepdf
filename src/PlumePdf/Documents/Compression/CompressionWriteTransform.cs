@@ -61,6 +61,7 @@ internal sealed class CompressionWriteTransform : IStreamWriteTransform
     private readonly PdfOptions _options;
     private readonly CancellationToken _cancellationToken;
     private readonly Action<int>? _transforming;
+    private readonly Action<int>? _imageWritten;
     private readonly Dictionary<int, WrittenImage> _written = [];
 
     /// <summary>Creates the transform for one save.</summary>
@@ -70,13 +71,15 @@ internal sealed class CompressionWriteTransform : IStreamWriteTransform
     /// <param name="options">The effective save options.</param>
     /// <param name="cancellationToken">Checked before each stream is transformed.</param>
     /// <param name="transforming">A test hook called with each offered stream's number, after the cancellation check.</param>
+    /// <param name="imageWritten">Called with the number of planned images written so far after each one, or null.</param>
     public CompressionWriteTransform(
         ObjectRegistry objects,
         CompressionPlan plan,
         CompressionSettings settings,
         PdfOptions options,
         CancellationToken cancellationToken,
-        Action<int>? transforming = null)
+        Action<int>? transforming = null,
+        Action<int>? imageWritten = null)
     {
         _objects = objects;
         _plan = plan;
@@ -84,6 +87,7 @@ internal sealed class CompressionWriteTransform : IStreamWriteTransform
         _options = options;
         _cancellationToken = cancellationToken;
         _transforming = transforming;
+        _imageWritten = imageWritten;
     }
 
     /// <summary>What was written for each planned image the writer offered, by original number.</summary>
@@ -122,6 +126,7 @@ internal sealed class CompressionWriteTransform : IStreamWriteTransform
             ImageEncodings.OfStream(original.Dictionary, _objects),
             ImageEncodings.OfStream(written.Dictionary, _objects),
             reencoded.UsedFallbackQuality);
+        _imageWritten?.Invoke(_written.Count);
         return written;
     }
 

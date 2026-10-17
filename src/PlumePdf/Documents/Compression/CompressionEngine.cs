@@ -123,7 +123,7 @@ internal static class CompressionEngine
             long spooled;
             using (var file = SpoolFile.Create(spool))
             {
-                CopyTo(input, file, cancellationToken);
+                CopyTo(input, file, CompressionProgressReporter.For(compress.Progress), cancellationToken);
                 spooled = file.Length;
             }
 
@@ -167,7 +167,7 @@ internal static class CompressionEngine
             var file = SpoolFile.Create(spool, asynchronous: true);
             await using (file.ConfigureAwait(false))
             {
-                await input.CopyToAsync(file, SpoolBufferSize, cancellationToken).ConfigureAwait(false);
+                await CopyToAsync(input, file, CompressionProgressReporter.For(compress.Progress), cancellationToken).ConfigureAwait(false);
                 spooled = file.Length;
             }
 
@@ -246,14 +246,34 @@ internal static class CompressionEngine
 
         var signaturesStripped = signatures.Count > 0 ? SignatureStripper.Strip(document, signatures) : 0;
 
+        // Each stage opens at zero and closes at its total; the reporter drops a closing report
+        // that repeats the last step. No reporter (and no callback delegate) without a sink.
+        var progress = CompressionProgressReporter.For(compress.Progress);
+        long pages = document.Pages.Count;
+        progress?.Report(CompressionStage.Planning, 0, pages);
         hooks?.Planning?.Invoke();
-        var plan = CompressionPlanner.Plan(document, settings, effective, cancellationToken);
+        var plan = CompressionPlanner.Plan(
+            document,
+            settings,
+            effective,
+            cancellationToken,
+            progress is null ? null : scanned => progress.Report(CompressionStage.Planning, scanned, pages));
+        progress?.Report(CompressionStage.Planning, pages, pages);
         foreach (var diagnostic in plan.Diagnostics)
         {
             diagnostics.Add(diagnostic);
         }
 
-        var transform = new CompressionWriteTransform(document.Objects, plan, settings, effective, cancellationToken, hooks?.Transforming);
+        long plannedImages = plan.Images.Count;
+        progress?.Report(CompressionStage.Writing, 0, plannedImages);
+        var transform = new CompressionWriteTransform(
+            document.Objects,
+            plan,
+            settings,
+            effective,
+            cancellationToken,
+            hooks?.Transforming,
+            progress is null ? null : written => progress.Report(CompressionStage.Writing, written, plannedImages));
         long outputBytes;
         if (target.Path is { } path)
         {
@@ -264,6 +284,10 @@ internal static class CompressionEngine
         {
             outputBytes = document.SaveWithWriteHooks(target.Stream!, effective, transform, plan.Aliases);
         }
+
+        // A planned image the writer never offered (one its discovery walk didn't reach) still
+        // closes the stage at the total.
+        progress?.Report(CompressionStage.Writing, plannedImages, plannedImages);
 
         var images = Decisions(document.Objects, plan, transform.Written);
         Summarize(images, transform.Written, settings, diagnostics);
@@ -320,17 +344,45 @@ internal static class CompressionEngine
         return path;
     }
 
-    // Stream.CopyTo has no cancellation; this checks the token between chunks.
-    private static void CopyTo(Stream input, Stream file, CancellationToken cancellationToken)
+    // Stream.CopyTo has no cancellation; this checks the token between chunks and reports the
+    // bytes copied after each one. A non-seekable stream has no usable length: no total.
+    private static void CopyTo(Stream input, Stream file, CompressionProgressReporter? progress, CancellationToken cancellationToken)
     {
         var buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(SpoolBufferSize);
         try
         {
+            long copied = 0;
+            progress?.Report(CompressionStage.Spooling, 0, null);
             int read;
-            while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+            while ((read = input.Read(buffer, 0, SpoolBufferSize)) > 0)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 file.Write(buffer, 0, read);
+                copied += read;
+                progress?.Report(CompressionStage.Spooling, copied, null);
+            }
+        }
+        finally
+        {
+            System.Buffers.ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
+
+    // CopyTo's asynchronous twin: Stream.CopyToAsync can't report between chunks.
+    private static async Task CopyToAsync(Stream input, Stream file, CompressionProgressReporter? progress, CancellationToken cancellationToken)
+    {
+        var buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(SpoolBufferSize);
+        try
+        {
+            long copied = 0;
+            progress?.Report(CompressionStage.Spooling, 0, null);
+            int read;
+            while ((read = await input.ReadAsync(buffer.AsMemory(0, SpoolBufferSize), cancellationToken).ConfigureAwait(false)) > 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await file.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+                copied += read;
+                progress?.Report(CompressionStage.Spooling, copied, null);
             }
         }
         finally

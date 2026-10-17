@@ -26,14 +26,16 @@ internal static class CompressionPlanner
     /// <param name="settings">The levers this run applies.</param>
     /// <param name="saveOptions">The effective options the save will run with.</param>
     /// <param name="cancellationToken">Checked once per page and once per hashed payload.</param>
+    /// <param name="pageScanned">Called with the number of pages scanned so far after each page, or null.</param>
     public static CompressionPlan Plan(
         PdfDocument document,
         CompressionSettings settings,
         PdfOptions saveOptions,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action<int>? pageScanned = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var scan = PlacementScanner.Scan(document, saveOptions, cancellationToken);
+        var scan = PlacementScanner.Scan(document, saveOptions, cancellationToken, pageScanned);
         var aliases = settings.Lossless
             ? new Dictionary<int, int>(StreamDeduplicator.FindAliases(document, saveOptions, cancellationToken))
             : [];
