@@ -74,14 +74,21 @@ only by diffing output. Entries land in the same change as the behavior they des
   per group of encoding read × planned action × soft mask, 16 per call, groups dealt one each
   in turn, largest first), extrapolates every other image by its group's bytes per planned
   pixel (never larger than its bytes before), and returns a `CompressionEstimate`
-  (`InputBytes`, `EstimatedOutputBytes`, `EstimatedSavedBytes`, `SampledImages`, and one
-  `PlannedImageCompression` per image with `PlannedAction`, planned sizes and encodings,
-  `EstimatedBytesAfter` and `Sampled`) — without writing anything or touching the source; with
-  `AllowInvalidatingSignatures`, signatures are stripped only from its own copy. Sampled images
-  are estimated at exactly the bytes Compress writes; the rest of the file is assumed unchanged,
-  so the estimate tends to be at or above the written size (measured on the repository's test
-  documents: +6.5 % on a 24-page JPEG scan, +1.4 % on a mixed document, +3.7 % with the sample
-  cap hit). A new `CompressionStage.Sampling` (value 3, declared after `Planning`) reports the
+  (`InputBytes`, `EstimatedOutputBytes`, `EstimatedSavedBytes`, `SampledImages`,
+  `EstimatedNonImageSavedBytes`, `SampledNonImageStreams`, and one `PlannedImageCompression`
+  per image with `PlannedAction`, planned sizes and encodings, `EstimatedBytesAfter` and
+  `Sampled`) — without writing anything or touching the source; with
+  `AllowInvalidatingSignatures`, signatures are stripped only from its own copy. With the
+  lossless levers on it also estimates their saving on non-image streams: duplicates written
+  once, and the unfiltered streams the Flate lever would compress (the largest that fit 32
+  streams / 32 MiB trial-Flated through the same code, the rest by the samples' ratio). Sampled
+  images and streams are estimated at exactly the bytes Compress writes; object-stream packing
+  and the objects a full rewrite drops (unreached, or superseded by incremental updates) are
+  not counted, so the estimate tends to be at or above the written size (measured on the
+  repository's test documents: +6.5 % on a 24-page JPEG scan, +1.3 % on a mixed document,
+  +3.7 % with the image sample cap hit, +4.3 % on 40 pages of unfiltered content; on a
+  295-file corpus sample, files of 100 KB or more were 0.5 % off at the median and 29 % at
+  p90). A new `CompressionStage.Sampling` (value 3, declared after `Planning`) reports the
   trial encodes; `Compress` never reports it, and an estimate never reports `Writing`. Its
   diagnostics are Compress's summaries in the conditional ("Compress would ..."), on the
   estimate. `Compress`'s own output is byte-identical to before.

@@ -208,6 +208,10 @@ public partial class CookbookTests
 
         report.AppendLine($"Images: {estimate.Images.Count}, trial-encoded: {estimate.SampledImages}");
         report.AppendLine($"Estimated saving: {estimate.EstimatedSavedBytes > 0}");
+        // The other streams' share (duplicates written once, unfiltered streams Flated) has a
+        // sample of its own. This source's streams are all compressed already, so none is
+        // sampled; its repeated streams, written once, still count.
+        report.AppendLine($"Non-image streams trial-Flated: {estimate.SampledNonImageStreams}, saving: {estimate.EstimatedNonImageSavedBytes > 0}");
         foreach (var group in estimate.Images.GroupBy(static i => (i.PlannedAction, i.Sampled)))
         {
             report.AppendLine($"{group.Key.PlannedAction}, sampled {group.Key.Sampled}: {group.Count()}");

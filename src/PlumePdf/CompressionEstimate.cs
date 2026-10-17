@@ -3,7 +3,8 @@ namespace PlumePdf;
 /// <summary>
 /// The report of one <c>Pdf.EstimateCompression</c> call: a dry run of <c>Pdf.Compress</c> with
 /// the same options, which plans the same work, trial-encodes a small sample of the images
-/// that would be rewritten, and estimates the output size, without writing anything. Read it
+/// that would be rewritten (and of the unfiltered streams the lossless levers would compress),
+/// and estimates the output size, without writing anything. Read it
 /// to choose levers (or to decide whether compressing is worth it) before paying for the
 /// write, which on a large scan takes far longer than planning.
 /// </summary>
@@ -28,22 +29,35 @@ namespace PlumePdf;
 /// <see cref="ImageCompressionAction.Deduplicated"/> image at zero.
 /// </para>
 /// <para>
+/// The other streams, with the lossless levers on (<see cref="EstimatedNonImageSavedBytes"/>):
+/// a stream written once as a duplicate of an identical one saves its payload; and the
+/// unfiltered streams the lossless Flate lever would consider — the streams the write reaches
+/// from the catalog and document information, other than the reported images, that have no
+/// filter, hold their own data and aren't XMP metadata, cross-reference or object streams — are
+/// estimated from a sample. Largest first, each that still fits in 32 MiB of payload read (a
+/// larger one is passed over), up to 32 streams, is Flated through the same code the write
+/// uses, saving what the write would: its bytes less the Flated bytes and the 21-byte
+/// <c>/Filter /FlateDecode</c> entry, when that is smaller. Every other candidate is estimated
+/// with the samples' aggregate ratio of bytes written to bytes read:
+/// <c>before − min(before, round(before × ratio) + 21)</c>. With no sample, none is counted.
+/// </para>
+/// <para>
 /// <see cref="EstimatedOutputBytes"/> is then exactly <see cref="InputBytes"/>, minus, for
 /// every entry of <see cref="Images"/> with a
 /// <see cref="PlannedImageCompression.SourceReference"/>, its
 /// <see cref="PlannedImageCompression.BytesBefore"/> less its
-/// <see cref="PlannedImageCompression.EstimatedBytesAfter"/>, minus the payload bytes of every
-/// other stream the lossless levers would write once as a duplicate of an identical one (a
-/// repeated font or content stream). Nothing else is estimated: the rest of the file is taken
-/// to be written at its input size, with no saving counted for Flate-compressing unfiltered
-/// non-image streams, packing objects into object streams, or dropping unreachable objects. So
-/// the rest of the estimate is conservative — it tends to be at or above what Compress writes —
-/// and the gap is widest when the lossless levers matter most; extrapolated images can come out
-/// on either side, and a very small file can grow by a few hundred bytes of structure the
-/// estimate doesn't count. Sampled images are estimated at exactly
-/// the bytes Compress writes for them; the accuracy of the rest depends on how alike a group's
-/// images are. For an exact size, run <c>Pdf.Compress</c> to a stream that only counts the
-/// bytes written to it.
+/// <see cref="PlannedImageCompression.EstimatedBytesAfter"/>, minus
+/// <see cref="EstimatedNonImageSavedBytes"/>. Nothing else is estimated: the rest of the file is
+/// taken to be written at its input size, with no saving counted for packing objects into object
+/// streams (usually a few percent of a small file, more for one of many small objects), or for
+/// the objects a full rewrite leaves out — those no page or the catalog reaches, and the
+/// superseded revisions of an incrementally updated file, which can be most of it. So the rest
+/// of the estimate is conservative — it tends to be at or above what Compress writes, most for
+/// an incrementally updated file; extrapolated images and streams can come out on either side,
+/// and a very small file can grow by a few hundred bytes of structure the estimate doesn't
+/// count. Sampled images are estimated at exactly the bytes Compress writes for them; the
+/// accuracy of the rest depends on how alike a group's images are. For an exact size, run
+/// <c>Pdf.Compress</c> to a stream that only counts the bytes written to it.
 /// </para>
 /// <para>
 /// <see cref="Diagnostics"/> is result-scoped, as on <see cref="CompressionResult"/>: the
@@ -68,11 +82,13 @@ namespace PlumePdf;
 /// </example>
 public sealed class CompressionEstimate
 {
-    internal CompressionEstimate(long inputBytes, long estimatedOutputBytes, int sampledImages, IReadOnlyList<PlannedImageCompression> images, DiagnosticCollection diagnostics)
+    internal CompressionEstimate(long inputBytes, long estimatedOutputBytes, int sampledImages, long estimatedNonImageSavedBytes, int sampledNonImageStreams, IReadOnlyList<PlannedImageCompression> images, DiagnosticCollection diagnostics)
     {
         InputBytes = inputBytes;
         EstimatedOutputBytes = estimatedOutputBytes;
         SampledImages = sampledImages;
+        EstimatedNonImageSavedBytes = estimatedNonImageSavedBytes;
+        SampledNonImageStreams = sampledNonImageStreams;
         Images = images;
         Diagnostics = diagnostics;
     }
@@ -94,6 +110,18 @@ public sealed class CompressionEstimate
     /// in the same order: by input object number, then the inline images in page order.
     /// </summary>
     public IReadOnlyList<PlannedImageCompression> Images { get; }
+
+    /// <summary>
+    /// The estimated saving, in bytes, on every stream <see cref="Images"/> doesn't cover (content
+    /// streams, fonts, ICC profiles and the like), from the lossless levers: the payload of each
+    /// stream written once as a duplicate of an identical one, plus what Flate-compressing the
+    /// unfiltered ones saves (see this type's remarks). Zero when
+    /// <see cref="PdfCompressOptions.Lossless"/> is off.
+    /// </summary>
+    public long EstimatedNonImageSavedBytes { get; }
+
+    /// <summary>How many of the unfiltered non-image streams were trial-Flated: at most 32, reading at most 32 MiB of payload (see this type's remarks).</summary>
+    public int SampledNonImageStreams { get; }
 
     /// <summary>The call's result-scoped diagnostics (see this type's remarks).</summary>
     public DiagnosticCollection Diagnostics { get; }

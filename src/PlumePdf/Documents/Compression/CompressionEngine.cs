@@ -27,6 +27,9 @@ internal sealed class CompressionHooks
 
     /// <summary>The directory a non-seekable input is spooled to, in place of <see cref="Path.GetTempPath"/>.</summary>
     public string? SpoolDirectory { get; init; }
+
+    /// <summary>The payload bytes an estimate's non-image stream samples may read, in place of <see cref="CompressionEstimator.StreamSampleBudget"/>.</summary>
+    public long NonImageSampleBudget { get; init; } = CompressionEstimator.StreamSampleBudget;
 }
 
 /// <summary>
@@ -321,7 +324,7 @@ internal static class CompressionEngine
         var progress = CompressionProgressReporter.For(compress.Progress);
         var plan = Plan(document, settings, effective, progress, diagnostics, cancellationToken, hooks);
 
-        var sampled = CompressionEstimator.Run(document.Objects, plan, settings, effective, progress, cancellationToken);
+        var sampled = CompressionEstimator.Run(document.Objects, plan, settings, effective, progress, cancellationToken, hooks?.NonImageSampleBudget ?? CompressionEstimator.StreamSampleBudget);
         var decisions = Decisions(document.Objects, plan, sampled.Records);
         Summarize(decisions, sampled.Records, settings, diagnostics, estimate: true);
 
@@ -356,8 +359,7 @@ internal static class CompressionEngine
                 isSampled));
         }
 
-        var duplicates = CompressionEstimator.NonImageDuplicateBytes(document.Objects, plan);
-        return new CompressionEstimate(inputBytes, inputBytes - saved - duplicates, sampled.Sampled.Count, images, diagnostics);
+        return new CompressionEstimate(inputBytes, inputBytes - saved - sampled.NonImageSavedBytes, sampled.Sampled.Count, sampled.NonImageSavedBytes, sampled.SampledStreams, images, diagnostics);
     }
 
     // The refusals that need the opened source, in Compress's order (argument errors and

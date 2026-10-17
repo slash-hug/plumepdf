@@ -339,39 +339,129 @@ public class CompressEstimateTests(ITestOutputHelper output)
 
     [Theory]
     [MemberData(nameof(PlanCases))]
-    public void EstimatedOutputBytes_IsInputLessEveryImagesEstimatedSaving_LessDuplicateStreams(string fixture, string levers)
+    public void EstimatedOutputBytes_IsInputLessTheImagesAndTheNonImageSavings(string fixture, string levers)
     {
         var pdf = Fixture(fixture);
         var options = Levers(levers);
         var estimate = Estimate(pdf, options);
 
-        // The fixtures repeat no stream but images and page content: with the lossless levers
-        // on, every repeat of a content stream is written once.
-        var duplicates = options?.Lossless == false ? 0 : RepeatedContentBytes(pdf.Build());
         var saved = estimate.Images.Where(static i => i.SourceReference is not null).Sum(static i => i.BytesBefore - i.EstimatedBytesAfter);
-        Assert.Equal(estimate.InputBytes - saved - duplicates, estimate.EstimatedOutputBytes);
+        Assert.Equal(estimate.InputBytes - saved - estimate.EstimatedNonImageSavedBytes, estimate.EstimatedOutputBytes);
         Assert.Equal(estimate.InputBytes - estimate.EstimatedOutputBytes, estimate.EstimatedSavedBytes);
+
+        // The fixtures repeat no stream but images and page content: with the lossless levers
+        // on, every repeat of a content stream is written once, and the copy kept may be Flated.
+        if (options?.Lossless == false)
+        {
+            Assert.Equal(0, estimate.EstimatedNonImageSavedBytes);
+            Assert.Equal(0, estimate.SampledNonImageStreams);
+        }
+        else
+        {
+            Assert.True(estimate.EstimatedNonImageSavedBytes >= RepeatedContentBytes(pdf.Build()));
+        }
     }
 
     [Fact]
-    public void ADuplicateNonImageStream_CountsAsRemoved()
+    public void ADuplicateNonImageStream_CountsAsRemoved_AndTheCopyKeptAsFlated()
     {
-        // Two pages with byte-identical content streams: the lossless levers write one.
+        // Two pages with byte-identical, unfiltered content streams: the lossless levers write
+        // one, Flate-compressed (it's sampled, so its saving is the real one).
         var content = "0 0 10 10 re f ".PadRight(4000, ' ');
         var pdf = new ScanTestPdf().Page(3, content).Page(5, content);
 
         var estimate = Estimate(pdf, null);
         var withoutLossless = Estimate(pdf, new PdfCompressOptions { Lossless = false });
 
+        var flated = CompressionTestImages.Flate(System.Text.Encoding.Latin1.GetBytes(content)).Length + CompressionEstimator.FilterEntryBytes;
         Assert.Empty(estimate.Images);
-        Assert.Equal(estimate.InputBytes - 4000, estimate.EstimatedOutputBytes);
+        Assert.Equal(1, estimate.SampledNonImageStreams);
+        Assert.Equal(4000 + (4000 - flated), estimate.EstimatedNonImageSavedBytes);
+        Assert.Equal(estimate.InputBytes - estimate.EstimatedNonImageSavedBytes, estimate.EstimatedOutputBytes);
         Assert.Equal(withoutLossless.InputBytes, withoutLossless.EstimatedOutputBytes);
+    }
+
+    [Fact]
+    public void OnlyTheStreamsTheWriteWouldFlate_AreCounted()
+    {
+        var text = string.Concat(Enumerable.Repeat("BT /F1 12 Tf (Hello) Tj ET ", 400));
+        var pdf = new ScanTestPdf()
+            .Stream(20, "/Type /Metadata /Subtype /XML", text) // XMP stays unfiltered
+            .Stream(22, "/F (external.dat)", text) // external file data
+            .Stream(24, "/Filter /ASCIIHexDecode", text) // already filtered
+            .Stream(26, string.Empty, text) // reachable from nothing: never written
+            .Page(3, "0 0 10 10 re f", extra: "/Metadata 20 0 R /X1 22 0 R /X2 24 0 R");
+
+        var estimate = Estimate(pdf, null);
+
+        // Only the page's content stream is eligible, and it is too small to gain from Flate.
+        Assert.Equal(1, estimate.SampledNonImageStreams);
+        Assert.Equal(0, estimate.EstimatedNonImageSavedBytes);
+    }
+
+    [Fact]
+    public void ManyEligibleStreams_TheLargest32AreSampled_TheRestExtrapolated()
+    {
+        var pdf = new ScanTestPdf();
+        for (var page = 0; page < 40; page++)
+        {
+            pdf.Page(3 + (2 * page), ContentOperators(page, 200 + (page * 10)));
+        }
+
+        var estimate = Estimate(pdf, null);
+        var (actual, _) = Compress(pdf, null, Deterministic);
+
+        Assert.Equal(32, estimate.SampledNonImageStreams);
+        var error = (double)(estimate.EstimatedOutputBytes - actual.OutputBytes) / actual.OutputBytes;
+        output.WriteLine($"input {estimate.InputBytes}, estimated {estimate.EstimatedOutputBytes} (non-image saving {estimate.EstimatedNonImageSavedBytes}), actual {actual.OutputBytes}, error {error:P2}");
+
+        // Measured: 4.3% over (both TFMs), where counting no non-image saving was 543% over.
+        Assert.InRange(error, 0.02, 0.07);
+    }
+
+    [Fact]
+    public void TheStreamSampleBudget_SkipsAStreamThatDoesNotFit()
+    {
+        var (large, medium, small) = (ContentOperators(1, 2000), ContentOperators(2, 600), ContentOperators(3, 300));
+        var pdf = new ScanTestPdf().Page(3, large).Page(5, medium).Page(7, small);
+        var source = Write(pdf);
+        try
+        {
+            // Room for the two smaller streams, not the largest: it is passed over, they are read.
+            var budget = new CompressionHooks { NonImageSampleBudget = medium.Length + small.Length };
+            var estimate = CompressionEngine.Estimate(source, null, Deterministic, CancellationToken.None, budget);
+
+            Assert.Equal(2, estimate.SampledNonImageStreams);
+            Assert.True(estimate.EstimatedNonImageSavedBytes > large.Length / 2, "the largest is extrapolated from the others' ratio");
+        }
+        finally
+        {
+            Delete(source);
+        }
+    }
+
+    [Fact]
+    public void StreamSamples_AreLargestFirst_WithinTheCountAndByteBudget()
+    {
+        Assert.Equal([0, 1, 2], CompressionEstimator.StreamSamples([30, 20, 10], budget: 100, maximum: 32));
+        Assert.Equal([1, 2], CompressionEstimator.StreamSamples([300, 20, 10], budget: 100, maximum: 32));
+        Assert.Equal([0, 2], CompressionEstimator.StreamSamples([60, 50, 30], budget: 100, maximum: 32));
+        Assert.Equal([0, 1], CompressionEstimator.StreamSamples([5, 5, 5], budget: 100, maximum: 2));
+        Assert.Empty(CompressionEstimator.StreamSamples([500], budget: 100, maximum: 32));
+    }
+
+    [Fact]
+    public void AnUnsampledStream_SavesWhatTheRatioPredicts_LessTheFilterEntry_NeverBelowZero()
+    {
+        Assert.Equal(1000 - (250 + CompressionEstimator.FilterEntryBytes), CompressionEstimator.ExtrapolatedFlateSaving(1000, 0.25));
+        Assert.Equal(0, CompressionEstimator.ExtrapolatedFlateSaving(20, 0.25));
+        Assert.Equal(0, CompressionEstimator.ExtrapolatedFlateSaving(1000, 1.0));
     }
 
     // Measured (both TFMs, macOS arm64): the scan's estimate is 6.5% over the written size (the
     // images alone 5.9% over: three samples from 24 pages whose noise differs page to page);
-    // the mixed document's 1.4% over (every rewritten image sampled, so the images are exact
-    // and the gap is the unestimated structure); many groups with the cap hit, 3.7% over (the
+    // the mixed document's 1.3% over (every rewritten image sampled, so the images are exact
+    // and the gap is the unestimated object-stream packing); many groups with the cap hit, 3.7% over (the
     // images 1.4% under). The bands allow for another zlib build's Flate output.
     [Fact]
     public void Accuracy_OnAHomogeneousJpegScan_IsWithinTheMeasuredBand()
@@ -447,7 +537,8 @@ public class CompressEstimateTests(ITestOutputHelper output)
 
         Assert.Equal([CompressionStage.Planning, CompressionStage.Sampling], progress.Reports.Select(static r => r.Stage).Distinct());
         var sampling = progress.Reports.Where(static r => r.Stage == CompressionStage.Sampling).ToList();
-        Assert.Equal(Enumerable.Range(0, estimate.SampledImages + 1).Select(i => new CompressionProgress(CompressionStage.Sampling, i, estimate.SampledImages)), sampling);
+        var total = estimate.SampledImages + estimate.SampledNonImageStreams;
+        Assert.Equal(Enumerable.Range(0, total + 1).Select(i => new CompressionProgress(CompressionStage.Sampling, i, total)), sampling);
         Assert.Equal(new CompressionProgress(CompressionStage.Planning, 3, 3), progress.Reports.Last(static r => r.Stage == CompressionStage.Planning));
     }
 
@@ -613,6 +704,10 @@ public class CompressEstimateTests(ITestOutputHelper output)
 
     // ---- Helpers ----
 
+    // Distinct, compressible page content: 'lines' lines of text-showing operators.
+    private static string ContentOperators(int seed, int lines) =>
+        string.Concat(Enumerable.Range(0, lines).Select(i => $"BT /F1 {9 + ((i + seed) % 5)} Tf {(i * 7) % 500} {(i * 13) % 700} Td (Line {i} of page {seed}) Tj ET\n"));
+
     // The bytes of every page content stream identical to an earlier page's.
     private static long RepeatedContentBytes(byte[] pdf)
     {
@@ -663,7 +758,7 @@ public class CompressEstimateTests(ITestOutputHelper output)
 
     private static string Describe(CompressionEstimate estimate) =>
         string.Join('\n', [
-            $"{estimate.InputBytes} {estimate.EstimatedOutputBytes} {estimate.SampledImages}",
+            $"{estimate.InputBytes} {estimate.EstimatedOutputBytes} {estimate.SampledImages} {estimate.EstimatedNonImageSavedBytes} {estimate.SampledNonImageStreams}",
             .. estimate.Images.Select(static i => $"{i.SourceReference} {i.PageIndex} {i.PlannedAction} {i.SkipReason} {i.DuplicateOf} {i.BytesBefore} {i.EstimatedBytesAfter} {i.Sampled} {i.WidthAfter}x{i.HeightAfter} {i.EncodingBefore}>{i.EncodingAfter} {i.EffectiveDpiAfter}"),
             .. estimate.Diagnostics.Select(static d => $"{d.Code} {d.Message}"),
         ]);

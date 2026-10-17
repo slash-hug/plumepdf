@@ -170,7 +170,13 @@ opened document only) and planning pass, then, instead of the save, a sampling s
 at most 16 planned images — three per group of (encoding read, planned action, soft mask),
 groups dealt one sample each in turn, largest first — to the write-time transform itself, one
 at a time and read without caching, keeping only each one's small written-image record. Every
-other image's size is extrapolated from its group's bytes per planned pixel, and the report is
+other image's size is extrapolated from its group's bytes per planned pixel. With the lossless
+levers on, it also walks the graph the writer's discovery would (from `/Root` and `/Info`,
+dictionaries only, through canonical copies, with the writer's own `FindReferences`), keeps the
+non-image streams the lossless lever's own `IsFlateCandidate` rule admits, trial-Flates the
+largest that fit a 32-stream / 32 MiB budget through the same transform, and extrapolates the
+rest by the samples' ratio. Object-stream packing and the objects a rewrite drops (unreached,
+or superseded by an incremental update) are not estimated. The report is
 built by the same decision and summary code Compress's result is, so the two can't drift apart.
 Nothing reaches the writer, so the estimate can't predict the save's own late `PLUME2060`.
 

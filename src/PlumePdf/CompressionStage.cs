@@ -35,10 +35,11 @@ public enum CompressionStage
     Planning = 1,
 
     /// <summary>
-    /// <c>Pdf.EstimateCompression</c> only: trial-encoding the sampled images. The unit is
-    /// sampled images encoded, and the total is the number sampled
-    /// (<see cref="CompressionEstimate.SampledImages"/>, at most sixteen; zero when there is
-    /// nothing to sample, reported as one 0-of-0 report).
+    /// <c>Pdf.EstimateCompression</c> only: trial-encoding the sampled images, then trial-Flating
+    /// the sampled non-image streams. The unit is samples encoded, and the total is the number
+    /// chosen (<see cref="CompressionEstimate.SampledImages"/> plus
+    /// <see cref="CompressionEstimate.SampledNonImageStreams"/>, at most 16 + 32; zero when there
+    /// is nothing to sample, reported as one 0-of-0 report).
     /// </summary>
     Sampling = 3,
 

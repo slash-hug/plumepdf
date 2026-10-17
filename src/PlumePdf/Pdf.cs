@@ -644,9 +644,9 @@ public static class Pdf
     /// never runs the writer.
     /// </para>
     /// <para>
-    /// At most sixteen images are trial-encoded, one at a time, through the same code Compress
-    /// writes them with, so memory is bounded by the largest sampled image as Compress's is by
-    /// the largest image. <see cref="PdfCompressOptions.Progress"/> reports
+    /// At most sixteen images and 32 unfiltered non-image streams (32 MiB of payload) are
+    /// trial-encoded, one at a time, through the same code Compress writes them with, so memory
+    /// is bounded by the largest sample as Compress's is by the largest image. <see cref="PdfCompressOptions.Progress"/> reports
     /// <see cref="CompressionStage.Planning"/> then <see cref="CompressionStage.Sampling"/>.
     /// How the sample is chosen and the rest extrapolated, and the exact definition of
     /// <see cref="CompressionEstimate.EstimatedOutputBytes"/>, are in

@@ -505,8 +505,11 @@ The dry run of Compress (`Pdf.EstimateCompression` → `CompressionEstimate`): t
 and plan, a deterministic, capped **sample** of the images that would be rewritten
 trial-encoded exactly as Compress writes them (at most 3 per group of encoding read × planned
 action × soft mask, 16 per call), every other image's size **extrapolated** from its group's
-bytes per planned pixel, and an estimated output size — with nothing written. A sampled image's
-size is exact; the rest is an estimate, conservative outside the extrapolated images.
+bytes per planned pixel, the same done for the unfiltered non-image streams the lossless Flate
+lever would compress (at most 32 sampled, 32 MiB read, the rest by the samples' ratio), and an
+estimated output size — with nothing written. A sampled image's or stream's size is exact; the
+rest is an estimate, conservative outside the extrapolated parts (object-stream packing and the
+objects a full rewrite drops are not counted).
 _Avoid_: preview, simulation, analysis (it runs real encodes on a sample), "dry-run compress"
 as a mode of Compress (it is its own verb, and never writes)
 

@@ -28,7 +28,7 @@ namespace PlumePdf;
 /// <see cref="ImageCompressionAction.Deduplicated"/>. One report follows each image as it is
 /// written, and a last one, at the total, when the save completes.
 /// <see cref="CompressionStage.Sampling"/> (an estimate only, in place of writing): sampled
-/// images trial-encoded, out of the number sampled, one report after each.
+/// images and non-image streams trial-encoded, out of the number sampled, one report after each.
 /// </para>
 /// <para>
 /// A value type, so reporting allocates nothing.
