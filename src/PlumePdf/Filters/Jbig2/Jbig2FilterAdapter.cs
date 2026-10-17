@@ -76,7 +76,7 @@ internal sealed class Jbig2FilterAdapter : IPdfFilterWithDecodeParms
 
         try
         {
-            return options.Filters.Decode(globalsStream.Dictionary, globalsStream.RawBytes.Span, options, diagnostics, subject, resolver);
+            return options.Filters.DecodePayload(globalsStream.Dictionary, globalsStream.RawBytes, options, diagnostics, subject, resolver);
         }
         catch (PlumePdfException ex)
         {

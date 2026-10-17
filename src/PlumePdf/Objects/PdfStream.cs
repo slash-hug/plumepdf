@@ -47,6 +47,6 @@ public sealed class PdfStream : PdfObject
     public byte[] GetDecodedBytes(PdfFilterRegistry registry, PdfOptions? options = null, Func<IndirectReference, object?>? resolver = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
-        return registry.Decode(Dictionary, RawBytes.Span, options ?? PdfOptions.Default, resolver: resolver);
+        return registry.DecodePayload(Dictionary, RawBytes, options ?? PdfOptions.Default, resolver: resolver);
     }
 }

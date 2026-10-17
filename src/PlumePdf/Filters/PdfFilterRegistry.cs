@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using PlumePdf.Filters;
 using PlumePdf.Filters.Jbig2;
 using PlumePdf.Filters.Jpx;
@@ -258,10 +259,34 @@ public sealed class PdfFilterRegistry
         ArgumentNullException.ThrowIfNull(streamDictionary);
         ArgumentNullException.ThrowIfNull(options);
 
+        // A span can't be handed to IPdfFilter's ReadOnlyMemory, so this overload copies once;
+        // the copy is already the caller's own, so an empty chain returns it as-is.
+        return DecodeChain(streamDictionary, rawBytes.ToArray(), payloadIsCopy: true, options, diagnostics, subject, resolver);
+    }
+
+    /// <summary>
+    /// <see cref="Decode"/> over a payload already held as memory (a <see cref="PdfStream.RawBytes"/>),
+    /// handed to the first filter without copying, so a large image stream isn't held twice
+    /// while it decodes. The result is always a fresh array the caller may change.
+    /// </summary>
+    internal byte[] DecodePayload(PdfDictionary streamDictionary, ReadOnlyMemory<byte> rawBytes, PdfOptions options, DiagnosticCollection? diagnostics = null, IndirectReference? subject = null, Func<IndirectReference, object?>? resolver = null) =>
+        DecodeChain(streamDictionary, rawBytes, payloadIsCopy: false, options, diagnostics, subject, resolver);
+
+    private byte[] DecodeChain(PdfDictionary streamDictionary, ReadOnlyMemory<byte> rawBytes, bool payloadIsCopy, PdfOptions options, DiagnosticCollection? diagnostics, IndirectReference? subject, Func<IndirectReference, object?>? resolver)
+    {
         var filterNames = ReadNameChain(streamDictionary, PdfName.Filter, resolver, options, diagnostics, subject);
         var decodeParms = ReadDictChain(streamDictionary, PdfName.DecodeParms, filterNames.Count, resolver, options, diagnostics, subject);
 
-        var current = rawBytes.ToArray();
+        if (filterNames.Count == 0)
+        {
+            return payloadIsCopy && MemoryMarshal.TryGetArray(rawBytes, out var copy) && copy is { Offset: 0, Array: { } array } && array.Length == copy.Count
+                ? array
+                : rawBytes.ToArray();
+        }
+
+        var source = MemoryMarshal.TryGetArray(rawBytes, out var segment) ? segment.Array : null;
+        var input = rawBytes;
+        byte[] current = [];
         for (var i = 0; i < filterNames.Count; i++)
         {
             var name = filterNames[i];
@@ -271,9 +296,21 @@ public sealed class PdfFilterRegistry
             }
 
             current = filter is IPdfFilterWithDecodeParms parmsAwareFilter
-                ? parmsAwareFilter.Decode(current, decodeParms[i], options, diagnostics, subject, resolver)
-                : filter.Decode(current, options, diagnostics, subject);
+                ? parmsAwareFilter.Decode(input, decodeParms[i], options, diagnostics, subject, resolver)
+                : filter.Decode(input, options, diagnostics, subject);
+
+            // A filter may hand back the array it was given, and one written when every filter
+            // got an exact-length copy may hand back the whole array behind a slice. Read either
+            // as "unchanged": take a copy of exactly the payload, so the next stage never sees
+            // bytes outside it and the caller never gets the stream's own RawBytes.
+            if (source is not null && ReferenceEquals(current, source))
+            {
+                current = rawBytes.ToArray();
+                source = null;
+            }
+
             current = ApplyPredictor(current, decodeParms[i]);
+            input = current;
         }
 
         return current;
