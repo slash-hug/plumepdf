@@ -18,6 +18,8 @@ var result = Pdf.Compress("scan.pdf", "scan-small.pdf", new PdfCompressOptions
 // result.Diagnostics: PLUME6091 "Compress wrote 4 JPEG image(s) at quality 85 ..."
 ```
 
+`Pdf.EstimateCompression` (the dry run of `Compress`) records the same summary on `CompressionEstimate.Diagnostics`, worded "Compress would write ... sampled JPEG image(s) at quality 85 ...", counting the images it trial-encoded.
+
 **Fix:** None is needed. To choose the quality yourself, set `PdfImageCompression.JpegQuality`;
 it applies to every re-encoded image and this note isn't recorded.
 

@@ -12,6 +12,8 @@ than write a document that still *looks* signed.
 Pdf.Compress("signed-contract.pdf", "contract-small.pdf"); // throws PLUME6084
 ```
 
+`Pdf.EstimateCompression` (the dry run of `Compress`) raises the same code for the same source, since the `Compress` call it estimates would refuse. With `AllowInvalidatingSignatures` it strips the signatures only from its own in-memory copy of the document, never from the file, and writes nothing.
+
 **Fix:** Opt in explicitly. `Compress` then strips the signature fields and their widgets
 and the catalog's `/Perms` and `/DSS` before writing, so the output is honestly unsigned:
 

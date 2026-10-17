@@ -24,6 +24,8 @@ var result = Pdf.Compress("scan.pdf", "scan-small.pdf", new PdfCompressOptions
 // result.Diagnostics: PLUME6085 "Compress left the samples of 12 image(s) unchanged (Bilevel): ..."
 ```
 
+`Pdf.EstimateCompression` (the dry run of `Compress`) records the same summary on `CompressionEstimate.Diagnostics`, worded "Compress would leave the samples of ...", for the images its plan skips.
+
 **Fix:** None is needed for most reasons — the image's samples are written unchanged (with
 the lossless levers on, an unfiltered stream may still be Flate-compressed losslessly; see
 `BytesAfter`). For

@@ -67,6 +67,24 @@ only by diffing output. Entries land in the same change as the behavior they des
   `CompressionProgress` is a `readonly record struct`, so reporting allocates nothing per
   report. `CompressAsync`'s spool copy is now a chunked loop instead of `Stream.CopyToAsync`,
   still cancellable between chunks.
+- **`Pdf.EstimateCompression` is a dry run of `Pdf.Compress`** (#49), for the path and `Stream`
+  overloads, each with an `…Async` twin. It applies Compress's refusals in the same order and
+  with the same codes (less those about the output), makes the same plan, trial-encodes a
+  deterministic sample of the images Compress would rewrite through the same encoder (at most 3
+  per group of encoding read × planned action × soft mask, 16 per call, groups dealt one each
+  in turn, largest first), extrapolates every other image by its group's bytes per planned
+  pixel (never larger than its bytes before), and returns a `CompressionEstimate`
+  (`InputBytes`, `EstimatedOutputBytes`, `EstimatedSavedBytes`, `SampledImages`, and one
+  `PlannedImageCompression` per image with `PlannedAction`, planned sizes and encodings,
+  `EstimatedBytesAfter` and `Sampled`) — without writing anything or touching the source; with
+  `AllowInvalidatingSignatures`, signatures are stripped only from its own copy. Sampled images
+  are estimated at exactly the bytes Compress writes; the rest of the file is assumed unchanged,
+  so the estimate tends to be at or above the written size (measured on the repository's test
+  documents: +6.5 % on a 24-page JPEG scan, +1.4 % on a mixed document, +3.7 % with the sample
+  cap hit). A new `CompressionStage.Sampling` (value 3, declared after `Planning`) reports the
+  trial encodes; `Compress` never reports it, and an estimate never reports `Writing`. Its
+  diagnostics are Compress's summaries in the conditional ("Compress would ..."), on the
+  estimate. `Compress`'s own output is byte-identical to before.
 
 ### Fixed
 

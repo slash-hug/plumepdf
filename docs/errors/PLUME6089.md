@@ -13,6 +13,8 @@ var result = Pdf.Compress("archive-pdfa1b.pdf", "archive-small.pdf");
 // result.Diagnostics: PLUME6089 "Compress did not pack objects into object streams ..."
 ```
 
+`Pdf.EstimateCompression` (the dry run of `Compress`) records the same entry on `CompressionEstimate.Diagnostics` when the `Compress` call it estimates would skip the packing.
+
 **Fix:** None is needed. A PDF/A-1 source is also written with a `%PDF-1.4` header, so that
 `Pdf.ValidatePdfA`, which requires 1.4 for PDF/A-1, still passes on the output (PDF/A-1 itself
 doesn't require that header). That happens whenever `PdfOptions.PdfAConformance` is `None` and

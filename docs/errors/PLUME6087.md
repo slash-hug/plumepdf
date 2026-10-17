@@ -17,6 +17,8 @@ var result = Pdf.Compress("report.pdf", "report-small.pdf", new PdfCompressOptio
 // result.Diagnostics: PLUME6087 "Compress kept the original encoding of 3 image(s) ..."
 ```
 
+`Pdf.EstimateCompression` (the dry run of `Compress`) records the same summary on `CompressionEstimate.Diagnostics`, worded "Compress would keep the original encoding of ... sampled image(s)", for the images it trial-encoded (`PlannedImageCompression.Sampled`) whose trial wasn't smaller; an unsampled image is planned, not tried, so `Compress` may still keep more originals.
+
 **Fix:** None is needed. For more reduction, lower `JpegQuality` or `MaxDpi`.
 
 **Recovery attempted:** The original image stream is written unchanged.

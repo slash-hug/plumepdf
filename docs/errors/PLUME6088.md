@@ -13,6 +13,8 @@ var result = Pdf.Compress("old.pdf", "old-small.pdf", options: PdfOptions.Defaul
 // result.Diagnostics: PLUME6088 "Compress raised the output version from 1.4 to 1.5 ..."
 ```
 
+`Pdf.EstimateCompression` (the dry run of `Compress`) records the same entry on `CompressionEstimate.Diagnostics` when the `Compress` call it estimates would raise the version.
+
 **Fix:** Nothing, if PDF 1.5 readers are fine downstream. To keep the lower version, turn
 the lossless levers off — only the image levers then change the output:
 
