@@ -175,8 +175,12 @@ levers on, it also walks the graph the writer's discovery would (from `/Root` an
 dictionaries only, through canonical copies, with the writer's own `FindReferences`), keeps the
 non-image streams the lossless lever's own `IsFlateCandidate` rule admits, trial-Flates the
 largest that fit a 32-stream / 32 MiB budget through the same transform, and extrapolates the
-rest by the samples' ratio. Object-stream packing and the objects a rewrite drops (unreached,
-or superseded by an incremental update) are not estimated. The report is
+rest by the samples' ratio. A sample kept under the never-larger rule contributes its trial
+encoding's size (carried as `WrittenImage.TrialBytes`) to its group's ratio. When the effective
+save doesn't pack and the source has object streams, the same walk feeds an unpacking estimate
+from the cross-reference entries: reachable members serialized exactly, less the object and
+cross-reference streams, plus a classic table. Object-stream packing and the objects a rewrite
+drops (unreached, or superseded by an incremental update) are not estimated. The report is
 built by the same decision and summary code Compress's result is, so the two can't drift apart.
 Nothing reaches the writer, so the estimate can't predict the save's own late `PLUME2060`.
 

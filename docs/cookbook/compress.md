@@ -265,15 +265,18 @@ foreach (var group in estimate.Images.GroupBy(static i => (i.PlannedAction, i.Sa
     report.AppendLine($"{group.Key.PlannedAction}, sampled {group.Key.Sampled}: {group.Count()}");
 }
 
-// Worth it? Then compress for real: the result says what actually happened.
-if (estimate.EstimatedOutputBytes < estimate.InputBytes / 2)
+// Samples and duplicates are exact; extrapolated savings can be off either way. Against
+// a size cap, hold the cautious figure: the output if none of them materialised.
+var cautious = estimate.EstimatedOutputBytes + estimate.ExtrapolatedSavedBytes;
+if (cautious < estimate.InputBytes)
 {
     var result = Pdf.Compress("output/scans.pdf", "output/scans-small.pdf", levers);
     var error = (double)(estimate.EstimatedOutputBytes - result.OutputBytes) / result.OutputBytes;
     report.AppendLine($"Estimate within 10% of the output: {Math.Abs(error) < 0.10}");
+    report.AppendLine($"Output within the cautious figure: {result.OutputBytes <= cautious}");
 }
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L202-L227' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-estimate' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L203-L231' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-estimate' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 <!-- snippet: CookbookTests.CompressEstimate.verified.txt -->
@@ -285,9 +288,10 @@ Non-image streams trial-Flated: 0, saving: True
 DownsampledAndReencoded, sampled False: 5
 DownsampledAndReencoded, sampled True: 3
 Estimate within 10% of the output: True
+Output within the cautious figure: True
 Exact size, nothing kept: True
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.CompressEstimate.verified.txt#L1-L7' title='Snippet source file'>snippet source</a> | <a href='#snippet-CookbookTests.CompressEstimate.verified.txt' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.CompressEstimate.verified.txt#L1-L8' title='Snippet source file'>snippet source</a> | <a href='#snippet-CookbookTests.CompressEstimate.verified.txt' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 `estimate.Images` has one `PlannedImageCompression` per image Compress would report, in the
@@ -302,8 +306,9 @@ numbers are made — deterministically, so the same input and options always giv
   bytes, one sample each in turn, up to 3 per group and 16 per call, spread evenly across each
   group in object-number order. With the lossless levers on, unfiltered images no lossy lever
   changes form groups too (their sample shows what the Flate lever saves).
-- **Unsampled rewritten images** are extrapolated from their group: the samples' bytes written
-  over their planned pixels, times the image's planned pixels, never more than its bytes
+- **Unsampled rewritten images** are extrapolated from their group: the samples' encoded bytes
+  (a sample kept under the never-larger rule counts its trial encoding, not the original) over
+  their planned pixels, times the image's planned pixels, never more than its bytes
   before. A group left unsampled by the cap borrows the most similar sampled group's ratio among
   those writing the same encoding; with none, the image is assumed unchanged. Their
   `PlannedAction` is the plan's — `KeptOriginal` appears only for sampled images.
@@ -319,14 +324,26 @@ numbers are made — deterministically, so the same input and options always giv
   `/Filter /FlateDecode` entry, when that is smaller); every other one,
   `before − min(before, round(before × ratio) + 21)`, with `ratio` the samples' total bytes
   written over bytes read.
+- **Unpacking** (`EstimatedStructureGrowthBytes`): when the save doesn't pack objects
+  (`Lossless = false`, or PDF/A-1) and the source keeps objects in object streams, every one the
+  save reaches is written as its own object: counted at its exact serialized size, less the
+  object and cross-reference streams no longer written, plus a classic cross-reference table at
+  20 bytes per object. Zero otherwise.
 - **`EstimatedOutputBytes`** is exactly `InputBytes`, less each image entry's
-  `BytesBefore - EstimatedBytesAfter`, less `EstimatedNonImageSavedBytes`. The rest of the file
-  is assumed unchanged: no saving is counted for packing objects into object streams (usually a
-  few percent), or for the objects a full rewrite leaves out — those nothing reaches, and the
-  superseded revisions of an incrementally updated file, which can be most of a small one. So
-  the estimate tends to be at or above what Compress writes (`EstimatedSavedBytes` can then be
-  negative), most of all for an incrementally updated file. A very small file is the exception:
-  a rewrite can add a few hundred bytes of structure the estimate doesn't count.
+  `BytesBefore - EstimatedBytesAfter`, less `EstimatedNonImageSavedBytes`, plus
+  `EstimatedStructureGrowthBytes`.
+
+**How far to trust it.** Sampled images and streams and the duplicates written once are exact:
+they are the bytes Compress writes. Extrapolated parts — unsampled images and streams,
+`ExtrapolatedSavedBytes` in all — can be off in either direction when a group's members are
+unlike its samples (a blank page sampled among noisy ones makes the rest look tiny). For a
+cautious figure, use `EstimatedOutputBytes + ExtrapolatedSavedBytes`: the output if none of the
+extrapolated saving materialised. Left out, and so making the output smaller than estimated:
+object-stream packing (usually a few percent) and the objects a full rewrite drops — those
+nothing reaches, and the superseded revisions of an incrementally updated file, which can be
+most of it. Also left out: the few hundred bytes of structure a rewrite can add to a very small
+file. `estimate.SignaturesToStrip` says what `result.SignaturesStripped` would be, and each
+image's `EstimatedSourceQuality` what Compress would report.
 
 **Measured accuracy** (the repository's tests, `MaxDpi` 100 or 150 and `JpegQuality` 70–80):
 a 24-page JPEG scan whose pages differ in noise, estimated from 3 samples, came out 6.5 %
@@ -334,14 +351,20 @@ above the written size (its images alone 5.9 % above); a mixed document of photo
 text-like image, soft masks, a duplicate and skipped images, with every rewritten image
 sampled, 1.3 % above (its images exact); a document with more groups than the cap allows,
 3.7 % above (its images 1.4 % below); 40 pages of unfiltered text content, 32 of them sampled,
-4.3 % above. Lossless only, the estimate was at or above the written size on every test
-document. Across a sample of 295 files from the conformance corpora (most of them small and
-image-free), with `MaxDpi = 150` and `JpegQuality = 70`: for files of 100 KB or more the
-error was 0.5 % at the median and 29 % at the 90th percentile; for files of 10 KB or more,
-6 % and 63 %. Nearly all of the remaining over-estimate is what the estimate leaves out —
-superseded revisions of incrementally updated files, then object-stream packing; the only file
-of 10 KB or more it under-estimated was image-heavy, by 8 %, where extrapolated images came out
-10 % under. The extrapolation is only as good as a group's images (or streams) are alike.
+4.3 % above; an object-stream source saved with `Lossless = false`, 0.3 % below. Across a
+sample of 295 files from the conformance corpora (most of them small and image-free), with
+`MaxDpi = 150` and `JpegQuality = 70`, the error (estimate against what Compress wrote) was:
+
+| Files | Lossless on: median / p90 / max | most under | `Lossless = false`: median / p90 / max | most under |
+|---|---|---|---|---|
+| 100 KB or more (15) | 0.4 % / 29 % / 118 % | none | 0.03 % / 22 % / 105 % | −0.2 % |
+| 10 KB or more (90) | 6.1 % / 63 % / 407 % | none | 0.7 % / 41 % / 359 % | −4.1 % |
+| all (295) | 8.6 % / 39 % / 407 % | −63 % | 1.4 % / 9.3 % / 359 % | −58 % |
+
+The large over-estimates are what the estimate leaves out (superseded revisions of
+incrementally updated files, then object-stream packing); the large under-estimates are files
+under 1 KB that a rewrite grows by a few hundred bytes. With the lossless levers on, the
+cautious figure covered the output for every file of 10 KB or more.
 
 `estimate.Diagnostics` carries the same result-scoped summaries Compress raises, in the
 conditional ("Compress would leave …"): `PLUME6088`/`6089`/`6090` about the options,
@@ -367,7 +390,7 @@ using (var input = File.OpenRead("output/scans.pdf"))
     report.AppendLine($"Exact size, nothing kept: {counted.OutputBytes == new FileInfo("output/scans-small.pdf").Length}");
 }
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L229-L237' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-estimate-exact' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L233-L241' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-estimate-exact' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 ## Streams in and out
@@ -509,7 +532,7 @@ report.AppendLine($"Image actions: {string.Join(", ", result.Images.Select(stati
 report.AppendLine($"Still tagged: {structure.IsTagged}, language: {structure.Language}");
 report.AppendLine($"Declared: PDF/A-{pdfa.DeclaredPart}{pdfa.DeclaredConformance}, conformant (self-check): {pdfa.IsConformant}");
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L272-L286' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-tagged-pdfa' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.Compress.cs#L276-L290' title='Snippet source file'>snippet source</a> | <a href='#snippet-compress-tagged-pdfa' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 <!-- snippet: CookbookTests.CompressTaggedPdfA.verified.txt -->

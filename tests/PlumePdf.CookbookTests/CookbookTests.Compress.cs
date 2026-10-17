@@ -198,6 +198,7 @@ public partial class CookbookTests
     {
         var report = new StringBuilder();
         BuildMultiPageScan("output/scans.pdf", pages: 8);
+        File.Delete("output/scans-small.pdf");
 
         // begin-snippet: compress-estimate
         // A dry run: the plan Compress would make, a few images trial-encoded exactly as
@@ -217,12 +218,15 @@ public partial class CookbookTests
             report.AppendLine($"{group.Key.PlannedAction}, sampled {group.Key.Sampled}: {group.Count()}");
         }
 
-        // Worth it? Then compress for real: the result says what actually happened.
-        if (estimate.EstimatedOutputBytes < estimate.InputBytes / 2)
+        // Samples and duplicates are exact; extrapolated savings can be off either way. Against
+        // a size cap, hold the cautious figure: the output if none of them materialised.
+        var cautious = estimate.EstimatedOutputBytes + estimate.ExtrapolatedSavedBytes;
+        if (cautious < estimate.InputBytes)
         {
             var result = Pdf.Compress("output/scans.pdf", "output/scans-small.pdf", levers);
             var error = (double)(estimate.EstimatedOutputBytes - result.OutputBytes) / result.OutputBytes;
             report.AppendLine($"Estimate within 10% of the output: {Math.Abs(error) < 0.10}");
+            report.AppendLine($"Output within the cautious figure: {result.OutputBytes <= cautious}");
         }
         // end-snippet
 

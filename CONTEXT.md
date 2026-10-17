@@ -507,9 +507,11 @@ trial-encoded exactly as Compress writes them (at most 3 per group of encoding r
 action × soft mask, 16 per call), every other image's size **extrapolated** from its group's
 bytes per planned pixel, the same done for the unfiltered non-image streams the lossless Flate
 lever would compress (at most 32 sampled, 32 MiB read, the rest by the samples' ratio), and an
-estimated output size — with nothing written. A sampled image's or stream's size is exact; the
-rest is an estimate, conservative outside the extrapolated parts (object-stream packing and the
-objects a full rewrite drops are not counted).
+estimated output size — with nothing written. Sampled images and streams and duplicates are
+exact; the **extrapolated** parts (`ExtrapolatedSavedBytes`) can be off in either direction when a
+group's members are unlike its samples, so `EstimatedOutputBytes + ExtrapolatedSavedBytes` is the
+**cautious figure** for a size cap. Object-stream packing and the objects a full rewrite drops
+are not counted; unpacking a source's object streams, when the save won't repack, is.
 _Avoid_: preview, simulation, analysis (it runs real encodes on a sample), "dry-run compress"
 as a mode of Compress (it is its own verb, and never writes)
 
