@@ -41,6 +41,26 @@ public class FlateFilterTests
     }
 
     [Fact]
+    public void DecodeMemory_SlicedRawDeflate_ReadsOnlyTheSliceAndStillFallsBack()
+    {
+        // Read in place, the payload is a window on a larger array, and the raw-DEFLATE retry
+        // must re-read that same window from its start.
+        var original = Encoding.ASCII.GetBytes("Some producers emit raw DEFLATE with no zlib header.");
+        var compressed = RawDeflateCompress(original);
+        var backing = new byte[compressed.Length + 6];
+        backing.AsSpan(0, 3).Fill(0xFF);
+        compressed.CopyTo(backing, 3);
+        backing.AsSpan(3 + compressed.Length).Fill(0xFF);
+        var diagnostics = new DiagnosticCollection();
+
+        var decoded = FlateFilter.DecodeMemory(backing.AsMemory(3, compressed.Length), long.MaxValue, diagnostics, null);
+
+        Assert.Equal(original, decoded);
+        Assert.Contains(diagnostics, d => d.Code == "PLUME3001");
+        Assert.DoesNotContain(diagnostics, d => d.Code == "PLUME3003");
+    }
+
+    [Fact]
     public void Decode_RawDeflate_FallsBackAndRoundTrips()
     {
         var original = Encoding.ASCII.GetBytes("Some producers emit raw DEFLATE with no zlib header.");

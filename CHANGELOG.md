@@ -148,6 +148,19 @@ only by diffing output. Entries land in the same change as the behavior they des
 
 ### Changed
 
+- **Decoding a stream no longer copies its encoded payload first (#52).** `PdfStream.GetDecodedBytes`
+  hands a stream's encoded bytes straight to the first filter instead of copying them. So does
+  every decode inside PlumePDF: content streams, fonts, object streams, and the images behind
+  `ExtractImages`, `Rasterize` and `Pdf.Compress`. A large image stream is no longer held twice
+  while it decodes, except a JPEG image: PlumePDF's JPEG decoder still keeps its own copy of the
+  encoded bytes. `FlateDecode` also reads the payload in place, rather than copying it again
+  internally, and again for the raw-DEFLATE retry. Decoding a 32 MiB Flate stream now allocates
+  34 MB, just the decoded output, against 101 MB before. Decoded output is unchanged. The result
+  is still always a new array, even when a filter hands back the bytes it was given. A
+  caller-registered filter that returns the whole array behind a sliced payload is still read as
+  returning exactly the payload. `PdfFilterRegistry.Decode` takes a span, so it still copies once,
+  because `IPdfFilter` receives `ReadOnlyMemory<byte>`.
+
 - **File-system failures in PlumePDF's own file IO now throw `PlumePdfException` with a code,
   not a bare `IOException` (#54).** Writing an output file to a path — `Save`, `SaveIncremental`,
   `Pdf.Compress` and the other path verbs, signing, LTV and document timestamping — used to let
