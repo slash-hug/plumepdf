@@ -149,7 +149,7 @@ only by diffing output. Entries land in the same change as the behavior they des
 ### Changed
 
 - **`Pdf.Compress` needs less memory to re-encode an image (#51).** Re-encoding one
-  image used to peak at about five times its decoded size. It now needs about 1.5 times for a
+  image used to peak at four to five times its decoded size. It now needs about 1.5 times for a
   Flate image re-encoded as JPEG (4.2 times before) and about 2.8 times for a downsampled JPEG
   with full-resolution chroma (4.1 times before); measured on a 6000 × 6000 RGB image. Four
   changes contribute. The JPEG encoder averages each 2×2 group's chroma as it goes instead of
