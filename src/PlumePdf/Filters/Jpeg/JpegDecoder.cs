@@ -779,7 +779,11 @@ internal static class JpegDecoder
             var plane = new byte[sampledWidth * sampledHeight];
             planeStrides[c] = sampledWidth;
 
+            // Each component's coefficients are read only here, so they are released as its plane
+            // is built: the coefficients (2 bytes a sample), the planes and the interleaved
+            // output were otherwise all live at once, about 4x a 4:4:4 image's decoded size.
             var blocks = coefficients[c];
+            coefficients[c] = null!;
 
             // The ushort->float dequant cast hoisted out of the per-block loop:
             // one table per component instead of 64 casts per block. (ushort -> float is exact,

@@ -148,6 +148,18 @@ only by diffing output. Entries land in the same change as the behavior they des
 
 ### Changed
 
+- **`Pdf.Compress` needs less memory to re-encode an image (#51).** Re-encoding one
+  image used to peak at about five times its decoded size. It now needs about 1.5 times for a
+  Flate image re-encoded as JPEG (4.2 times before) and about 2.8 times for a downsampled JPEG
+  with full-resolution chroma (4.1 times before); measured on a 6000 × 6000 RGB image. Four
+  changes contribute. The JPEG encoder averages each 2×2 group's chroma as it goes instead of
+  building two full-size float planes, and it writes its output into one buffer instead of
+  copying it three times. The re-encoder releases the decoded samples once the encoder's planes
+  are built. The JPEG decoder releases each component's DCT coefficients as soon as that
+  component is reconstructed, which helps `Rasterize`, `ExtractImages` and `RasterImage.Decode`
+  as well. Output is byte-identical: the encoder's bytes are pinned by new golden tests, and
+  the decoder change only shortens how long its buffers live.
+
 - **Decoding a stream no longer copies its encoded payload first (#52).** `PdfStream.GetDecodedBytes`
   hands a stream's encoded bytes straight to the first filter instead of copying them. So does
   every decode inside PlumePDF: content streams, fonts, object streams, and the images behind

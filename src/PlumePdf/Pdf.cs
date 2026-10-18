@@ -445,8 +445,8 @@ public static class Pdf
     /// <remarks>
     /// <para>
     /// Memory is bounded by the largest image rather than the file: images are decoded,
-    /// resampled and encoded one at a time while writing, with a working set of roughly five
-    /// times the largest decoded image. Disk needs room for the output-sized temporary file
+    /// resampled and encoded one at a time while writing, with a working set of roughly two to
+    /// three times the largest decoded image. Disk needs room for the output-sized temporary file
     /// beside <paramref name="outputPath"/>.
     /// </para>
     /// <para>
