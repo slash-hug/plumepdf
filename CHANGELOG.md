@@ -84,17 +84,21 @@ only by diffing output. Entries land in the same change as the behavior they des
   group's ratio. With the lossless levers on it also estimates their saving on non-image
   streams: duplicates written once, and the unfiltered streams the Flate lever would compress
   (the largest that fit 32 streams / 32 MiB trial-Flated through the same code, the rest by the
-  samples' ratio). When the save doesn't pack objects and the source has object streams, it
-  estimates the growth from unpacking them. Sampled images and streams and duplicates are
-  exact; extrapolated parts can be off in either direction when a group's members are unlike
-  its samples, so `EstimatedOutputBytes + ExtrapolatedSavedBytes` is the cautious figure for a
-  size cap. Object-stream packing and the objects a full rewrite drops (unreached, or
-  superseded by incremental updates) are not counted. Measured on the repository's test
-  documents: +6.5 % on a 24-page JPEG scan, +1.3 % on a mixed document, +3.7 % with the image
-  sample cap hit, +4.3 % on 40 pages of unfiltered content, −0.3 % on an object-stream source
-  saved with `Lossless = false`; on a 295-file corpus sample, files of 100 KB or more were
-  0.4 % off at the median and 29 % at p90 with the lossless levers on (none under), and
-  0.03 % / 22 % with `Lossless = false` (at worst 0.2 % under). A new `CompressionStage.Sampling`
+  samples' ratio). The output size is then measured, not summed: Compress's own writer runs
+  into a counter that keeps nothing, every stream standing in at its estimated size and none
+  read (#61), so the structure a full rewrite writes is exact — the objects it drops
+  (unreached, or superseded by incremental updates), packing objects into object streams or
+  unpacking a source's, and the cross-reference section (`EstimatedStructureGrowthBytes` is
+  what that comes to, usually negative), and the writer's late `PLUME2060` under `Strict`
+  comes through as Compress's does. Sampled images and streams, duplicates and the structure
+  are exact; extrapolated parts can be off in either direction when a group's members are
+  unlike its samples, so `EstimatedOutputBytes + ExtrapolatedSavedBytes` is the cautious figure
+  for a size cap. Measured on the repository's test documents: +5.9 % on a 24-page JPEG scan
+  (its images +5.9 %), exact on a mixed document with every rewritten image sampled, −1.3 %
+  with the image sample cap hit (its images −1.4 %), −0.5 % on 40 pages of unfiltered content,
+  and exact on files whose superseded revisions, unreachable objects or unpacked small objects
+  are most of the input; on 780 corpus files, every estimate was exact but one, 0.8 % under (50
+  images, 6 sampled), with the lossless levers on or off. A new `CompressionStage.Sampling`
   reports the trial encodes, and the stages are now numbered in their declared order
   (`Spooling` 0, `Planning` 1, `Sampling` 2, `Writing` 3; `Writing` was 2 before this
   release); `Compress` never reports `Sampling`, and an estimate never reports `Writing`. Its

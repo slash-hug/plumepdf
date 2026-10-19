@@ -176,13 +176,18 @@ dictionaries only, through canonical copies, with the writer's own `FindReferenc
 non-image streams the lossless lever's own `IsFlateCandidate` rule admits, trial-Flates the
 largest that fit a 32-stream / 32 MiB budget through the same transform, and extrapolates the
 rest by the samples' ratio. A sample kept under the never-larger rule contributes its trial
-encoding's size (carried as `WrittenImage.TrialBytes`) to its group's ratio. When the effective
-save doesn't pack and the source has object streams, the same walk feeds an unpacking estimate
-from the cross-reference entries: reachable members serialized exactly, less the object and
-cross-reference streams, plus a classic table. Object-stream packing and the objects a rewrite
-drops (unreached, or superseded by an incremental update) are not estimated. The report is
-built by the same decision and summary code Compress's result is, so the two can't drift apart.
-Nothing reaches the writer, so the estimate can't predict the save's own late `PLUME2060`.
+encoding's size (carried as `WrittenImage.TrialBytes`) to its group's ratio. The output size is
+then measured, not summed: `PdfDocument.SaveWithWriteHooks` runs with the effective options and
+the plan's aliases into a `CountingWriteStream`, with `StandInWriteTransform` as the transform.
+It implements `IUnreadStreamWriteTransform`, the writer seam that replaces a stream from the
+dictionary discovery already read, so no payload is parsed: a planned image stands in at its
+estimated size with the dictionary Compress would write (`ImageReencoder.Rewrite`), a stream the
+Flate lever would compress at its Flated size with `CompressionWriteTransform.FlatedDictionary`,
+any other at its own length, all zeros from one reused buffer. What a rewrite drops (unreached
+objects, superseded revisions), object-stream packing or unpacking, and the cross-reference
+section are therefore the writer's own, exactly, and the save's late `PLUME2060` under `Strict`
+comes through as Compress's does. The report is built by the same decision and summary code
+Compress's result is, so the two can't drift apart.
 
 **Mutation and the dirty-object set (Phase 4):**
 `ObjectRegistry` (`doc.Objects`) gains a general-purpose `MarkDirty(reference)` (for a

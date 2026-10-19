@@ -224,7 +224,7 @@ internal static class ImageReencoder
     // in place (/Filter appended when the source had none) and the entries that described the
     // old encoding dropped (and /Decode, when it was applied to the samples). /Length is the
     // writer's to set.
-    private static PdfDictionary Rewrite(PdfDictionary original, int width, int height, PdfName filter, bool dropDecode)
+    internal static PdfDictionary Rewrite(PdfDictionary original, int width, int height, PdfName filter, bool dropDecode)
     {
         var rewritten = new PdfDictionary();
         foreach (var (key, value) in original)

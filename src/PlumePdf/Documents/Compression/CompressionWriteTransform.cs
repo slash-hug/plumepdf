@@ -175,7 +175,16 @@ internal sealed class CompressionWriteTransform : IStreamWriteTransform
             return original;
         }
 
-        // The original entries in order; /DecodeParms described no filter, and /Length is the writer's.
+        return new PdfStream(FlatedDictionary(dictionary), encoded);
+    }
+
+    /// <summary>
+    /// The dictionary the lossless lever writes a Flated stream with: the original entries in
+    /// order, less <c>/DecodeParms</c> (it described no filter) and <c>/Length</c> (the
+    /// writer's), with <c>/Filter /FlateDecode</c> appended.
+    /// </summary>
+    internal static PdfDictionary FlatedDictionary(PdfDictionary dictionary)
+    {
         var rewritten = new PdfDictionary();
         foreach (var (key, value) in dictionary)
         {
@@ -186,7 +195,7 @@ internal sealed class CompressionWriteTransform : IStreamWriteTransform
         }
 
         rewritten.Set(PdfName.Filter, FlateDecodeName);
-        return new PdfStream(rewritten, encoded);
+        return rewritten;
     }
 
     /// <summary>

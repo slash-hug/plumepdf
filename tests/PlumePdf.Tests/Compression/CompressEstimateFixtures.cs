@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Text;
+using System.Text.RegularExpressions;
 using PlumePdf.Filters;
 using static PlumePdf.Tests.Compression.CompressFixtures;
 using static PlumePdf.Tests.Compression.CompressionTestImages;
@@ -238,5 +241,89 @@ internal static class CompressEstimateFixtures
         }
 
         return samples;
+    }
+    /// <summary>
+    /// One page referencing a 40 KB data stream (incompressible, so no lever changes it) that
+    /// <paramref name="revisions"/> incremental updates each replace: a full rewrite keeps only
+    /// the last one, so most of the input is superseded bytes the output drops.
+    /// </summary>
+    public static byte[] SupersededRevisions(int revisions = 5)
+    {
+        var pdf = new ScanTestPdf().Stream(10, string.Empty, Noise(40_000, seed: 0));
+        pdf.Page(3, "0 0 10 10 re f", extra: "/PieceData 10 0 R");
+        var bytes = pdf.Build();
+        for (var r = 1; r <= revisions; r++)
+        {
+            bytes = AppendRevision(bytes, (10, StreamObject(10, Noise(40_000, seed: r))));
+        }
+
+        return bytes;
+    }
+
+    /// <summary>A one-page document with an update adding ten 20 KB streams that nothing references.</summary>
+    public static byte[] UnreachableObjects()
+    {
+        var pdf = new ScanTestPdf();
+        pdf.Page(3, "0 0 10 10 re f");
+        var bytes = pdf.Build();
+        return AppendRevision(bytes, [.. Enumerable.Range(50, 10).Select(static n => (n, StreamObject(n, Noise(20_000, seed: n))))]);
+    }
+
+    /// <summary>300 small annotation dictionaries, unpacked, with a classic cross-reference table: the lossless levers pack them.</summary>
+    public static ScanTestPdf ManySmallObjects()
+    {
+        var pdf = new ScanTestPdf();
+        var annotations = new List<string>();
+        for (var i = 0; i < 300; i++)
+        {
+            var number = 100 + i;
+            pdf.Object(number, $"<< /Type /Annot /Subtype /Text /Rect [{i} {i} {i + 20} {i + 20}] /Contents (Note {i} on the page) /NM (note-{i}) >>");
+            annotations.Add($"{number} 0 R");
+        }
+
+        return pdf.Page(3, "0 0 10 10 re f", extra: $"/Annots [{string.Join(' ', annotations)}]");
+    }
+
+    /// <summary>
+    /// Appends an incremental update (ISO 32000-1 §7.5.6) to <paramref name="pdf"/>: the given
+    /// objects, a classic cross-reference section for them and a trailer whose <c>/Prev</c> is
+    /// the previous section.
+    /// </summary>
+    public static byte[] AppendRevision(byte[] pdf, params (int Number, byte[] Object)[] objects)
+    {
+        var text = Encoding.Latin1.GetString(pdf);
+        var previous = long.Parse(Regex.Matches(text, @"startxref\s+(\d+)")[^1].Groups[1].Value, CultureInfo.InvariantCulture);
+        var size = Math.Max(int.Parse(Regex.Matches(text, @"/Size (\d+)")[^1].Groups[1].Value, CultureInfo.InvariantCulture), objects.Max(static o => o.Number) + 1);
+
+        using var output = new MemoryStream();
+        output.Write(pdf);
+        var offsets = new SortedDictionary<int, long>();
+        foreach (var (number, bytes) in objects)
+        {
+            offsets[number] = output.Position;
+            output.Write(bytes);
+        }
+
+        var xref = output.Position;
+        var table = new StringBuilder("xref\n");
+        foreach (var (number, offset) in offsets)
+        {
+            table.Append(CultureInfo.InvariantCulture, $"{number} 1\n{offset:D10} 00000 n \n");
+        }
+
+        table.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size {size} /Root 1 0 R /Prev {previous} >>\nstartxref\n{xref}\n%%EOF\n");
+        output.Write(Encoding.ASCII.GetBytes(table.ToString()));
+        return output.ToArray();
+    }
+
+    private static byte[] StreamObject(int number, byte[] content) =>
+        [.. Encoding.ASCII.GetBytes($"{number} 0 obj\n<< /Length {content.Length.ToString(CultureInfo.InvariantCulture)} >>\nstream\n"), .. content, .. "\nendstream\nendobj\n"u8.ToArray()];
+
+    // Bytes Flate can't shrink, so the lossless lever leaves them alone and the test measures structure only.
+    private static byte[] Noise(int length, int seed)
+    {
+        var bytes = new byte[length];
+        new Random(seed).NextBytes(bytes);
+        return bytes;
     }
 }

@@ -9,8 +9,8 @@ namespace PlumePdf.Documents.Compression;
 /// <param name="NonImageSavedBytes">The estimated saving on every stream the image entries don't cover: duplicates written once, and the lossless Flate lever.</param>
 /// <param name="SampledStreams">How many of those streams were trial-Flated.</param>
 /// <param name="ExtrapolatedStreamSavedBytes">The part of <paramref name="NonImageSavedBytes"/> extrapolated to unsampled streams.</param>
-/// <param name="StructureGrowthBytes">How much unpacking the source's object streams adds, when the save doesn't pack.</param>
-internal sealed record EstimatedImages(IReadOnlyDictionary<int, WrittenImage> Records, IReadOnlyDictionary<int, WrittenImage> Sampled, long NonImageSavedBytes, int SampledStreams, long ExtrapolatedStreamSavedBytes, long StructureGrowthBytes);
+/// <param name="FlatedStreams">The payload length each non-image stream the lossless lever would Flate is written at, by original number: the trial's for a sampled one, the extrapolated one otherwise.</param>
+internal sealed record EstimatedImages(IReadOnlyDictionary<int, WrittenImage> Records, IReadOnlyDictionary<int, WrittenImage> Sampled, long NonImageSavedBytes, int SampledStreams, long ExtrapolatedStreamSavedBytes, IReadOnlyDictionary<int, long> FlatedStreams);
 
 /// <summary>
 /// The sampling half of <c>Pdf.EstimateCompression</c>: given Compress's plan, it trial-encodes
@@ -91,12 +91,25 @@ internal static class CompressionEstimator
     }
 
     /// <summary>
-    /// An unsampled eligible stream's estimated saving: its <paramref name="before"/> bytes, less
-    /// what it would be written as, <c>min(before, round(before × ratio) + FilterEntryBytes)</c> —
-    /// the write's own rule (Flate only when that, counting the added <c>/Filter</c> entry, is smaller).
+    /// An unsampled eligible stream's estimated saving: it would be Flated to
+    /// <c>round(before × ratio)</c> bytes, written only when that plus the added <c>/Filter</c>
+    /// entry is smaller (the write's own rule), saving <see cref="FlatedSaving"/>; otherwise nothing.
     /// </summary>
-    public static long ExtrapolatedFlateSaving(long before, double ratio) =>
-        before - Math.Min(before, (long)Math.Round(before * ratio) + FilterEntryBytes);
+    public static long ExtrapolatedFlateSaving(long before, double ratio)
+    {
+        var after = (long)Math.Round(before * ratio);
+        return after + FilterEntryBytes < before ? FlatedSaving(before, after) : 0;
+    }
+
+    /// <summary>
+    /// What writing a <paramref name="before"/>-byte payload Flated to <paramref name="after"/>
+    /// bytes saves in the file: the payload difference, less the added <c>/Filter</c> entry,
+    /// plus the digits the shorter <c>/Length</c> value drops.
+    /// </summary>
+    public static long FlatedSaving(long before, long after) =>
+        before - after - FilterEntryBytes + (Digits(before) - Digits(after));
+
+    private static int Digits(long value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture).Length;
 
     /// <summary>Samples the plan's images and estimates the rest, reporting <see cref="CompressionStage.Sampling"/>.</summary>
     /// <param name="objects">The source document's objects (after any signature stripping).</param>
@@ -135,15 +148,15 @@ internal static class CompressionEstimator
 
         // The lossless Flate lever's candidates beyond the images: every stream the write would
         // reach and offer to it, largest first.
-        (HashSet<int> Reachable, List<(int Number, long Bytes)> Candidates)? walk = settings.Lossless || !options.Optimize ? Walk(objects, plan) : null;
-        var streams = settings.Lossless ? walk!.Value.Candidates : [];
+        var streams = settings.Lossless ? Walk(objects, plan) : [];
         var streamChosen = StreamSamples([.. streams.Select(static c => c.Bytes)], streamBudget, StreamSamplesPerCall);
 
         var transform = new CompressionWriteTransform(objects, plan, settings, options, cancellationToken);
         var total = chosen.Count + streamChosen.Length;
         progress?.Report(CompressionStage.Sampling, 0, total);
         var sampled = Sample(objects, transform, chosen, progress, total, 0, cancellationToken);
-        var (flateSaving, extrapolatedStreams, sampledStreams) = FlateSaving(objects, transform, streams, streamChosen, progress, total, chosen.Count, cancellationToken);
+        var flated = new Dictionary<int, long>();
+        var (flateSaving, extrapolatedStreams, sampledStreams) = FlateSaving(objects, transform, streams, streamChosen, flated, progress, total, chosen.Count, cancellationToken);
 
         // Bytes encoded and planned pixels per group, over the samples that encoded: a sample kept
         // under the never-larger rule counts its trial encoding, not the original it kept, so an
@@ -182,8 +195,7 @@ internal static class CompressionEstimator
             records[c.Number] = new WrittenImage(c.Outcome, c.Skip, c.Detail, c.BytesBefore, estimated, c.TargetWidth, c.TargetHeight, IsLever(c.Outcome) ? SourceQuality(objects, c.Number) : null, c.EncodingBefore, c.EncodingAfter);
         }
 
-        var growth = !options.Optimize ? UnpackingGrowth(objects, walk!.Value.Reachable) : 0;
-        return new EstimatedImages(records, sampled, NonImageDuplicateBytes(objects, plan) + flateSaving, sampledStreams, extrapolatedStreams, growth);
+        return new EstimatedImages(records, sampled, NonImageDuplicateBytes(objects, plan) + flateSaving, sampledStreams, extrapolatedStreams, flated);
     }
 
     /// <summary>
@@ -273,12 +285,14 @@ internal static class CompressionEstimator
     // The Flate lever's estimated saving over 'streams': the chosen ones trial-Flated through
     // the transform (their saving is the write's: payload less the Flated payload and the
     // /Filter entry, when that is smaller), the rest by the samples' aggregate ratio of bytes
-    // written to bytes read. No usable sample: no saving counted.
+    // written to bytes read. No usable sample: no saving counted. Each stream the lever would
+    // Flate goes into 'flated' with the payload length it would be written at.
     private static (long Saving, long Extrapolated, int Sampled) FlateSaving(
         ObjectRegistry objects,
         CompressionWriteTransform transform,
         List<(int Number, long Bytes)> streams,
         int[] chosen,
+        Dictionary<int, long> flated,
         CompressionProgressReporter? progress,
         int total,
         int done,
@@ -294,10 +308,14 @@ internal static class CompressionEstimator
             {
                 var written = transform.Transform(number, original);
                 var bytes = original.RawBytes.Length;
-                var flated = !ReferenceEquals(written, original);
+                var isFlated = !ReferenceEquals(written, original);
                 before += bytes;
-                after += flated ? written.RawBytes.Length : bytes;
-                saving += flated ? bytes - (written.RawBytes.Length + FilterEntryBytes) : 0;
+                after += isFlated ? written.RawBytes.Length : bytes;
+                saving += isFlated ? FlatedSaving(bytes, written.RawBytes.Length) : 0;
+                if (isFlated)
+                {
+                    flated[number] = written.RawBytes.Length;
+                }
                 sampled.Add(chosen[i]);
             }
 
@@ -309,9 +327,10 @@ internal static class CompressionEstimator
             var ratio = (double)after / before;
             for (var i = 0; i < streams.Count; i++)
             {
-                if (!sampled.Contains(i))
+                if (!sampled.Contains(i) && ExtrapolatedFlateSaving(streams[i].Bytes, ratio) is > 0 and var streamSaving)
                 {
-                    extrapolated += ExtrapolatedFlateSaving(streams[i].Bytes, ratio);
+                    extrapolated += streamSaving;
+                    flated[streams[i].Number] = (long)Math.Round(streams[i].Bytes * ratio);
                 }
             }
         }
@@ -323,7 +342,7 @@ internal static class CompressionEstimator
     // the trailer's /Root and /Info, following a stream's dictionary only, through canonical
     // copies — and among them every stream it would offer to the lossless lever, other than the
     // planned images (whose entries account for them): largest first, then by number.
-    private static (HashSet<int> Reachable, List<(int Number, long Bytes)> Candidates) Walk(ObjectRegistry objects, CompressionPlan plan)
+    private static List<(int Number, long Bytes)> Walk(ObjectRegistry objects, CompressionPlan plan)
     {
         int Canonical(int number) => plan.Aliases.TryGetValue(number, out var canonical) ? canonical : number;
 
@@ -371,94 +390,7 @@ internal static class CompressionEstimator
             }
         }
 
-        return (seen, [.. candidates.OrderByDescending(static c => c.Bytes).ThenBy(static c => c.Number)]);
-    }
-
-    /// <summary>
-    /// What a save that doesn't pack adds by unpacking the source's object streams: every
-    /// reachable object stored in one is written as its own <c>N G obj … endobj</c> (its exact
-    /// serialized size), the object streams and cross-reference streams are not written (their
-    /// payloads and framing come off), and a classic cross-reference table of 20 bytes per
-    /// written object goes on. Zero for a source with no object streams. Signed: a source whose
-    /// object streams compressed little can come out smaller.
-    /// </summary>
-    internal static long UnpackingGrowth(ObjectRegistry objects, IReadOnlySet<int> reachable)
-    {
-        if (objects.CrossReferenceEntries is not { } entries)
-        {
-            return 0;
-        }
-
-        var containers = new HashSet<int>();
-        using var counter = new CountingWriteStream();
-        foreach (var (number, entry) in entries.OrderBy(static e => e.Key))
-        {
-            if (entry.Kind != CrossReferenceEntryKind.InObjectStream)
-            {
-                continue;
-            }
-
-            containers.Add(entry.StreamObjectNumber);
-            if (reachable.Contains(number))
-            {
-                try
-                {
-                    ObjectSerializer.WriteIndirectObject(counter, number, 0, ((IObjectSource)objects).ResolveForDiscovery(new IndirectReference(number, 0), out _));
-                }
-                catch (PlumePdfException)
-                {
-                    // An unreadable member is written as the writer manages; counted as nothing here.
-                }
-            }
-        }
-
-        if (containers.Count == 0)
-        {
-            return 0;
-        }
-
-        long removed = 0;
-        foreach (var (number, entry) in entries.OrderBy(static e => e.Key))
-        {
-            if (entry.Kind != CrossReferenceEntryKind.InFile)
-            {
-                continue;
-            }
-
-            var isContainer = containers.Contains(number);
-            if (!isContainer && reachable.Contains(number))
-            {
-                continue;
-            }
-
-            var (dictionary, isStream) = Dictionary(objects, number);
-            if (!isStream || dictionary is null)
-            {
-                continue;
-            }
-
-            var isXRef = dictionary.TryGetValue(PdfName.Type, out var type) && type is PdfName name && name.Value == "XRef";
-            if (isContainer || isXRef)
-            {
-                // The payload, its dictionary, and the object's own framing.
-                removed += PayloadLength(objects, number, dictionary) + StreamFramingBytes + Serialized(dictionary);
-            }
-        }
-
-        return counter.Position - removed + (ClassicEntryBytes * (reachable.Count + 1));
-    }
-
-    // "N 0 obj\n" ... "\nendobj\n" around a stream, with "stream\n" and "\nendstream".
-    private const int StreamFramingBytes = 36;
-
-    // One classic cross-reference entry: "0000000000 00000 n \n".
-    private const int ClassicEntryBytes = 20;
-
-    private static long Serialized(PdfDictionary dictionary)
-    {
-        using var counter = new CountingWriteStream();
-        ObjectSerializer.WriteValue(counter, dictionary);
-        return counter.Position;
+        return [.. candidates.OrderByDescending(static c => c.Bytes).ThenBy(static c => c.Number)];
     }
 
     // A stream read once, not cached; null when it can't be read or isn't a stream.
@@ -608,7 +540,7 @@ internal static class CompressionEstimator
 
     // The encoded payload's length, as the writer will read it: the declared /Length when the
     // discovery read trusted it, otherwise the payload read once (not cached); 0 when unreadable.
-    private static long PayloadLength(ObjectRegistry objects, int number, PdfDictionary? dictionary)
+    internal static long PayloadLength(ObjectRegistry objects, int number, PdfDictionary? dictionary)
     {
         var reference = new IndirectReference(number, 0);
         try
