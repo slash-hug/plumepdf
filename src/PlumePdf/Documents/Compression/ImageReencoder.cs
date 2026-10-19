@@ -160,8 +160,9 @@ internal static class ImageReencoder
             usedFallback = request.JpegQuality is null && estimated is null;
 
             // No resolution argument: the JFIF header records aspect ratio only, so it can't
-            // contradict the placement the page gives the image.
-            encoded = JpegEncoder.Encode(samples, targetWidth, targetHeight, channels, quality, subsampleChroma: !keepFullChroma);
+            // contradict the placement the page gives the image. The encoder drops the samples
+            // once its planes are built, so they don't live through the entropy coding.
+            encoded = JpegEncoder.EncodeReleasingPixels(ref samples, targetWidth, targetHeight, channels, quality, subsampleChroma: !keepFullChroma);
         }
         else
         {

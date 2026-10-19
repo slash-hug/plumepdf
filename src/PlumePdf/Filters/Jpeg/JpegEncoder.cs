@@ -58,22 +58,45 @@ internal static class JpegEncoder
     /// <param name="yDpi">Vertical resolution to record in a JFIF <c>APP0</c> marker.</param>
     public static byte[] Encode(ReadOnlySpan<byte> pixels, int width, int height, int componentCount, int quality, bool subsampleChroma = true, double? xDpi = null, double? yDpi = null)
     {
+        Validate(width, height, componentCount);
+        var subsample = componentCount == 3 && subsampleChroma;
+        return EncodePlanes(BuildPlanes(pixels, width, height, componentCount, subsample), width, height, componentCount, quality, subsample, xDpi, yDpi);
+    }
+
+    /// <summary>
+    /// <see cref="Encode(ReadOnlySpan{byte}, int, int, int, int, bool, double?, double?)"/>, for a
+    /// caller that holds nothing else to the pixels: the encoder's planes are built from them, then
+    /// <paramref name="pixels"/> is set to <see langword="null"/>, so the full-size samples can be
+    /// collected before the scan is entropy-coded rather than living through it.
+    /// </summary>
+    internal static byte[] EncodeReleasingPixels(ref byte[]? pixels, int width, int height, int componentCount, int quality, bool subsampleChroma = true)
+    {
+        ArgumentNullException.ThrowIfNull(pixels);
+        Validate(width, height, componentCount);
+        var subsample = componentCount == 3 && subsampleChroma;
+        var planes = BuildPlanes(pixels, width, height, componentCount, subsample);
+        pixels = null;
+        return EncodePlanes(planes, width, height, componentCount, quality, subsample, xDpi: null, yDpi: null);
+    }
+
+    private static void Validate(int width, int height, int componentCount)
+    {
         ArgumentOutOfRangeException.ThrowIfLessThan(width, 1);
         ArgumentOutOfRangeException.ThrowIfLessThan(height, 1);
         if (componentCount is not (1 or 3))
         {
             throw new ArgumentOutOfRangeException(nameof(componentCount), componentCount, "JpegEncoder supports only 1 (grayscale) or 3 (RGB) components.");
         }
+    }
 
+    private static byte[] EncodePlanes(ComponentPlane[] planes, int width, int height, int componentCount, int quality, bool subsample, double? xDpi, double? yDpi)
+    {
         var clampedQuality = Math.Clamp(quality, 1, 100);
-        var subsample = componentCount == 3 && subsampleChroma;
         var hMax = subsample ? 2 : 1;
         var vMax = subsample ? 2 : 1;
 
         var luminanceQuant = ScaleQuantTable(BaseLuminanceQuant, clampedQuality);
         var chrominanceQuant = componentCount == 3 ? ScaleQuantTable(BaseChrominanceQuant, clampedQuality) : luminanceQuant;
-
-        var planes = BuildPlanes(pixels, width, height, componentCount, hMax, vMax, subsample);
 
         var writer = new MarkerWriter();
         writer.WriteMarkerOnly(0xD8); // SOI
@@ -88,10 +111,9 @@ internal static class JpegEncoder
         WriteStandardHuffmanTables(writer, componentCount);
         WriteSos(writer, componentCount);
 
-        var bits = new EntropyBitWriter();
+        var bits = new EntropyBitWriter(writer.Output);
         EncodeScan(bits, planes, componentCount, hMax, vMax, luminanceQuant, chrominanceQuant);
         bits.FlushWithPadding();
-        writer.WriteRawBytes(bits.ToArray());
 
         writer.WriteMarkerOnly(0xD9); // EOI
         return writer.ToArray();
@@ -115,8 +137,10 @@ internal static class JpegEncoder
 
     private readonly record struct ComponentPlane(byte[] Samples, int Width, int Height, int HorizontalSampling, int VerticalSampling);
 
-    private static ComponentPlane[] BuildPlanes(ReadOnlySpan<byte> pixels, int width, int height, int componentCount, int hMax, int vMax, bool subsample)
+    private static ComponentPlane[] BuildPlanes(ReadOnlySpan<byte> pixels, int width, int height, int componentCount, bool subsample)
     {
+        var hMax = subsample ? 2 : 1;
+        var vMax = subsample ? 2 : 1;
         var mcuWidth = 8 * hMax;
         var mcuHeight = 8 * vMax;
         var paddedWidth = ((width + mcuWidth - 1) / mcuWidth) * mcuWidth;
@@ -139,39 +163,21 @@ internal static class JpegEncoder
         }
 
         var yPlane = new byte[paddedWidth * paddedHeight];
-        var cbFull = new float[paddedWidth * paddedHeight];
-        var crFull = new float[paddedWidth * paddedHeight];
-
-        for (var y = 0; y < paddedHeight; y++)
-        {
-            var srcY = Math.Min(y, height - 1);
-            for (var x = 0; x < paddedWidth; x++)
-            {
-                var srcX = Math.Min(x, width - 1);
-                var offset = ((srcY * width) + srcX) * 3;
-                var r = pixels[offset];
-                var g = pixels[offset + 1];
-                var b = pixels[offset + 2];
-
-                var yy = (0.299f * r) + (0.587f * g) + (0.114f * b);
-                var cb = 128f - (0.168736f * r) - (0.331264f * g) + (0.5f * b);
-                var cr = 128f + (0.5f * r) - (0.418688f * g) - (0.081312f * b);
-
-                var idx = (y * paddedWidth) + x;
-                yPlane[idx] = ClampToByte(yy);
-                cbFull[idx] = cb;
-                crFull[idx] = cr;
-            }
-        }
-
         if (!subsample)
         {
             var cbPlane = new byte[paddedWidth * paddedHeight];
             var crPlane = new byte[paddedWidth * paddedHeight];
-            for (var i = 0; i < cbPlane.Length; i++)
+            for (var y = 0; y < paddedHeight; y++)
             {
-                cbPlane[i] = ClampToByte(cbFull[i]);
-                crPlane[i] = ClampToByte(crFull[i]);
+                var srcY = Math.Min(y, height - 1);
+                for (var x = 0; x < paddedWidth; x++)
+                {
+                    var idx = (y * paddedWidth) + x;
+                    ToYCbCr(pixels, ((srcY * width) + Math.Min(x, width - 1)) * 3, out var yy, out var cb, out var cr);
+                    yPlane[idx] = ClampToByte(yy);
+                    cbPlane[idx] = ClampToByte(cb);
+                    crPlane[idx] = ClampToByte(cr);
+                }
             }
 
             return
@@ -182,23 +188,39 @@ internal static class JpegEncoder
             ];
         }
 
+        // 4:2:0: each chroma sample is the mean of a 2x2 group's full-resolution values, computed
+        // a group at a time rather than through full-size float planes (2.7x the image in floats).
+        // The sum keeps the order (top-left, top-right, bottom-left, bottom-right) the planes
+        // used, so the bytes are the same.
         var chromaWidth = paddedWidth / 2;
         var chromaHeight = paddedHeight / 2;
         var cbSub = new byte[chromaWidth * chromaHeight];
         var crSub = new byte[chromaWidth * chromaHeight];
-        for (var y = 0; y < chromaHeight; y++)
+        for (var cy = 0; cy < chromaHeight; cy++)
         {
-            for (var x = 0; x < chromaWidth; x++)
+            var top = 2 * cy;
+            var topSrc = Math.Min(top, height - 1) * width;
+            var bottomSrc = Math.Min(top + 1, height - 1) * width;
+            for (var cx = 0; cx < chromaWidth; cx++)
             {
-                var i00 = ((2 * y * paddedWidth) + (2 * x));
-                var i01 = i00 + 1;
+                var left = 2 * cx;
+                var leftSrc = Math.Min(left, width - 1);
+                var rightSrc = Math.Min(left + 1, width - 1);
+                var i00 = (top * paddedWidth) + left;
                 var i10 = i00 + paddedWidth;
-                var i11 = i10 + 1;
-                var cbAvg = (cbFull[i00] + cbFull[i01] + cbFull[i10] + cbFull[i11]) / 4f;
-                var crAvg = (crFull[i00] + crFull[i01] + crFull[i10] + crFull[i11]) / 4f;
-                var subIdx = (y * chromaWidth) + x;
-                cbSub[subIdx] = ClampToByte(cbAvg);
-                crSub[subIdx] = ClampToByte(crAvg);
+
+                ToYCbCr(pixels, (topSrc + leftSrc) * 3, out var y00, out var cb00, out var cr00);
+                ToYCbCr(pixels, (topSrc + rightSrc) * 3, out var y01, out var cb01, out var cr01);
+                ToYCbCr(pixels, (bottomSrc + leftSrc) * 3, out var y10, out var cb10, out var cr10);
+                ToYCbCr(pixels, (bottomSrc + rightSrc) * 3, out var y11, out var cb11, out var cr11);
+                yPlane[i00] = ClampToByte(y00);
+                yPlane[i00 + 1] = ClampToByte(y01);
+                yPlane[i10] = ClampToByte(y10);
+                yPlane[i10 + 1] = ClampToByte(y11);
+
+                var subIdx = (cy * chromaWidth) + cx;
+                cbSub[subIdx] = ClampToByte((cb00 + cb01 + cb10 + cb11) / 4f);
+                crSub[subIdx] = ClampToByte((cr00 + cr01 + cr10 + cr11) / 4f);
             }
         }
 
@@ -208,6 +230,17 @@ internal static class JpegEncoder
             new ComponentPlane(cbSub, chromaWidth, chromaHeight, 1, 1),
             new ComponentPlane(crSub, chromaWidth, chromaHeight, 1, 1),
         ];
+    }
+
+    // JFIF's RGB to YCbCr (ITU-R BT.601, full range), in single precision.
+    private static void ToYCbCr(ReadOnlySpan<byte> pixels, int offset, out float y, out float cb, out float cr)
+    {
+        var r = pixels[offset];
+        var g = pixels[offset + 1];
+        var b = pixels[offset + 2];
+        y = (0.299f * r) + (0.587f * g) + (0.114f * b);
+        cb = 128f - (0.168736f * r) - (0.331264f * g) + (0.5f * b);
+        cr = 128f + (0.5f * r) - (0.418688f * g) - (0.081312f * b);
     }
 
     private static void EncodeScan(EntropyBitWriter bits, ComponentPlane[] planes, int componentCount, int hMax, int vMax, ushort[] luminanceQuant, ushort[] chrominanceQuant)
@@ -425,36 +458,68 @@ internal static class JpegEncoder
         destination[1] = (byte)value;
     }
 
-    /// <summary>Assembles marker segments (SOI/EOI/APPn/DQT/SOF0/DHT/SOS) and the raw entropy-coded bytes that follow SOS, in order.</summary>
+    /// <summary>
+    /// The encoded file as it grows: one buffer that doubles when full, copied once to its exact
+    /// length at the end. The markers and the entropy-coded scan both write into it, so the
+    /// output is never held in more than that buffer and the final copy.
+    /// </summary>
+    private sealed class OutputBuffer
+    {
+        private byte[] _buffer = new byte[4096];
+        private int _length;
+
+        public void Add(byte value)
+        {
+            if (_length == _buffer.Length)
+            {
+                Array.Resize(ref _buffer, _buffer.Length * 2);
+            }
+
+            _buffer[_length++] = value;
+        }
+
+        public void AddRange(ReadOnlySpan<byte> values)
+        {
+            if (_length + values.Length > _buffer.Length)
+            {
+                Array.Resize(ref _buffer, Math.Max(_buffer.Length * 2, _length + values.Length));
+            }
+
+            values.CopyTo(_buffer.AsSpan(_length));
+            _length += values.Length;
+        }
+
+        public byte[] ToArray() => _buffer.AsSpan(0, _length).ToArray();
+    }
+
+    /// <summary>Assembles marker segments (SOI/EOI/APPn/DQT/SOF0/DHT/SOS) and, through <see cref="Output"/>, the entropy-coded bytes that follow SOS, in order.</summary>
     private sealed class MarkerWriter
     {
-        private readonly List<byte> _bytes = [];
+        public OutputBuffer Output { get; } = new();
 
         public void WriteMarkerOnly(byte marker)
         {
-            _bytes.Add(0xFF);
-            _bytes.Add(marker);
+            Output.Add(0xFF);
+            Output.Add(marker);
         }
 
         public void WriteSegment(byte marker, ReadOnlySpan<byte> payload)
         {
-            _bytes.Add(0xFF);
-            _bytes.Add(marker);
+            Output.Add(0xFF);
+            Output.Add(marker);
             var length = payload.Length + 2;
-            _bytes.Add((byte)(length >> 8));
-            _bytes.Add((byte)length);
-            _bytes.AddRange(payload.ToArray());
+            Output.Add((byte)(length >> 8));
+            Output.Add((byte)length);
+            Output.AddRange(payload);
         }
 
-        public void WriteRawBytes(byte[] raw) => _bytes.AddRange(raw);
-
-        public byte[] ToArray() => [.. _bytes];
+        public byte[] ToArray() => Output.ToArray();
     }
 
     /// <summary>MSB-first bit writer for entropy-coded scan data, byte-stuffing every literal <c>0xFF</c> output byte with a trailing <c>0x00</c> per §B.1.1.5.</summary>
-    private sealed class EntropyBitWriter
+    private sealed class EntropyBitWriter(OutputBuffer output)
     {
-        private readonly List<byte> _bytes = [];
+        private readonly OutputBuffer _bytes = output;
         private int _bitBuffer;
         private int _bitCount;
 
@@ -496,7 +561,5 @@ internal static class JpegEncoder
                 _bitBuffer = 0;
             }
         }
-
-        public byte[] ToArray() => [.. _bytes];
     }
 }

@@ -30,7 +30,7 @@ var result = Pdf.Compress("scan.pdf", "scan-small.pdf", new PdfCompressOptions
 the lossless levers on, an unfiltered stream may still be Flate-compressed losslessly; see
 `BytesAfter`). For
 `ResourceLimit`, raise `PdfOptions.MaxImagePixels` or `PdfOptions.MaxDecompressedStreamBytes`
-(decoding needs roughly five times the decoded image size in memory).
+(re-encoding needs roughly two to three times the decoded image size in memory).
 
 **Recovery attempted:** The image's samples are written unchanged; the rest of the document is
 compressed as asked.

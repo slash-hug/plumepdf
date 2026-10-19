@@ -577,8 +577,9 @@ after planning; no output file is written.
 
 - **Memory** is bounded by the largest image, not the file. The planning pass holds only
   object numbers and placement sizes; while writing, one image is decoded, resampled and
-  encoded at a time, needing roughly five times that image's decoded size (a 600 DPI
-  letter-size RGB scan decodes to about 100 MB).
+  encoded at a time, needing roughly two to three times that image's decoded size: about
+  1.5 times for a Flate image re-encoded as JPEG, up to about 3 times for a JPEG with
+  full-resolution chroma (a 600 DPI letter-size RGB scan decodes to about 100 MB).
 - **Disk:** the output is written to a temporary file beside `outputPath` and moved into
   place, so a failure or cancellation leaves no partial file. Leave room for the output there.
   The stream overloads write straight to your output stream (no temporary output file), and
