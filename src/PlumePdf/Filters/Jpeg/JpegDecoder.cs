@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace PlumePdf.Filters;
 
 /// <summary>The decoded result of <see cref="JpegDecoder.Decode"/>: pixel samples plus the metadata a caller (<c>DctFilterAdapter</c>, and eventually <c>RasterImage</c>) needs.</summary>
@@ -70,7 +72,12 @@ internal static class JpegDecoder
     public static JpegDecodeResult Decode(ReadOnlyMemory<byte> data, PdfOptions options, DiagnosticCollection? diagnostics, IndirectReference? subject, JpegAdobeTransform? colorTransformOverride = null)
     {
         ArgumentNullException.ThrowIfNull(options);
-        var bytes = data.ToArray();
+        // Read in place when the memory is a whole array (every stream payload, every earlier
+        // filter stage's output, a caller's byte[]); nothing here writes to it or keeps it. A
+        // slice of a larger array is copied, since positions below index the array from 0.
+        var bytes = MemoryMarshal.TryGetArray(data, out var segment) && segment is { Array: { } whole, Offset: 0 } && segment.Count == whole.Length
+            ? whole
+            : data.ToArray();
 
         if (bytes.Length < 4 || bytes[0] != 0xFF || bytes[1] != JpegMarkers.Soi)
         {
@@ -134,7 +141,7 @@ internal static class JpegDecoder
                 break;
             }
 
-            var payload = bytes.AsSpan(position + 2, length - 2);
+            ReadOnlySpan<byte> payload = bytes.AsSpan(position + 2, length - 2);
             position += length;
 
             if (JpegMarkers.IsArithmeticSof(marker))
