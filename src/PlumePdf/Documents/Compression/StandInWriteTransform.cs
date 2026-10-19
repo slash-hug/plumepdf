@@ -13,8 +13,9 @@ namespace PlumePdf.Documents.Compression;
 /// A planned image stands in at its estimated size (a sample's exact one), with the dictionary
 /// Compress would write when its size, dimensions or encoding change; a stream the lossless
 /// lever would Flate stands in at its Flated size (a sample's exact one) with the dictionary the
-/// lever writes; any other stream, at its own payload length with its own dictionary. Stand-in
-/// payloads are zeros from one shared buffer, grown to the largest stand-in.
+/// lever writes; any other stream, at its own payload length with its own dictionary. A sampled
+/// image stands in with the very dictionary Compress wrote. A stand-in holds only a length; the
+/// serializer writes it as zeros in small chunks, so measuring needs no payload-sized memory.
 /// </remarks>
 internal sealed class StandInWriteTransform : IUnreadStreamWriteTransform
 {
@@ -25,7 +26,6 @@ internal sealed class StandInWriteTransform : IUnreadStreamWriteTransform
     private readonly IReadOnlyDictionary<int, WrittenImage> _images;
     private readonly IReadOnlyDictionary<int, long> _flated;
     private readonly CancellationToken _cancellationToken;
-    private byte[] _zeros = [];
 
     /// <summary>Creates the transform for one measured write.</summary>
     /// <param name="objects">The source document's objects.</param>
@@ -53,16 +53,32 @@ internal sealed class StandInWriteTransform : IUnreadStreamWriteTransform
         _cancellationToken.ThrowIfCancellationRequested();
         if (_images.TryGetValue(originalNumber, out var image))
         {
-            var changed = image.BytesAfter != image.BytesBefore || image.EncodingAfter != image.EncodingBefore;
-            var written = changed && FilterFor(image.EncodingAfter) is { } filter
-                ? ImageReencoder.Rewrite(dictionary, image.WidthAfter, image.HeightAfter, filter, dropDecode: false)
-                : dictionary;
-            return new PdfStream(written, Zeros(image.BytesAfter));
+            return new PdfStream(image.WrittenDictionary ?? EstimatedDictionary(dictionary, image), image.BytesAfter);
         }
 
         return _flated.TryGetValue(originalNumber, out var flated)
-            ? new PdfStream(CompressionWriteTransform.FlatedDictionary(dictionary), Zeros(flated))
-            : new PdfStream(dictionary, Zeros(CompressionEstimator.PayloadLength(_objects, originalNumber, dictionary)));
+            ? new PdfStream(CompressionWriteTransform.FlatedDictionary(dictionary), flated)
+            : new PdfStream(dictionary, CompressionEstimator.PayloadLength(_objects, originalNumber, dictionary));
+    }
+
+    // An unsampled image's dictionary, by the branch Compress would take: the re-encoder's
+    // rewrite for a lever (a non-JPEG becoming a JPEG drops a /Decode it bakes), the lossless
+    // lever's for an image kept but Flated, and its own otherwise.
+    private PdfDictionary EstimatedDictionary(PdfDictionary dictionary, WrittenImage image)
+    {
+        if (image.BytesAfter == image.BytesBefore && image.EncodingAfter == image.EncodingBefore)
+        {
+            return dictionary;
+        }
+
+        if (image.Outcome is ImageReencodeOutcome.Downsampled or ImageReencodeOutcome.Reencoded or ImageReencodeOutcome.DownsampledAndReencoded
+            && FilterFor(image.EncodingAfter) is { } filter)
+        {
+            var bake = image.EncodingAfter == ImageEncoding.Jpeg && image.EncodingBefore != ImageEncoding.Jpeg && ImageReencoder.WouldBakeDecode(dictionary, _objects);
+            return ImageReencoder.Rewrite(dictionary, image.WidthAfter, image.HeightAfter, filter, bake);
+        }
+
+        return image.EncodingAfter == ImageEncoding.Flate ? CompressionWriteTransform.FlatedDictionary(dictionary) : dictionary;
     }
 
     private static PdfName? FilterFor(ImageEncoding encoding) => encoding switch
@@ -71,15 +87,4 @@ internal sealed class StandInWriteTransform : IUnreadStreamWriteTransform
         ImageEncoding.Flate => FlateDecodeName,
         _ => null,
     };
-
-    private ReadOnlyMemory<byte> Zeros(long length)
-    {
-        var count = (int)Math.Clamp(length, 0, Array.MaxLength);
-        if (_zeros.Length < count)
-        {
-            _zeros = new byte[count];
-        }
-
-        return _zeros.AsMemory(0, count);
-    }
 }

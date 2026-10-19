@@ -193,7 +193,7 @@ internal static class ImageReencoder
     // channel, which renderers ignore, so the entry stays as it was.
     private static bool TryApplyDecode(byte[] samples, int channels, PdfArray decode)
     {
-        if (decode.Count != 2 * channels || decode.Any(static v => v is not PdfNumber))
+        if (!IsBakeable(decode, channels))
         {
             return false;
         }
@@ -218,6 +218,27 @@ internal static class ImageReencoder
         }
 
         return true;
+    }
+
+    // Whether a /Decode array is applied to the samples (and dropped) when a non-JPEG image
+    // becomes a JPEG: two numbers per channel.
+    private static bool IsBakeable(PdfArray decode, int channels) =>
+        decode.Count == 2 * channels && decode.All(static v => v is PdfNumber);
+
+    /// <summary>
+    /// Whether re-encoding <paramref name="dictionary"/>'s non-JPEG image as a JPEG would bake its
+    /// <c>/Decode</c> array into the samples and drop the entry, judged from the dictionary
+    /// alone, as an estimate that doesn't decode the image must.
+    /// </summary>
+    internal static bool WouldBakeDecode(PdfDictionary dictionary, ObjectRegistry objects)
+    {
+        var decode = dictionary.TryGetValue(PdfName.Decode, out var value)
+            ? (value is PdfReference reference ? objects[reference.Target] : value) as PdfArray
+            : null;
+        var colorSpace = dictionary.TryGetValue(PdfName.ColorSpace, out var space)
+            ? (space is PdfReference spaceReference ? objects[spaceReference.Target] : space) as PdfObject
+            : null;
+        return decode is not null && IsBakeable(decode, NativeImageSamples.ComponentCount(colorSpace, objects));
     }
 
     // The original entries in their original order, with /Width, /Height and /Filter replaced

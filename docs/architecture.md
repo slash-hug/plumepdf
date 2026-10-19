@@ -180,10 +180,13 @@ encoding's size (carried as `WrittenImage.TrialBytes`) to its group's ratio. The
 then measured, not summed: `PdfDocument.SaveWithWriteHooks` runs with the effective options and
 the plan's aliases into a `CountingWriteStream`, with `StandInWriteTransform` as the transform.
 It implements `IUnreadStreamWriteTransform`, the writer seam that replaces a stream from the
-dictionary discovery already read, so no payload is parsed: a planned image stands in at its
-estimated size with the dictionary Compress would write (`ImageReencoder.Rewrite`), a stream the
-Flate lever would compress at its Flated size with `CompressionWriteTransform.FlatedDictionary`,
-any other at its own length, all zeros from one reused buffer. What a rewrite drops (unreached
+dictionary discovery already read, so no payload is parsed: a sampled image stands in with the
+dictionary its trial write produced (`WrittenImage.WrittenDictionary`), an unsampled one with the
+dictionary Compress's branch for it would write (`ImageReencoder.Rewrite`, baking `/Decode` by
+`WouldBakeDecode`, or `CompressionWriteTransform.FlatedDictionary`), a stream the Flate lever
+would compress at its Flated size with `FlatedDictionary`, any other at its own length. A
+stand-in is the internal length-only `PdfStream`, which `ObjectSerializer` writes as zeros from
+a fixed 64 KB buffer, so measuring holds no payload-sized memory. What a rewrite drops (unreached
 objects, superseded revisions), object-stream packing or unpacking, and the cross-reference
 section are therefore the writer's own, exactly, and the save's late `PLUME2060` under `Strict`
 comes through as Compress's does. The report is built by the same decision and summary code

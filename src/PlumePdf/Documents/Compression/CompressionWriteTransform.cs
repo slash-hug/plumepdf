@@ -16,6 +16,7 @@ namespace PlumePdf.Documents.Compression;
 /// <param name="EncodingAfter">The written stream's encoding family.</param>
 /// <param name="UsedFallbackQuality">The written JPEG used <see cref="ImageReencoder.FallbackJpegQuality"/> because the source's quality couldn't be estimated.</param>
 /// <param name="TrialBytes">The re-encoder's new encoding's length, written or not (see <see cref="ImageReencodeResult.TrialBytes"/>); null when it encoded nothing.</param>
+/// <param name="WrittenDictionary">The written stream's dictionary, which an estimate stands a sampled image in with; null for an estimated record.</param>
 internal sealed record WrittenImage(
     ImageReencodeOutcome Outcome,
     PlannedSkip Skip,
@@ -28,7 +29,8 @@ internal sealed record WrittenImage(
     ImageEncoding EncodingBefore,
     ImageEncoding EncodingAfter,
     bool UsedFallbackQuality = false,
-    long? TrialBytes = null);
+    long? TrialBytes = null,
+    PdfDictionary? WrittenDictionary = null);
 
 /// <summary>
 /// The write-time half of a compressing save: offered each stream as the full-rewrite writer
@@ -128,7 +130,8 @@ internal sealed class CompressionWriteTransform : IStreamWriteTransform
             ImageEncodings.OfStream(original.Dictionary, _objects),
             ImageEncodings.OfStream(written.Dictionary, _objects),
             reencoded.UsedFallbackQuality,
-            reencoded.TrialBytes);
+            reencoded.TrialBytes,
+            written.Dictionary);
         _imageWritten?.Invoke(_written.Count);
         return written;
     }

@@ -47,7 +47,7 @@ namespace PlumePdf;
 /// <see cref="EstimatedOutputBytes"/> is then measured, not added up: Compress's own writer runs
 /// with the same options into a counter that keeps nothing, every stream standing in at the
 /// size just estimated for it (a planned image at its <see cref="PlannedImageCompression.EstimatedBytesAfter"/>,
-/// with the dictionary Compress would write; a stream the Flate lever would compress at its
+/// with the dictionary Compress wrote for a sampled one and would write for any other; a stream the Flate lever would compress at its
 /// Flated size; any other at its own) and no stream's payload read. So everything a full rewrite
 /// does to the rest of the file is exact: the objects it drops (those nothing reaches, and the
 /// superseded revisions of an incrementally updated file), packing objects into object streams
@@ -61,9 +61,9 @@ namespace PlumePdf;
 /// to the byte. Extrapolated parts — unsampled images and streams,
 /// <see cref="ExtrapolatedSavedBytes"/> in all — can be off in either direction when a group's
 /// members are unlike its samples, so for a cautious figure, use
-/// <see cref="EstimatedOutputBytes"/> + <see cref="ExtrapolatedSavedBytes"/>. Measuring the
-/// write needs no more memory than the largest stand-in payload (zeros, one buffer reused) and
-/// takes about as long as serializing the file's objects; for an exact size with every image
+/// <see cref="EstimatedOutputBytes"/> + <see cref="ExtrapolatedSavedBytes"/>. A stand-in holds
+/// only a length (its zeros are written a small chunk at a time), so measuring the write needs
+/// no payload-sized memory and takes about as long as serializing the file's objects; for an exact size with every image
 /// encoded, run <c>Pdf.Compress</c> to a stream that only counts the bytes written to it.
 /// </para>
 /// <para>

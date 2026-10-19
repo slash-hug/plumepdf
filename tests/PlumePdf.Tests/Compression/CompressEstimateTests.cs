@@ -641,6 +641,53 @@ public class CompressEstimateTests(ITestOutputHelper output)
         }
     }
 
+    // A sampled image stands in with the dictionary Compress actually wrote: a /Decode baked
+    // into the samples and dropped, or an indirect /Width kept as a reference by the Flate lever,
+    // changes it in ways a rebuilt dictionary gets wrong by a few bytes.
+    [Theory]
+    [InlineData("baked-decode")]
+    [InlineData("indirect-width")]
+    public void ASampledImage_StandsInWithTheDictionaryCompressWrites(string fixture)
+    {
+        var (pdf, options) = fixture switch
+        {
+            "baked-decode" => (OneImage(Image(extra: "/Decode [1 0 1 0 1 0]"), FlateSamples()), new PdfCompressOptions { Images = new PdfImageCompression { JpegQuality = 70 } }),
+            _ => (OneImage(Image(filter: null).Replace($"/Width {Pixels}", "/Width 50 0 R", StringComparison.Ordinal), CompressionTestImages.Samples(Pixels, Pixels, 3)).Object(50, $"{Pixels}"), (PdfCompressOptions?)null),
+        };
+
+        var estimate = Estimate(pdf, options);
+        var (actual, _) = Compress(pdf, options, Deterministic);
+
+        Assert.Equal(1, estimate.SampledImages);
+        Assert.Equal(actual.OutputBytes, estimate.EstimatedOutputBytes);
+    }
+
+    [Fact]
+    public void MeasuringTheWrite_AllocatesNothingLikeALargeStreamsPayload()
+    {
+        // A 64 MiB unfiltered stream nothing samples (no lossless levers): its stand-in is a
+        // length, written as zeros in small chunks, never a payload-sized buffer.
+        const int Big = 64 << 20;
+        var pdf = new ScanTestPdf().Stream(10, string.Empty, new byte[Big]);
+        pdf.Page(3, "0 0 10 10 re f", extra: "/PieceData 10 0 R");
+        var source = Write(pdf);
+        try
+        {
+            var options = new PdfCompressOptions { Lossless = false };
+            Pdf.EstimateCompression(source, options, Deterministic);
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            var estimate = Pdf.EstimateCompression(source, options, Deterministic);
+            var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            Assert.True(estimate.EstimatedOutputBytes > Big);
+            Assert.True(allocated < Big / 8, $"Estimating allocated {allocated} bytes for a {Big}-byte stream.");
+        }
+        finally
+        {
+            Delete(source);
+        }
+    }
+
     [Fact]
     public void WithEveryRewrittenImageSampled_TheEstimateIsTheWrittenSize()
     {
