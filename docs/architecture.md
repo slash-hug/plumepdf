@@ -185,7 +185,7 @@ dictionary its trial write produced (`WrittenImage.WrittenDictionary`), an unsam
 dictionary Compress's branch for it would write (`ImageReencoder.Rewrite`, baking `/Decode` by
 `WouldBakeDecode`, or `CompressionWriteTransform.FlatedDictionary`), a stream the Flate lever
 would compress at its Flated size with `FlatedDictionary`, any other at its own length. A
-stand-in is the internal length-only `PdfStream`, which `ObjectSerializer` writes as zeros from
+stand-in is an internal length-only `PdfStream` (`PdfStream.StandIn`), which `ObjectSerializer` writes as zeros from
 a fixed 64 KB buffer, so measuring holds no payload-sized memory. What a rewrite drops (unreached
 objects, superseded revisions), object-stream packing or unpacking, and the cross-reference
 section are therefore the writer's own, exactly, and the save's late `PLUME2060` under `Strict`

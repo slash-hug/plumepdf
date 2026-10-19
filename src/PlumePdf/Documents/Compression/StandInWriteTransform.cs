@@ -53,12 +53,12 @@ internal sealed class StandInWriteTransform : IUnreadStreamWriteTransform
         _cancellationToken.ThrowIfCancellationRequested();
         if (_images.TryGetValue(originalNumber, out var image))
         {
-            return new PdfStream(image.WrittenDictionary ?? EstimatedDictionary(dictionary, image), image.BytesAfter);
+            return PdfStream.StandIn(image.WrittenDictionary ?? EstimatedDictionary(dictionary, image), image.BytesAfter);
         }
 
         return _flated.TryGetValue(originalNumber, out var flated)
-            ? new PdfStream(CompressionWriteTransform.FlatedDictionary(dictionary), flated)
-            : new PdfStream(dictionary, CompressionEstimator.PayloadLength(_objects, originalNumber, dictionary));
+            ? PdfStream.StandIn(CompressionWriteTransform.FlatedDictionary(dictionary), flated)
+            : PdfStream.StandIn(dictionary, CompressionEstimator.PayloadLength(_objects, originalNumber, dictionary));
     }
 
     // An unsampled image's dictionary, by the branch Compress would take: the re-encoder's
