@@ -164,9 +164,10 @@ only by diffing output. Entries land in the same change as the behavior they des
   including edits made in place without `MarkDirty`, and `doc.Objects` still caches whatever
   you resolve through it. Two effects are visible. A stream only a read verb ever read
   resolves through `doc.Objects` afterwards to a fresh instance with equal contents. And a
-  page read again by another verb re-reads its streams from the file: on 80 corpus files,
-  extracting images after extracting text took about 10 % longer, while text extraction and
-  rasterization times were unchanged.
+  page read again re-reads its streams from the file, a font program shared across pages
+  included: a single text pass over a 39-page document took about 8 % longer, extracting its
+  text 40 times over about 20 % longer, and extracting images after text about 10 % longer
+  (80 corpus files), while rasterizing the same page repeatedly was unchanged.
 
 - **`Pdf.Compress` needs less memory to re-encode an image (#51).** Re-encoding one
   image used to peak at four to five times its decoded size. It now needs about 1.5 times for a
