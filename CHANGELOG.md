@@ -7,6 +7,15 @@ only by diffing output. Entries land in the same change as the behavior they des
 
 ## [Unreleased]
 
+## [1.0.0-preview.9] — 2026-10-21
+
+This release adds `Pdf.Compress`, which makes a document smaller (lossless by default, with
+opt-in image downsampling and JPEG re-encoding), and `Pdf.EstimateCompression`, its dry run. It
+also lowers memory use across the board for large files. Reading a page with `ExtractImages`,
+`ExtractText` or `Rasterize` now holds only that page. Stream decoding no longer copies its
+input, and re-encoding an image needs about two to three times its decoded size rather than
+four to five.
+
 ### Added
 
 - **`Pdf.Compress` and `Pdf.CompressAsync` make a document smaller.** With no options the call
@@ -28,8 +37,10 @@ only by diffing output. Entries land in the same change as the behavior they des
   images, colour spaces other than gray and RGB, JPEG 2000/JBIG2/CCITT, inline,
   tiling-pattern-only, colour-key masked and `/Matte` soft-mask images are skipped with a
   reason. An image that fails to decode is written unchanged with `PLUME6086`, never a
-  refusal, even under `PdfOptions.Strict`. Memory is bounded by the largest image (about five
-  times its decoded size), and output goes through the usual temp-file-then-move save, so a
+  refusal, even under `PdfOptions.Strict`. Memory is bounded by the largest image (re-encoding
+  one needs about two to three times its decoded size: about 1.5 times for a Flate image
+  re-encoded as JPEG, about 2.8 times for a downsampled JPEG with full-resolution chroma), and
+  output goes through the usual temp-file-then-move save, so a
   failure or cancellation leaves no partial file. Refused before any work: a signed source
   unless `AllowInvalidatingSignatures` strips it (new `PLUME6084`; the count is
   `CompressionResult.SignaturesStripped`), an encrypted source
@@ -53,7 +64,7 @@ only by diffing output. Entries land in the same change as the behavior they des
   written atomically: every refusal (`PLUME5018` before the input is read, `PLUME5001`,
   `PLUME6084`) comes before the first byte, but a failure or cancellation while writing can
   leave a partial output for the caller to discard. With this the compression work is
-  complete; #48–#54 are optional enhancements.
+  complete; a continuous-tone image classifier (#50) is the one optional enhancement still open.
 - **`PdfCompressOptions.Progress` reports how far a `Compress` call has got** (#48). Set it to
   an `IProgress<CompressionProgress>` and every overload reports the `CompressionStage`
   running with `Completed` and `Total`: `Spooling` in bytes copied from a non-seekable input
@@ -99,15 +110,14 @@ only by diffing output. Entries land in the same change as the behavior they des
   and exact on files whose superseded revisions, unreachable objects or unpacked small objects
   are most of the input; on 780 corpus files, every estimate was exact but one, 0.8 % under (50
   images, 6 sampled), with the lossless levers on or off. A new `CompressionStage.Sampling`
-  reports the trial encodes, and the stages are now numbered in their declared order
-  (`Spooling` 0, `Planning` 1, `Sampling` 2, `Writing` 3; `Writing` was 2 before this
-  release); `Compress` never reports `Sampling`, and an estimate never reports `Writing`. Its
+  reports the trial encodes (the stages are `Spooling` 0, `Planning` 1, `Sampling` 2,
+  `Writing` 3); `Compress` never reports `Sampling`, and an estimate never reports `Writing`. Its
   diagnostics are Compress's summaries in the conditional ("Compress would ..."), on the
   estimate. `Compress`'s own output is byte-identical to before.
 
 ### Fixed
 
-- **Opening a PDF through a symbolic link reads the file it points to.** The default
+- **Opening a PDF through a symbolic link reads the file it points to (#55).** The default
   memory-mapped open took its length from the path's `FileInfo`, which for a link is the
   link's own few bytes, so the document failed to open or recover. The length now comes from
   the opened file. A link whose target is missing is now `PLUME1002`; it used to escape as an
@@ -169,17 +179,13 @@ only by diffing output. Entries land in the same change as the behavior they des
   text 40 times over about 20 % longer, and extracting images after text about 10 % longer
   (80 corpus files), while rasterizing the same page repeatedly was unchanged.
 
-- **`Pdf.Compress` needs less memory to re-encode an image (#51).** Re-encoding one
-  image used to peak at four to five times its decoded size. It now needs about 1.5 times for a
-  Flate image re-encoded as JPEG (4.2 times before) and about 2.8 times for a downsampled JPEG
-  with full-resolution chroma (4.1 times before); measured on a 6000 × 6000 RGB image. Four
-  changes contribute. The JPEG encoder averages each 2×2 group's chroma as it goes instead of
-  building two full-size float planes, and it writes its output into one buffer instead of
-  copying it three times. The re-encoder releases the decoded samples once the encoder's planes
-  are built. The JPEG decoder releases each component's DCT coefficients as soon as that
-  component is reconstructed, which helps `Rasterize`, `ExtractImages` and `RasterImage.Decode`
-  as well. Output is byte-identical: the encoder's bytes are pinned by new golden tests, and
-  the decoder change only shortens how long its buffers live.
+- **Decoding a JPEG needs less memory (#51, #63).** The JPEG decoder releases each
+  component's DCT coefficients as soon as that component is reconstructed, rather than holding
+  them (2 bytes a sample) alongside the planes and the interleaved output, and it reads an input
+  that is a whole array in place rather than copying it first. This lowers the peak for JPEG
+  images in `Rasterize`, `ExtractImages` and `RasterImage.Decode`. Decoded output is
+  byte-identical. `JpegEncoder`'s output, which `Pdf.Compress` writes, is byte-identical too,
+  pinned by new golden tests, while it now needs far less working memory.
 
 - **Decoding a stream no longer copies its encoded payload first (#52).**
   `PdfStream.GetDecodedBytes` hands a stream's encoded bytes straight to the first filter
@@ -196,8 +202,8 @@ only by diffing output. Entries land in the same change as the behavior they des
   once, because `IPdfFilter` receives `ReadOnlyMemory<byte>`.
 
 - **File-system failures in PlumePDF's own file IO now throw `PlumePdfException` with a code,
-  not a bare `IOException` (#54).** Writing an output file to a path — `Save`, `SaveIncremental`,
-  `Pdf.Compress` and the other path verbs, signing, LTV and document timestamping — used to let
+  not a bare `IOException` (#54).** Writing an output file to a path — `Save`, `SaveIncremental`
+  and the other path verbs, signing, LTV and document timestamping — used to let
   `DirectoryNotFoundException`, `IOException` (the path is a directory, the disk is full) and
   `UnauthorizedAccessException` (no write permission) escape uncoded; they are now
   `PLUME1007`, naming the output path, with the original exception as `InnerException`. As
@@ -325,7 +331,8 @@ circulated before the public repository existed, and NuGet would rank them above
 - Coded errors throughout: every failure carries a stable `PLUME####` code and an
   `Exception.HelpLink` to its reference page under `docs/errors/`.
 
-[Unreleased]: https://github.com/slash-hug/plumepdf/compare/v1.0.0-preview.8...HEAD
+[Unreleased]: https://github.com/slash-hug/plumepdf/compare/v1.0.0-preview.9...HEAD
+[1.0.0-preview.9]: https://github.com/slash-hug/plumepdf/releases/tag/v1.0.0-preview.9
 [1.0.0-preview.8]: https://github.com/slash-hug/plumepdf/releases/tag/v1.0.0-preview.8
 [1.0.0-preview.2]: https://github.com/slash-hug/plumepdf/releases/tag/v1.0.0-preview.2
 [1.0.0]: https://github.com/slash-hug/plumepdf/releases/tag/v1.0.0

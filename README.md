@@ -21,7 +21,7 @@ Existing options force a choice: pay for a commercial SDK, accept AGPL (iText7),
 - **Create** — high-level document composition with a real layout engine, including Arabic and Devanagari shaping and UAX #9 bidi
 - **Read** — parse arbitrary real-world (including malformed) PDFs, with recoverable deviations reported as diagnostics
 - **Extract** — text with positions and reading order, images, metadata, structure
-- **Manipulate** — merge, split, reorder, stamp, watermark, optimize, linearize
+- **Manipulate** — merge, split, reorder, stamp, watermark, compress, optimize, linearize
 - **Trust** — AcroForms (fill, flatten, appearance generation), digital signatures (PAdES B-B through B-LTA, verification), PDF/A create and validate, tagged PDF / PDF-UA, true redaction
 - **Render** — an in-house managed page rasterizer and raster image codecs (PNG, JPEG, TIFF, CCITT, JBIG2, JPEG 2000), measured against PDFium in CI
 - **Performance** — low-allocation Span-based core, streaming, NativeAOT-compatible, benchmark-gated in CI
@@ -110,7 +110,7 @@ Every recipe in the [cookbook](docs/cookbook/README.md) is one task, embedded fr
 
 - **Create** — [invoice](docs/cookbook/create-invoice.md) · [Arabic / right-to-left](docs/cookbook/create-arabic-document.md) · [tagged / accessible PDF](docs/cookbook/create-tagged-pdf.md) · [PDF/A](docs/cookbook/create-pdfa.md) · [PDF from images](docs/cookbook/from-images.md) · [deterministic output](docs/cookbook/deterministic-output.md)
 - **Read and extract** — [open and inspect](docs/cookbook/open-and-inspect.md) · [text](docs/cookbook/extract-text.md) · [images](docs/cookbook/extract-images.md) · [metadata](docs/cookbook/read-metadata.md) · [damaged PDFs](docs/cookbook/handle-damaged-pdf.md)
-- **Manipulate** — [merge](docs/cookbook/merge.md) · [split](docs/cookbook/split.md) · [reorder and remove pages](docs/cookbook/reorder-pages.md) · [stamp](docs/cookbook/stamp-document.md) · [save incrementally](docs/cookbook/save-incremental.md) · [optimize and linearize](docs/cookbook/optimize-linearize.md)
+- **Manipulate** — [merge](docs/cookbook/merge.md) · [split](docs/cookbook/split.md) · [reorder and remove pages](docs/cookbook/reorder-pages.md) · [stamp](docs/cookbook/stamp-document.md) · [save incrementally](docs/cookbook/save-incremental.md) · [compress](docs/cookbook/compress.md) · [optimize and linearize](docs/cookbook/optimize-linearize.md) · [large files](docs/cookbook/large-files.md)
 - **Forms** — [fill](docs/cookbook/fill-form.md) · [flatten](docs/cookbook/flatten-form.md)
 - **Signatures** — [sign](docs/cookbook/sign-document.md) · [verify](docs/cookbook/verify-signatures.md) · [timestamp and LTV](docs/cookbook/timestamp-and-ltv.md)
 - **Compliance** — [validate PDF/A](docs/cookbook/validate-pdfa.md) · [redact](docs/cookbook/redact.md)
