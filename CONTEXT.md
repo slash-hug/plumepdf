@@ -495,8 +495,8 @@ in bytes), **Planning** (the pass that measures every image's placements and fin
 streams before anything is written, in pages) and **Writing** (the full-rewrite save, in
 **planned images**: the image XObjects the plan holds — every one the pages reach, soft masks
 included, whether rewritten or skipped — less duplicates merged into a canonical copy; inline
-images are never planned). A **Compression estimate** reports **Sampling** (sampled images
-trial-encoded) in place of Writing.
+images are never planned). A **Compression estimate** reports **Sampling** (sampled images, then sampled
+non-image streams, trial-encoded) in place of Writing.
 _Avoid_: phase, step (in Compress's reporting vocabulary), "images processed" for the Writing
 count (a skipped image counts; a merged duplicate doesn't)
 
