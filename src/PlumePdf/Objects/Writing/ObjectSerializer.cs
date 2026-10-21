@@ -18,6 +18,9 @@ internal static class ObjectSerializer
 {
     private static readonly byte[] Eol = "\n"u8.ToArray();
 
+    // What a measured stand-in stream's payload is written from, a chunk at a time.
+    private static readonly byte[] StandInZeros = new byte[64 * 1024];
+
     /// <summary>
     /// Writes one indirect object's complete <c>N G obj ... endobj</c> framing to
     /// <paramref name="output"/>.
@@ -230,11 +233,22 @@ internal static class ObjectSerializer
             }
         }
 
-        dict.Set(PdfName.Length, PdfNumber.Get(stream.RawBytes.Length));
+        dict.Set(PdfName.Length, PdfNumber.Get(stream.StandInLength ?? stream.RawBytes.Length));
 
         WriteDictionary(output, dict, translateReference, onPlaceholder);
         WriteAscii(output, "\nstream\n");
-        output.Write(stream.RawBytes.Span);
+        if (stream.StandInLength is { } length)
+        {
+            // A measured stand-in: zeros, never a payload-sized buffer.
+            for (var remaining = length; remaining > 0; remaining -= StandInZeros.Length)
+            {
+                output.Write(StandInZeros, 0, (int)Math.Min(remaining, StandInZeros.Length));
+            }
+        }
+        else
+        {
+            output.Write(stream.RawBytes.Span);
+        }
         output.Write(Eol);
         WriteAscii(output, "endstream");
     }

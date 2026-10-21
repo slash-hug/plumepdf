@@ -30,6 +30,22 @@ public sealed class PdfStream : PdfObject
     /// <summary>The stream's raw, still-encoded payload bytes (a managed copy, never a view over mapped memory).</summary>
     public ReadOnlyMemory<byte> RawBytes { get; }
 
+    private PdfStream(PdfDictionary dictionary, long standInLength)
+    {
+        Dictionary = dictionary;
+        StandInLength = standInLength;
+    }
+
+    /// <summary>
+    /// A stand-in for a stream that is only measured, never read: <paramref name="length"/>
+    /// payload bytes the serializer writes as zeros, in small chunks, with no payload held.
+    /// <see cref="RawBytes"/> is empty. A named factory, so an integer can't bind to it by accident.
+    /// </summary>
+    internal static PdfStream StandIn(PdfDictionary dictionary, long length) => new(dictionary, length);
+
+    /// <summary>The payload length a <see cref="StandIn"/> is written at, or null for an ordinary stream.</summary>
+    internal long? StandInLength { get; }
+
     /// <summary>Decodes <see cref="RawBytes"/> through <see cref="Dictionary"/>'s <c>/Filter</c> chain using <paramref name="registry"/>.</summary>
     /// <param name="registry">The filter registry to resolve filter names against — typically <see cref="PdfFilterRegistry.Default"/>.</param>
     /// <param name="options">The options controlling resource limits during decode. Defaults to <see cref="PdfOptions.Default"/> when omitted.</param>

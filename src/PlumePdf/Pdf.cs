@@ -640,18 +640,22 @@ public static class Pdf
     /// estimated would refuse. With <see cref="PdfCompressOptions.AllowInvalidatingSignatures"/>
     /// the signatures are stripped only from the estimate's own copy of the document, never
     /// from the file. The writer's own late refusal under <see cref="PdfOptions.Strict"/>
-    /// (<c>PLUME2060</c>, a reference the document can't resolve) isn't predicted: the estimate
-    /// never runs the writer.
+    /// (<c>PLUME2060</c>, a reference the document can't resolve) comes through too: the estimate
+    /// runs Compress's writer to measure the output.
     /// </para>
     /// <para>
     /// At most sixteen images and 32 unfiltered non-image streams (32 MiB of payload) are
     /// trial-encoded, one at a time, through the same code Compress writes them with, so memory
-    /// is bounded by the largest sample as Compress's is by the largest image. <see cref="PdfCompressOptions.Progress"/> reports
+    /// is bounded by the largest sample as Compress's is by the largest image. The output is then
+    /// measured by running Compress's writer into a counter that keeps nothing, with every
+    /// stream standing in at its estimated size and none read, so the structure a full rewrite
+    /// writes (dropped revisions and unreached objects, object-stream packing, the
+    /// cross-reference section) is exact. <see cref="PdfCompressOptions.Progress"/> reports
     /// <see cref="CompressionStage.Planning"/> then <see cref="CompressionStage.Sampling"/>.
     /// How the sample is chosen and the rest extrapolated, and the exact definition of
     /// <see cref="CompressionEstimate.EstimatedOutputBytes"/>, are in
-    /// <see cref="CompressionEstimate"/>'s remarks. Sampled images and streams and duplicates are
-    /// exact; extrapolated parts can be off in either direction when a group's members are
+    /// <see cref="CompressionEstimate"/>'s remarks. Sampled images and streams, duplicates and the
+    /// structure are exact; extrapolated parts can be off in either direction when a group's members are
     /// unlike its samples, so use <see cref="CompressionEstimate.EstimatedOutputBytes"/> +
     /// <see cref="CompressionEstimate.ExtrapolatedSavedBytes"/> for a cautious figure. For an exact size, run Compress to a stream that only
     /// counts what is written to it.

@@ -82,6 +82,24 @@ public class CompressEstimateTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void ADanglingReference_UnderStrict_RefusesAsCompressDoes()
+    {
+        // The estimate runs Compress's writer to measure the output, so the writer's late
+        // refusal of a reference the document can't resolve comes through too.
+        var strict = PdfOptions.Default with { Strict = true };
+        var pdf = OneImage(Image(extra: "/SMask 99 0 R"), FlateSamples());
+        var source = Write(pdf);
+        try
+        {
+            Assert.Equal("PLUME2060", Assert.Throws<PlumePdfException>(() => Pdf.EstimateCompression(source, AllLevers, strict)).Code);
+        }
+        finally
+        {
+            Delete(source);
+        }
+    }
+
+    [Fact]
     public void ArgumentErrors_AreTheBclExceptions()
     {
         Assert.Throws<ArgumentNullException>(() => Pdf.EstimateCompression((string)null!));
@@ -370,15 +388,18 @@ public class CompressEstimateTests(ITestOutputHelper output)
         var content = "0 0 10 10 re f ".PadRight(4000, ' ');
         var pdf = new ScanTestPdf().Page(3, content).Page(5, content);
 
+        var withoutLosslessOptions = new PdfCompressOptions { Lossless = false };
         var estimate = Estimate(pdf, null);
-        var withoutLossless = Estimate(pdf, new PdfCompressOptions { Lossless = false });
+        var withoutLossless = Estimate(pdf, withoutLosslessOptions);
 
-        var flated = CompressionTestImages.Flate(System.Text.Encoding.Latin1.GetBytes(content)).Length + CompressionEstimator.FilterEntryBytes;
+        var flated = CompressionTestImages.Flate(System.Text.Encoding.Latin1.GetBytes(content)).Length;
         Assert.Empty(estimate.Images);
         Assert.Equal(1, estimate.SampledNonImageStreams);
-        Assert.Equal(4000 + (4000 - flated), estimate.EstimatedNonImageSavedBytes);
-        Assert.Equal(estimate.InputBytes - estimate.EstimatedNonImageSavedBytes, estimate.EstimatedOutputBytes);
-        Assert.Equal(withoutLossless.InputBytes, withoutLossless.EstimatedOutputBytes);
+        Assert.Equal(4000 + CompressionEstimator.FlatedSaving(4000, flated), estimate.EstimatedNonImageSavedBytes);
+
+        // Everything that varies is sampled, so the estimate is the written size to the byte.
+        Assert.Equal(Compress(pdf, null, Deterministic).Result.OutputBytes, estimate.EstimatedOutputBytes);
+        Assert.Equal(Compress(pdf, withoutLosslessOptions, Deterministic).Result.OutputBytes, withoutLossless.EstimatedOutputBytes);
     }
 
     [Fact]
@@ -415,8 +436,9 @@ public class CompressEstimateTests(ITestOutputHelper output)
         var error = (double)(estimate.EstimatedOutputBytes - actual.OutputBytes) / actual.OutputBytes;
         output.WriteLine($"input {estimate.InputBytes}, estimated {estimate.EstimatedOutputBytes} (non-image saving {estimate.EstimatedNonImageSavedBytes}), actual {actual.OutputBytes}, error {error:P2}");
 
-        // Measured: 4.3% over (both TFMs), where counting no non-image saving was 543% over.
-        Assert.InRange(error, 0.02, 0.07);
+        // Measured: 0.5% under (both TFMs): the eight unsampled streams' extrapolated saving, the
+        // rest exact. Counting no non-image saving was 543% over; leaving packing out, 4.3% over.
+        Assert.InRange(error, -0.02, 0.02);
     }
 
     [Fact]
@@ -453,23 +475,25 @@ public class CompressEstimateTests(ITestOutputHelper output)
     [Fact]
     public void AnUnsampledStream_SavesWhatTheRatioPredicts_LessTheFilterEntry_NeverBelowZero()
     {
-        Assert.Equal(1000 - (250 + CompressionEstimator.FilterEntryBytes), CompressionEstimator.ExtrapolatedFlateSaving(1000, 0.25));
+        // 1000 → 250 bytes, the /Filter entry added, and /Length one digit shorter.
+        Assert.Equal(1000 - (250 + CompressionEstimator.FilterEntryBytes) + 1, CompressionEstimator.ExtrapolatedFlateSaving(1000, 0.25));
         Assert.Equal(0, CompressionEstimator.ExtrapolatedFlateSaving(20, 0.25));
         Assert.Equal(0, CompressionEstimator.ExtrapolatedFlateSaving(1000, 1.0));
     }
 
-    // Measured (both TFMs, macOS arm64): the scan's estimate is 6.5% over the written size (the
-    // images alone 5.9% over: three samples from 24 pages whose noise differs page to page);
-    // the mixed document's 1.3% over (every rewritten image sampled, so the images are exact
-    // and the gap is the unestimated object-stream packing); many groups with the cap hit, 3.7% over (the
-    // images 1.4% under). The bands allow for another zlib build's Flate output.
+    // Measured (both TFMs, macOS arm64): the writer measures the structure, so what's left is the
+    // images' extrapolation. The scan's estimate is 5.9% over the written size (the images alone
+    // 5.9% over: three samples from 24 pages whose noise differs page to page); the mixed
+    // document's is exact (every rewritten image sampled); many groups with the cap hit, 1.3%
+    // under (the images 1.4% under), which the cautious figure covers. The bands allow for
+    // another zlib build's Flate output.
     [Fact]
     public void Accuracy_OnAHomogeneousJpegScan_IsWithinTheMeasuredBand()
     {
         var error = RelativeError(JpegScan(), ScanLevers, out var estimate);
 
         Assert.Equal(3, estimate.SampledImages);
-        Assert.InRange(error, 0.045, 0.085);
+        Assert.InRange(error, 0.04, 0.08);
     }
 
     [Fact]
@@ -477,15 +501,17 @@ public class CompressEstimateTests(ITestOutputHelper output)
     {
         var error = RelativeError(Mixed(), AllLevers, out _);
 
-        Assert.InRange(error, 0.0, 0.03);
+        Assert.InRange(error, -0.005, 0.005);
     }
 
     [Fact]
     public void Accuracy_OnManyGroups_WithTheCapHit_IsWithinTheMeasuredBand()
     {
-        var error = RelativeError(ManyGroups(), AllLevers, out _);
+        var error = RelativeError(ManyGroups(), AllLevers, out var estimate);
+        var (actual, _) = Compress(ManyGroups(), AllLevers, Deterministic);
 
-        Assert.InRange(error, 0.02, 0.055);
+        Assert.InRange(error, -0.03, 0.0);
+        Assert.True(estimate.EstimatedOutputBytes + estimate.ExtrapolatedSavedBytes >= actual.OutputBytes, "the cautious figure covers the output");
     }
 
     [Theory]
@@ -579,12 +605,99 @@ public class CompressEstimateTests(ITestOutputHelper output)
         }
     }
 
-    [Fact]
-    public void PackedOutput_EstimatesNoStructureGrowth()
+    // A full rewrite drops superseded revisions and objects nothing reaches, and the lossless
+    // levers pack small objects into object streams; the estimate runs the writer itself, so it
+    // counts all three. Measured within 0.1% on both TFMs; it was 400% to 600% over on the
+    // first two, and about 30% over on the third, while the structure was assumed unchanged.
+    [Theory]
+    [InlineData("revisions", true)]
+    [InlineData("revisions", false)]
+    [InlineData("unreachable", true)]
+    [InlineData("unreachable", false)]
+    [InlineData("small-objects", true)]
+    public void WhatAFullRewriteDropsAndPacks_IsInTheEstimate(string fixture, bool lossless)
     {
-        var estimate = Estimate(Mixed(), AllLevers);
+        var bytes = fixture switch
+        {
+            "revisions" => SupersededRevisions(),
+            "unreachable" => UnreachableObjects(),
+            _ => ManySmallObjects().Build(),
+        };
+        var options = new PdfCompressOptions { Lossless = lossless };
+        var input = Write(bytes);
+        var outputPath = TempPath();
+        try
+        {
+            var estimate = Pdf.EstimateCompression(input, options, Deterministic);
+            var actual = Pdf.Compress(input, outputPath, options, Deterministic);
 
-        Assert.Equal(0, estimate.EstimatedStructureGrowthBytes);
+            var error = (double)(estimate.EstimatedOutputBytes - actual.OutputBytes) / actual.OutputBytes;
+            output.WriteLine($"input {estimate.InputBytes}, structure {estimate.EstimatedStructureGrowthBytes}, estimated {estimate.EstimatedOutputBytes}, actual {actual.OutputBytes}, error {error:P2}");
+            Assert.InRange(error, -0.01, 0.01);
+        }
+        finally
+        {
+            Delete(input, outputPath);
+        }
+    }
+
+    // A sampled image stands in with the dictionary Compress actually wrote: a /Decode baked
+    // into the samples and dropped, or an indirect /Width kept as a reference by the Flate lever,
+    // changes it in ways a rebuilt dictionary gets wrong by a few bytes.
+    [Theory]
+    [InlineData("baked-decode")]
+    [InlineData("indirect-width")]
+    public void ASampledImage_StandsInWithTheDictionaryCompressWrites(string fixture)
+    {
+        var (pdf, options) = fixture switch
+        {
+            "baked-decode" => (OneImage(Image(extra: "/Decode [1 0 1 0 1 0]"), FlateSamples()), new PdfCompressOptions { Images = new PdfImageCompression { JpegQuality = 70 } }),
+            _ => (OneImage(Image(filter: null).Replace($"/Width {Pixels}", "/Width 50 0 R", StringComparison.Ordinal), CompressionTestImages.Samples(Pixels, Pixels, 3)).Object(50, $"{Pixels}"), (PdfCompressOptions?)null),
+        };
+
+        var estimate = Estimate(pdf, options);
+        var (actual, _) = Compress(pdf, options, Deterministic);
+
+        Assert.Equal(1, estimate.SampledImages);
+        Assert.Equal(actual.OutputBytes, estimate.EstimatedOutputBytes);
+    }
+
+    [Fact]
+    public void MeasuringTheWrite_AllocatesNothingLikeALargeStreamsPayload()
+    {
+        // A 64 MiB unfiltered stream nothing samples (no lossless levers): its stand-in is a
+        // length, written as zeros in small chunks, never a payload-sized buffer.
+        const int Big = 64 << 20;
+        var pdf = new ScanTestPdf().Stream(10, string.Empty, new byte[Big]);
+        pdf.Page(3, "0 0 10 10 re f", extra: "/PieceData 10 0 R");
+        var source = Write(pdf);
+        try
+        {
+            var options = new PdfCompressOptions { Lossless = false };
+            Pdf.EstimateCompression(source, options, Deterministic);
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            var estimate = Pdf.EstimateCompression(source, options, Deterministic);
+            var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            Assert.True(estimate.EstimatedOutputBytes > Big);
+            Assert.True(allocated < Big / 8, $"Estimating allocated {allocated} bytes for a {Big}-byte stream.");
+        }
+        finally
+        {
+            Delete(source);
+        }
+    }
+
+    [Fact]
+    public void WithEveryRewrittenImageSampled_TheEstimateIsTheWrittenSize()
+    {
+        // Every image the levers rewrite is sampled, so the images are exact, and the structure
+        // (packing, the cross-reference stream, what the rewrite drops) is measured by the writer.
+        var estimate = Estimate(Mixed(), AllLevers);
+        var (actual, _) = Compress(Mixed(), AllLevers, Deterministic);
+
+        Assert.Equal(actual.OutputBytes, estimate.EstimatedOutputBytes);
+        Assert.True(estimate.EstimatedStructureGrowthBytes < 0, "packing saves bytes on this document");
     }
 
     [Fact]

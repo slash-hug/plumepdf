@@ -321,50 +321,53 @@ numbers are made — deterministically, so the same input and options always giv
   streams — are sampled: largest first, each that still fits in 32 MiB of payload read, up to
   32 (`SampledNonImageStreams`), Flated through the same code the write uses. Each sampled
   stream saves exactly what the write saves (its bytes less the Flated bytes and the 21-byte
-  `/Filter /FlateDecode` entry, when that is smaller); every other one,
-  `before − min(before, round(before × ratio) + 21)`, with `ratio` the samples' total bytes
-  written over bytes read.
-- **Unpacking** (`EstimatedStructureGrowthBytes`): when the save doesn't pack objects
-  (`Lossless = false`, or PDF/A-1) and the source keeps objects in object streams, every one the
-  save reaches is written as its own object: counted at its exact serialized size, less the
-  object and cross-reference streams no longer written, plus a classic cross-reference table at
-  20 bytes per object. Zero otherwise.
-- **`EstimatedOutputBytes`** is exactly `InputBytes`, less each image entry's
-  `BytesBefore - EstimatedBytesAfter`, less `EstimatedNonImageSavedBytes`, plus
-  `EstimatedStructureGrowthBytes`.
+  `/Filter /FlateDecode` entry, plus the digits its shorter `/Length` drops, when the Flated
+  bytes and the entry are smaller); every other one is taken as Flated to
+  `round(before × ratio)` bytes by the same rule, with `ratio` the samples' total bytes written
+  over bytes read.
+- **`EstimatedOutputBytes`** is measured: Compress's own writer runs with the same options
+  into a counter that keeps nothing, with every stream standing in at the size just estimated
+  for it (an image at its `EstimatedBytesAfter`, with the dictionary Compress would write; a
+  stream the Flate lever compresses at its Flated size; any other at its own) and no payload
+  read. Everything else a full rewrite does is then exact: the objects it drops (those nothing
+  reaches, and the superseded revisions of an incrementally updated file, which can be most of
+  it), packing objects into object streams (or, with `Lossless = false`, unpacking a source's),
+  and the cross-reference section. `EstimatedStructureGrowthBytes` is what that comes to beyond
+  the image and non-image savings, usually negative.
 
-**How far to trust it.** Sampled images and streams and the duplicates written once are exact:
-they are the bytes Compress writes. Extrapolated parts — unsampled images and streams,
+**How far to trust it.** Sampled images and streams, the duplicates written once and the
+structure are exact: when everything that varies is sampled, the estimate is the size Compress
+writes, to the byte. Extrapolated parts — unsampled images and streams,
 `ExtrapolatedSavedBytes` in all — can be off in either direction when a group's members are
 unlike its samples (a blank page sampled among noisy ones makes the rest look tiny). For a
 cautious figure, use `EstimatedOutputBytes + ExtrapolatedSavedBytes`: the output if none of the
-extrapolated saving materialised. Left out, and so making the output smaller than estimated:
-object-stream packing (usually a few percent) and the objects a full rewrite drops — those
-nothing reaches, and the superseded revisions of an incrementally updated file, which can be
-most of it. Also left out: the few hundred bytes of structure a rewrite can add to a very small
-file. `estimate.SignaturesToStrip` says what `result.SignaturesStripped` would be, and each
+extrapolated saving materialised. `estimate.SignaturesToStrip` says what `result.SignaturesStripped` would be, and each
 image's `EstimatedSourceQuality` what Compress would report.
 
 **Measured accuracy** (the repository's tests, `MaxDpi` 100 or 150 and `JpegQuality` 70–80):
-a 24-page JPEG scan whose pages differ in noise, estimated from 3 samples, came out 6.5 %
-above the written size (its images alone 5.9 % above); a mixed document of photos, a
-text-like image, soft masks, a duplicate and skipped images, with every rewritten image
-sampled, 1.3 % above (its images exact); a document with more groups than the cap allows,
-3.7 % above (its images 1.4 % below); 40 pages of unfiltered text content, 32 of them sampled,
-4.3 % above; an object-stream source saved with `Lossless = false`, 0.3 % below. Across a
-sample of 295 files from the conformance corpora (most of them small and image-free), with
-`MaxDpi = 150` and `JpegQuality = 70`, the error (estimate against what Compress wrote) was:
+a 24-page JPEG scan whose pages differ in noise, estimated from 3 samples, came out 5.9 %
+above the written size (its images 5.9 % above); a mixed document of photos, a text-like
+image, soft masks, a duplicate and skipped images, with every rewritten image sampled, exact;
+a document with more groups than the cap allows, 1.3 % below (its images 1.4 % below, and the
+cautious figure above); 40 pages of unfiltered text content, 32 of them sampled, 0.5 % below;
+files whose superseded revisions, unreachable objects or unpacked small objects are most of the
+input, and an object-stream source saved with `Lossless = false`, exact. Across 780 files from
+the conformance corpora (most of them small, with few images, so nearly everything is
+sampled), with `MaxDpi = 150` and `JpegQuality = 70`, the error (estimate against what
+Compress wrote) was:
 
 | Files | Lossless on: median / p90 / max | most under | `Lossless = false`: median / p90 / max | most under |
 |---|---|---|---|---|
-| 100 KB or more (15) | 0.4 % / 29 % / 118 % | none | 0.03 % / 22 % / 105 % | −0.2 % |
-| 10 KB or more (90) | 6.1 % / 63 % / 407 % | none | 0.7 % / 41 % / 359 % | −4.1 % |
-| all (295) | 8.6 % / 39 % / 407 % | −63 % | 1.4 % / 9.3 % / 359 % | −58 % |
+| 100 KB or more (188) | 0 % / 0 % / 0.8 % | −0.8 % | 0 % / 0 % / 0.8 % | −0.8 % |
+| 10 KB or more (695) | 0 % / 0 % / 0.8 % | −0.8 % | 0 % / 0 % / 0.8 % | −0.8 % |
+| all (780) | 0 % / 0 % / 0.8 % | −0.8 % | 0 % / 0 % / 0.8 % | −0.8 % |
 
-The large over-estimates are what the estimate leaves out (superseded revisions of
-incrementally updated files, then object-stream packing); the large under-estimates are files
-under 1 KB that a rewrite grows by a few hundred bytes. With the lossless levers on, the
-cautious figure covered the output for every file of 10 KB or more.
+The one file off (−0.8 %) has 50 images, 6 of them sampled: the error is the images'
+extrapolation. Before the output was measured by the writer, the same files' estimates ran up
+to 407 % over (superseded revisions, then object-stream packing, left out). Where many images
+are extrapolated from a few samples, expect the scan figures above rather than these: a
+generated 600-page scan with per-page noise came out 13.5 % below from 3 samples, its cautious
+figure well above.
 
 `estimate.Diagnostics` carries the same result-scoped summaries Compress raises, in the
 conditional ("Compress would leave …"): `PLUME6088`/`6089`/`6090` about the options,

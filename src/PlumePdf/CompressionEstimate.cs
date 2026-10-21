@@ -38,39 +38,33 @@ namespace PlumePdf;
 /// estimated from a sample. Largest first, each that still fits in 32 MiB of payload read (a
 /// larger one is passed over), up to 32 streams, is Flated through the same code the write
 /// uses, saving what the write would: its bytes less the Flated bytes and the 21-byte
-/// <c>/Filter /FlateDecode</c> entry, when that is smaller. Every other candidate is estimated
-/// with the samples' aggregate ratio of bytes written to bytes read:
-/// <c>before − min(before, round(before × ratio) + 21)</c>. With no sample, none is counted.
+/// <c>/Filter /FlateDecode</c> entry, plus the digits its shorter <c>/Length</c> drops, when the
+/// Flated bytes and the entry are smaller. Every other candidate is estimated with the samples'
+/// aggregate ratio of bytes written to bytes read, as Flated to <c>round(before × ratio)</c>
+/// bytes by the same rule. With no sample, none is counted.
 /// </para>
 /// <para>
-/// When the save Compress would make doesn't pack objects into object streams
-/// (<see cref="PdfCompressOptions.Lossless"/> off, or PDF/A-1) and the source has them, the
-/// unpacking is estimated too (<see cref="EstimatedStructureGrowthBytes"/>): each object the
-/// save reaches that the source keeps in an object stream, at its exact serialized size as its
-/// own <c>N G obj … endobj</c>, less the object and cross-reference streams that are no longer
-/// written (payload, dictionary and framing), plus a classic cross-reference table at 20 bytes
-/// per written object.
+/// <see cref="EstimatedOutputBytes"/> is then measured, not added up: Compress's own writer runs
+/// with the same options into a counter that keeps nothing, every stream standing in at the
+/// size just estimated for it (a planned image at its <see cref="PlannedImageCompression.EstimatedBytesAfter"/>,
+/// with the dictionary Compress wrote for a sampled one and would write for any other; a stream the Flate lever would compress at its
+/// Flated size; any other at its own) and no stream's payload read. So everything a full rewrite
+/// does to the rest of the file is exact: the objects it drops (those nothing reaches, and the
+/// superseded revisions of an incrementally updated file), packing objects into object streams
+/// or, when the save won't pack, unpacking a source's, and the cross-reference section. What
+/// that comes to, beyond the image and non-image savings, is
+/// <see cref="EstimatedStructureGrowthBytes"/>.
 /// </para>
 /// <para>
-/// <see cref="EstimatedOutputBytes"/> is then exactly <see cref="InputBytes"/>, minus, for
-/// every entry of <see cref="Images"/> with a
-/// <see cref="PlannedImageCompression.SourceReference"/>, its
-/// <see cref="PlannedImageCompression.BytesBefore"/> less its
-/// <see cref="PlannedImageCompression.EstimatedBytesAfter"/>, minus
-/// <see cref="EstimatedNonImageSavedBytes"/>, plus <see cref="EstimatedStructureGrowthBytes"/>.
-/// </para>
-/// <para>
-/// How far to trust it. Sampled images and streams and the duplicates written once are exact:
-/// they are the bytes Compress writes. Extrapolated parts — unsampled images and streams,
+/// How far to trust it. Sampled images and streams, duplicates written once and the structure
+/// are exact: when everything that varies is sampled, the estimate is the size Compress writes,
+/// to the byte. Extrapolated parts — unsampled images and streams,
 /// <see cref="ExtrapolatedSavedBytes"/> in all — can be off in either direction when a group's
 /// members are unlike its samples, so for a cautious figure, use
-/// <see cref="EstimatedOutputBytes"/> + <see cref="ExtrapolatedSavedBytes"/>. Left out
-/// entirely, and so making the output smaller than estimated: packing objects into object
-/// streams (usually a few percent of a small file), and the objects a full rewrite drops — those
-/// nothing reaches, and the superseded revisions of an incrementally updated file, which can be
-/// most of it. Also left out: the few hundred bytes of structure a rewrite can add to a very
-/// small file. For an exact size, run <c>Pdf.Compress</c> to a stream that only counts the
-/// bytes written to it.
+/// <see cref="EstimatedOutputBytes"/> + <see cref="ExtrapolatedSavedBytes"/>. A stand-in holds
+/// only a length (its zeros are written a small chunk at a time), so measuring the write needs
+/// no payload-sized memory and takes about as long as serializing the file's objects; for an exact size with every image
+/// encoded, run <c>Pdf.Compress</c> to a stream that only counts the bytes written to it.
 /// </para>
 /// <para>
 /// <see cref="Diagnostics"/> is result-scoped, as on <see cref="CompressionResult"/>: the
@@ -156,19 +150,18 @@ public sealed class CompressionEstimate
     /// <see cref="PlannedImageCompression.EstimatedBytesAfter"/>) and the unsampled non-image
     /// streams are estimated to save. <see cref="EstimatedOutputBytes"/> plus this is the size the
     /// output would be if none of that saving materialised — the cautious figure to hold against a
-    /// size cap. It does not cover what the estimate leaves out (see this type's remarks), which
-    /// almost always makes the output smaller still, nor <see cref="EstimatedStructureGrowthBytes"/>
-    /// being off, nor the few hundred bytes of structure a rewrite can add to a very small file.
+    /// size cap. Everything else in the estimate is measured (see this type's remarks).
     /// </summary>
     public long ExtrapolatedSavedBytes { get; }
 
     /// <summary>
-    /// How much the output is estimated to grow from unpacking object streams, included in
-    /// <see cref="EstimatedOutputBytes"/>: when the save Compress would make doesn't pack objects
-    /// (<see cref="PdfCompressOptions.Lossless"/> off, or a PDF/A-1 source or output) but the
-    /// source keeps objects in object streams, every one the save reaches is written as its own
-    /// object, with a classic cross-reference table. Estimated from the objects themselves (see
-    /// this type's remarks); zero otherwise.
+    /// What the rewrite's structure adds to the output (positive) or saves (negative), beyond the
+    /// image and non-image savings, included in <see cref="EstimatedOutputBytes"/>: the objects a
+    /// full rewrite drops (those nothing reaches, and superseded revisions), packing objects into
+    /// object streams (or, when the save won't pack, unpacking a source's), and the
+    /// cross-reference section. It is <see cref="EstimatedOutputBytes"/> less
+    /// (<see cref="InputBytes"/> less the images' and <see cref="EstimatedNonImageSavedBytes"/>'s
+    /// savings), measured by running the writer (see this type's remarks), and is usually negative.
     /// </summary>
     public long EstimatedStructureGrowthBytes { get; }
 

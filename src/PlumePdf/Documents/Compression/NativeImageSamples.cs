@@ -246,7 +246,7 @@ internal static class NativeImageSamples
     }
 
     // 1 or 3 for an eligible colour space, otherwise 0.
-    private static int ComponentCount(PdfObject? colorSpace, ObjectRegistry objects)
+    internal static int ComponentCount(PdfObject? colorSpace, ObjectRegistry objects)
     {
         if (colorSpace is PdfName name)
         {

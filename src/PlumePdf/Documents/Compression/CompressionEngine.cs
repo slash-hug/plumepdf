@@ -361,10 +361,19 @@ internal static class CompressionEngine
                 decision.EstimatedSourceQuality));
         }
 
-        var growth = sampled.StructureGrowthBytes;
+        // The writer itself, into a byte counter, with every stream stood in for at the size
+        // Compress would write it (nothing read): what the rewrite drops, packs and indexes is
+        // then measured rather than assumed.
+        long estimated;
+        using (var counter = new CountingWriteStream())
+        {
+            estimated = document.SaveWithWriteHooks(counter, effective, new StandInWriteTransform(document.Objects, sampled.Records, sampled.FlatedStreams, cancellationToken), plan.Aliases);
+        }
+
+        var growth = estimated - (inputBytes - saved - sampled.NonImageSavedBytes);
         return new CompressionEstimate(
             inputBytes,
-            inputBytes - saved - sampled.NonImageSavedBytes + growth,
+            estimated,
             sampled.Sampled.Count,
             sampled.NonImageSavedBytes,
             sampled.SampledStreams,

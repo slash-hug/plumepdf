@@ -454,6 +454,17 @@ internal static class FullRewriteWriter
             return overridden;
         }
 
+        if (transform is IUnreadStreamWriteTransform unread && unread.Handles(originalNumber))
+        {
+            // Discovery has already read this object's dictionary; a stream is replaced from
+            // that alone, and its payload is never read.
+            var discovered = ((IObjectSource)objects).ResolveForDiscovery(new IndirectReference(originalNumber, 0), out var isStream);
+            if (isStream && (discovered as PdfDictionary ?? (discovered as PdfStream)?.Dictionary) is { } dictionary)
+            {
+                return CheckedReplacement(originalNumber, dictionary, unread.ReplaceUnread(originalNumber, dictionary));
+            }
+        }
+
         var value = ((IObjectSource)objects).ResolveForWrite(new IndirectReference(originalNumber, 0));
         return transform is not null && value is PdfStream stream && transform.Handles(originalNumber)
             ? Transformed(transform, originalNumber, stream)
@@ -466,15 +477,17 @@ internal static class FullRewriteWriter
     private static PdfStream Transformed(IStreamWriteTransform transform, int originalNumber, PdfStream original)
     {
         var replacement = transform.Transform(originalNumber, original);
-        if (ReferenceEquals(replacement, original))
-        {
-            return original;
-        }
+        return ReferenceEquals(replacement, original)
+            ? original
+            : CheckedReplacement(originalNumber, original.Dictionary, replacement);
+    }
 
+    private static PdfStream CheckedReplacement(int originalNumber, PdfDictionary original, PdfStream replacement)
+    {
         HashSet<int>? allowed = null;
         foreach (var reference in FindStreamDictionaryReferences(replacement.Dictionary))
         {
-            allowed ??= [.. FindStreamDictionaryReferences(original.Dictionary).Select(static r => r.Target.Number)];
+            allowed ??= [.. FindStreamDictionaryReferences(original).Select(static r => r.Target.Number)];
             if (!allowed.Contains(reference.Target.Number))
             {
                 throw new PlumePdfException("PLUME5010", $"Internal writer invariant violated: the write-time replacement for object {originalNumber} references object {reference.Target.Number}, which the original stream does not.");

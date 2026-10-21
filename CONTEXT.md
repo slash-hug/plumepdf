@@ -510,8 +510,10 @@ lever would compress (at most 32 sampled, 32 MiB read, the rest by the samples' 
 estimated output size — with nothing written. Sampled images and streams and duplicates are
 exact; the **extrapolated** parts (`ExtrapolatedSavedBytes`) can be off in either direction when a
 group's members are unlike its samples, so `EstimatedOutputBytes + ExtrapolatedSavedBytes` is the
-**cautious figure** for a size cap. Object-stream packing and the objects a full rewrite drops
-are not counted; unpacking a source's object streams, when the save won't repack, is.
+**cautious figure** for a size cap. The output itself is measured by running Compress's writer
+into a counter, every stream standing in at its estimated size (a **stand-in**, never read), so
+the structure a full rewrite writes is exact: the objects it drops, object-stream packing or
+unpacking, and the cross-reference section.
 _Avoid_: preview, simulation, analysis (it runs real encodes on a sample), "dry-run compress"
 as a mode of Compress (it is its own verb, and never writes)
 

@@ -20,3 +20,16 @@ internal interface IStreamWriteTransform
     /// <summary>The stream to write in place of <paramref name="original"/>, which may be <paramref name="original"/> itself.</summary>
     PdfStream Transform(int originalNumber, PdfStream original);
 }
+
+/// <summary>
+/// A <see cref="IStreamWriteTransform"/> that stands in for streams without reading them: the
+/// writer hands it the stream's dictionary as discovery read it, and writes what
+/// <see cref="ReplaceUnread"/> returns without ever parsing the original's payload. A dry run
+/// that only measures the output uses it, so it never reads a large image it won't encode.
+/// </summary>
+/// <remarks>The same rule applies: the replacement may reference only a subset of what the dictionary does.</remarks>
+internal interface IUnreadStreamWriteTransform : IStreamWriteTransform
+{
+    /// <summary>The stream to write in place of the stream originally numbered <paramref name="originalNumber"/>, whose dictionary is <paramref name="dictionary"/>.</summary>
+    PdfStream ReplaceUnread(int originalNumber, PdfDictionary dictionary);
+}
