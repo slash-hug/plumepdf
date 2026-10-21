@@ -182,11 +182,11 @@ jobs:
       # write: the v* tag ruleset lets GitHub Actions create release tags, so keep it that way.
       contents: write
     steps:
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: nuget-packages
           path: artifacts
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: release-notes
 
