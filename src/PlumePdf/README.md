@@ -111,7 +111,7 @@ An in-house, pure-managed rasterizer (NativeAOT-safe, no native dependency): tex
 | Area | Behavior |
 |---|---|
 | Open | `PdfDocument.Open(path)` memory-maps the file and reads objects only when used; `Open(Stream)` reads a seekable stream through a small buffer. Files over 2 GiB work; one object too large for a single array (~2 GiB) resolves as null with `PLUME2061` |
-| Save | A full `Save`, plain or `Optimize`, holds one stream payload at a time (a 2.67 GB scan saves in under 80 MB of managed heap); a linearized save and form flattening still hold every stream. Write to a different path — a full `Save`, sign, LTV or timestamp write over the open file buffers the whole source first, and refuses past 2 GiB (`PLUME1006`) |
+| Save | A full `Save`, plain or `Optimize`, holds one stream payload at a time (a 2.67 GB scan saves in under 80 MB of managed heap); a linearized save and form flattening still hold every stream. `ExtractImages`/`ExtractText`/`Rasterize` hold one page's streams per call, so reading every page of a large file stays bounded by a page (a 2.2 GiB document's images extract in about 200 MB of heap) Write to a different path — a full `Save`, sign, LTV or timestamp write over the open file buffers the whole source first, and refuses past 2 GiB (`PLUME1006`) |
 | Reading | What `ExtractImages`/`ExtractText`/`Rasterize`/`doc.Objects` resolve stays cached until the document is disposed — for a full pass over a huge file, process pages in batches and reopen between them (`docs/cookbook/large-files.md`) |
 
 ## Errors

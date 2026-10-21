@@ -152,6 +152,22 @@ only by diffing output. Entries land in the same change as the behavior they des
 
 ### Changed
 
+- **Reading a page no longer keeps its streams for the document's lifetime (#42).**
+  `PdfPage.ExtractImages`, `ExtractText` and `Rasterize` (and the `Pdf` verbs built on them)
+  read the streams a page needs (its content, images, soft masks and the like) for that call,
+  and let them go when it returns. A stream read twice in one call is still read once.
+  Non-stream objects (page, font and resource dictionaries) stay cached as before. On a
+  2.2 GiB document of 280 image pages, extracting every image now peaks at about 200 MB of
+  managed heap (179–213 MB over two runs) and retains 70 MB, against 3.0 GB peak and 2.4 GB retained before, so a large file no
+  longer needs to be read in batches and reopened. Nothing a caller holds is affected: a
+  stream you resolved through `doc.Objects` stays cached and is the one the read verbs use,
+  including edits made in place without `MarkDirty`, and `doc.Objects` still caches whatever
+  you resolve through it. Two effects are visible. A stream only a read verb ever read
+  resolves through `doc.Objects` afterwards to a fresh instance with equal contents. And a
+  page read again by another verb re-reads its streams from the file: on 80 corpus files,
+  extracting images after extracting text took about 10 % longer, while text extraction and
+  rasterization times were unchanged.
+
 - **`Pdf.Compress` needs less memory to re-encode an image (#51).** Re-encoding one
   image used to peak at four to five times its decoded size. It now needs about 1.5 times for a
   Flate image re-encoded as JPEG (4.2 times before) and about 2.8 times for a downsampled JPEG

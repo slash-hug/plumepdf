@@ -16,7 +16,7 @@ foreach (var diagnostic in document.Diagnostics)
 
 report.AppendLine($"Recovered pages: {document.Pages.Count}");
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L810-L821' title='Snippet source file'>snippet source</a> | <a href='#snippet-handle-damaged-pdf' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L805-L816' title='Snippet source file'>snippet source</a> | <a href='#snippet-handle-damaged-pdf' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Expected output (backing test `CookbookTests.HandleDamagedPdf`):

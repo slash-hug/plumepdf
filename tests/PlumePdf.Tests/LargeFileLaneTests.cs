@@ -38,7 +38,7 @@ public class LargeFileLaneTests(ITestOutputHelper output)
         }
 
         var input = Path.Combine(Path.GetTempPath(), $"plumepdf-large-{Guid.NewGuid():N}.pdf");
-        var output = Path.Combine(Path.GetTempPath(), $"plumepdf-large-saved-{Guid.NewGuid():N}.pdf");
+        var outputPath = Path.Combine(Path.GetTempPath(), $"plumepdf-large-saved-{Guid.NewGuid():N}.pdf");
         try
         {
             using (var file = new FileStream(input, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 20))
@@ -50,18 +50,29 @@ public class LargeFileLaneTests(ITestOutputHelper output)
 
             using (var document = PdfDocument.Open(input))
             {
-                var peak = PeakManagedBytes(() => document.Save(output));
+                var peak = PeakManagedBytes(() => document.Save(outputPath));
                 var retained = GC.GetTotalMemory(forceFullCollection: true);
                 Assert.True(peak < MaxSavePeakBytes, $"Saving the {PageCount}-page document peaked at {peak} bytes of managed heap.");
                 Assert.True(retained < MaxRetainedAfterSaveBytes, $"The open document retained {retained} bytes after Save.");
 
-                for (var i = 0; i < PageCount; i++)
+                // Each page's image stream is read for that page's extraction and let go: the
+                // document cache keeps no payload, so extracting every image stays bounded by
+                // one page, not the 2.2 GiB document (it peaked near 4.9 GB on a scan when the
+                // cache kept every stream it resolved).
+                var extractPeak = PeakManagedBytes(() =>
                 {
-                    ImageDocumentFixture.AssertImageIsPage(document.Pages[i].ExtractImages(), i, ImageBytes);
-                }
+                    for (var i = 0; i < PageCount; i++)
+                    {
+                        ImageDocumentFixture.AssertImageIsPage(document.Pages[i].ExtractImages(), i, ImageBytes);
+                    }
+                });
+                var retainedAfterExtract = GC.GetTotalMemory(forceFullCollection: true);
+                output.WriteLine($"[LANE] ExtractImages pages={PageCount} peakManaged={extractPeak} retainedAfter={retainedAfterExtract}");
+                Assert.True(extractPeak < MaxSavePeakBytes, $"Extracting every image peaked at {extractPeak} bytes of managed heap.");
+                Assert.True(retainedAfterExtract < MaxRetainedAfterSaveBytes, $"The open document retained {retainedAfterExtract} bytes after extracting every image.");
             }
 
-            using var saved = PdfDocument.Open(output);
+            using var saved = PdfDocument.Open(outputPath);
             Assert.Equal(PageCount, saved.Pages.Count);
             ImageDocumentFixture.AssertImageIsPage(saved.Pages[0].ExtractImages(), 0, ImageBytes);
             ImageDocumentFixture.AssertImageIsPage(saved.Pages[PageCount - 1].ExtractImages(), PageCount - 1, ImageBytes);
@@ -69,7 +80,7 @@ public class LargeFileLaneTests(ITestOutputHelper output)
         finally
         {
             File.Delete(input);
-            File.Delete(output);
+            File.Delete(outputPath);
         }
     }
 

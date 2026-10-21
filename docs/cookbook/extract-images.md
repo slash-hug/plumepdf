@@ -22,7 +22,7 @@ foreach (var image in images)
 
 report.AppendLine($"Diagnostics: {diagnostics.Count}");
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L636-L650' title='Snippet source file'>snippet source</a> | <a href='#snippet-extract-images' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L631-L645' title='Snippet source file'>snippet source</a> | <a href='#snippet-extract-images' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Expected output (from the backing test `CookbookTests.ExtractImages`):
@@ -80,7 +80,7 @@ using (var document = PdfDocument.Open(sourcePath, withVendorFilter))
     report.AppendLine($"With a registered filter: IsRawEncoded={image.IsRawEncoded}, bytes={image.Data.Length}");
 }
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L663-L688' title='Snippet source file'>snippet source</a> | <a href='#snippet-extract-images-unsupported-filter' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L658-L683' title='Snippet source file'>snippet source</a> | <a href='#snippet-extract-images-unsupported-filter' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Expected output (from the backing test `CookbookTests.ExtractImages_UnsupportedFilter`):
