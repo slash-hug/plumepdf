@@ -584,32 +584,27 @@ public partial class CookbookTests
         // Open from a path: the file is memory-mapped and objects are read only when used,
         // so opening a multi-gigabyte file costs little memory. Files over 2 GiB work.
         int pageCount;
+        var imageCount = 0;
         using (var document = PdfDocument.Open(path))
         {
             pageCount = document.Pages.Count;
+
+            // ExtractImages, ExtractText and Rasterize read the streams a page needs for that
+            // call and let them go, so walking every page of a very large file holds one page
+            // at a time. (What you resolve yourself through doc.Objects stays cached.)
+            for (var i = 0; i < pageCount; i++)
+            {
+                imageCount += document.Pages[i].ExtractImages().Count;
+            }
 
             // A full rewrite holds one stream at a time, not the whole document. Write to a
             // different path: saving over the file you opened first loads all of it into memory.
             document.Save("output/large-files-rewritten.pdf", PdfOptions.Default with { Optimize = true });
         }
-
-        // Everything you read (ExtractImages, ExtractText, Rasterize, doc.Objects) stays cached
-        // until the document is disposed. To walk every image of a very large file, work in
-        // batches of pages and reopen between batches, so memory holds one batch at a time.
-        const int pagesPerBatch = 2;
-        var imageCount = 0;
-        for (var first = 0; first < pageCount; first += pagesPerBatch)
-        {
-            using var batch = PdfDocument.Open(path);
-            for (var i = first; i < Math.Min(first + pagesPerBatch, pageCount); i++)
-            {
-                imageCount += batch.Pages[i].ExtractImages().Count;
-            }
-        }
         // end-snippet
 
         report.AppendLine($"Pages: {pageCount}");
-        report.AppendLine($"Images extracted in batches: {imageCount}");
+        report.AppendLine($"Images extracted: {imageCount}");
         using (var rewritten = PdfDocument.Open("output/large-files-rewritten.pdf"))
         {
             report.AppendLine($"Rewritten copy reopens with pages: {rewritten.Pages.Count}");

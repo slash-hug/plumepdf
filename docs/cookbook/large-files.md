@@ -22,10 +22,13 @@ you pick the right doors:
   you opened first buffers the whole source into memory, on every platform (a mapped file can't
   be replaced on Windows, so the mapping is always released first), and refuses past 2 GiB with
   `PLUME1006`.
-- **What you read stays cached until you dispose the document.** `ExtractImages`,
-  `ExtractText`, `Rasterize` and `doc.Objects` all cache what they resolve, image payloads
-  included, so walking every image of a 2 GB scan holds all of it. Work in batches of pages
-  and reopen between batches, as below.
+- **Reading a page holds that page, not the document.** `ExtractImages`, `ExtractText` and
+  `Rasterize` read the streams a page needs (its content, images, soft masks) for that call
+  and let them go; small objects such as page and font dictionaries stay cached. Measured on a
+  2.2 GiB document of 280 image pages: extracting every image peaked at about 200 MB of managed
+  heap (179–213 MB over two runs) and retained 70 MB, where it used to keep all of it (3.0 GB peak, 2.4 GB retained). A
+  stream you hold through `doc.Objects` is the one they read, edits included, and stays
+  cached; `doc.Objects` keeps whatever you resolve through it until you dispose the document.
 
 <!-- snippet: large-files -->
 <a id='snippet-large-files'></a>
@@ -35,30 +38,25 @@ const string path = "output/large-files-scan.pdf";
 // Open from a path: the file is memory-mapped and objects are read only when used,
 // so opening a multi-gigabyte file costs little memory. Files over 2 GiB work.
 int pageCount;
+var imageCount = 0;
 using (var document = PdfDocument.Open(path))
 {
     pageCount = document.Pages.Count;
+
+    // ExtractImages, ExtractText and Rasterize read the streams a page needs for that
+    // call and let them go, so walking every page of a very large file holds one page
+    // at a time. (What you resolve yourself through doc.Objects stays cached.)
+    for (var i = 0; i < pageCount; i++)
+    {
+        imageCount += document.Pages[i].ExtractImages().Count;
+    }
 
     // A full rewrite holds one stream at a time, not the whole document. Write to a
     // different path: saving over the file you opened first loads all of it into memory.
     document.Save("output/large-files-rewritten.pdf", PdfOptions.Default with { Optimize = true });
 }
-
-// Everything you read (ExtractImages, ExtractText, Rasterize, doc.Objects) stays cached
-// until the document is disposed. To walk every image of a very large file, work in
-// batches of pages and reopen between batches, so memory holds one batch at a time.
-const int pagesPerBatch = 2;
-var imageCount = 0;
-for (var first = 0; first < pageCount; first += pagesPerBatch)
-{
-    using var batch = PdfDocument.Open(path);
-    for (var i = first; i < Math.Min(first + pagesPerBatch, pageCount); i++)
-    {
-        imageCount += batch.Pages[i].ExtractImages().Count;
-    }
-}
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L581-L609' title='Snippet source file'>snippet source</a> | <a href='#snippet-large-files' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L581-L604' title='Snippet source file'>snippet source</a> | <a href='#snippet-large-files' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Expected output:
@@ -67,7 +65,7 @@ Expected output:
 <a id='snippet-CookbookTests.LargeFiles.verified.txt'></a>
 ```txt
 Pages: 5
-Images extracted in batches: 5
+Images extracted: 5
 Rewritten copy reopens with pages: 5
 ```
 <sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.LargeFiles.verified.txt#L1-L3' title='Snippet source file'>snippet source</a> | <a href='#snippet-CookbookTests.LargeFiles.verified.txt' title='Start of snippet'>anchor</a></sup>

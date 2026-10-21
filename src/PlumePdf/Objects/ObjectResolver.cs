@@ -145,8 +145,35 @@ internal sealed class ObjectResolver : IObjectSource
     /// <summary>How many objects this resolver has cached.</summary>
     internal int CachedObjectCount => _cache.Count;
 
-    /// <summary>Resolves <paramref name="reference"/>, parsing and caching it on first access.</summary>
-    public PdfObject Resolve(IndirectReference reference) => _cache.GetOrAdd(reference.Number, _ => ResolveUncached(reference.Number));
+    /// <summary>Whether object <paramref name="number"/> is in this resolver's document-lifetime cache.</summary>
+    internal bool IsCached(int number) => _cache.ContainsKey(number);
+
+    /// <summary>
+    /// Resolves <paramref name="reference"/>, parsing and caching it on first access — except a
+    /// stream read under a <see cref="StreamReadScope"/>, which is kept by that scope, for that
+    /// read alone, rather than for the document's lifetime (its deviations reported the first
+    /// time only). A value already cached is returned either way.
+    /// </summary>
+    public PdfObject Resolve(IndirectReference reference)
+    {
+        var number = reference.Number;
+        if (_cache.TryGetValue(number, out var cached))
+        {
+            return cached;
+        }
+
+        if (StreamReadScope.Current(this) is { } scope)
+        {
+            return scope.GetOrRead(number, n =>
+            {
+                var value = ResolveUncached(n);
+                _reported.TryAdd(n, 0);
+                return value is PdfStream ? value : _cache.GetOrAdd(n, value);
+            });
+        }
+
+        return _cache.GetOrAdd(number, _ => ResolveUncached(number));
+    }
 
     /// <summary>
     /// For a save's reference walk: a stream that isn't cached comes back as its dictionary

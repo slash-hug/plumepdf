@@ -157,6 +157,8 @@ internal static class TextExtractor
         ArgumentNullException.ThrowIfNull(page);
         ArgumentNullException.ThrowIfNull(objects);
         ArgumentNullException.ThrowIfNull(options);
+        // This call's streams are read for it alone and let go when it returns (#42).
+        using var readScope = StreamReadScope.Begin(objects);
 
         var effective = extractionOptions ?? PdfTextExtractionOptions.Default;
         var diagnostics = new DiagnosticCollection();

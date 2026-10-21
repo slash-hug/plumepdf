@@ -1,6 +1,7 @@
 using PlumePdf.Content;
 using PlumePdf.Documents.Forms;
 using PlumePdf.Documents.Forms.Appearances;
+using PlumePdf.Objects;
 using PlumePdf.Raster;
 using PlumePdf.Raster.Annotations;
 using PlumePdf.Raster.OptionalContent;
@@ -73,6 +74,9 @@ internal static class PageRasterAdapter
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(rasterizeOptions);
         ArgumentNullException.ThrowIfNull(diagnostics);
+
+        // This call's streams are read for it alone and let go when it returns (#42).
+        using var readScope = StreamReadScope.Begin(objects);
         rasterizeOptions.Validate();
 
         var mediaBox = PageSpace.GetMediaBox(page.Dictionary);

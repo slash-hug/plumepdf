@@ -357,6 +357,12 @@ public sealed class ObjectRegistry : IObjectSource
     /// </summary>
     internal int CachedObjectCount => _resolver is ObjectResolver fileResolver ? fileResolver.CachedObjectCount : 0;
 
+    /// <summary>The resolver over the document's file, or null for an in-memory source (which holds every object anyway).</summary>
+    internal ObjectResolver? FileResolver => _resolver as ObjectResolver;
+
+    /// <summary>Whether object <paramref name="number"/> is held for the document's lifetime: registered here, or in the file resolver's cache.</summary>
+    internal bool IsCached(int number) => _newObjects.ContainsKey(number) || (_resolver is ObjectResolver fileResolver && fileResolver.IsCached(number));
+
     /// <summary>Pairs with <see cref="EnterExternalMutation"/>.</summary>
     internal void ExitExternalMutation() => Interlocked.Decrement(ref _mutating);
 

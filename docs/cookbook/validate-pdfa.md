@@ -40,7 +40,7 @@ foreach (var notChecked in result.NotCheckedRules)
 // The one-line form for a file on disk: open, validate, dispose.
 var fromPath = Pdf.ValidatePdfA("output/pdfa-candidate.pdf");
 ```
-<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L926-L947' title='Snippet source file'>snippet source</a> | <a href='#snippet-validate-pdfa' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/PlumePdf.CookbookTests/CookbookTests.cs#L921-L942' title='Snippet source file'>snippet source</a> | <a href='#snippet-validate-pdfa' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Expected output for a conformant candidate (backing test `CookbookTests.ValidatePdfA` — the
