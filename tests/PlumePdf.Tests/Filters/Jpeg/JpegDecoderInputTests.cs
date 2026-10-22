@@ -21,13 +21,13 @@ public class JpegDecoderInputTests
         var sliced = new byte[jpeg.Length + 1];
         jpeg.CopyTo(sliced, 1);
 
-        JpegDecoder.Decode(jpeg, PdfOptions.Default, null, null);
-        JpegDecoder.Decode(sliced.AsMemory(1), PdfOptions.Default, null, null);
-        var wholeArray = AllocatedBy(() => JpegDecoder.Decode(jpeg, PdfOptions.Default, null, null));
-        var slice = AllocatedBy(() => JpegDecoder.Decode(sliced.AsMemory(1), PdfOptions.Default, null, null));
+        var wholeArray = LeastAllocatedBy(() => JpegDecoder.Decode(jpeg, PdfOptions.Default, null, null));
+        var slice = LeastAllocatedBy(() => JpegDecoder.Decode(sliced.AsMemory(1), PdfOptions.Default, null, null));
 
-        // Only the slice pays for a copy of the input.
-        Assert.True(slice - wholeArray >= jpeg.Length, $"A {jpeg.Length}-byte whole-array input allocated {wholeArray} bytes to decode, a slice of the same bytes {slice}.");
+        // Only the slice pays for a copy of the input. The runtime can allocate a few KB of its
+        // own on this thread during a decode (tier-up, for one), so the bound is half the input:
+        // well clear of that noise, and nowhere near met if the whole-array input were copied too.
+        Assert.True(slice - wholeArray >= jpeg.Length / 2, $"A {jpeg.Length}-byte whole-array input allocated {wholeArray} bytes to decode, a slice of the same bytes {slice}.");
     }
 
     [Fact]
@@ -60,10 +60,18 @@ public class JpegDecoderInputTests
     private static byte[] Encode() =>
         JpegEncoder.Encode(CompressionTestImages.Samples(Width, Height, 3), Width, Height, 3, quality: 90);
 
-    private static long AllocatedBy(Action action)
+    // The least of several runs, after a warm-up, so a one-off runtime allocation doesn't count.
+    private static long LeastAllocatedBy(Action action)
     {
-        var before = GC.GetAllocatedBytesForCurrentThread();
         action();
-        return GC.GetAllocatedBytesForCurrentThread() - before;
+        var least = long.MaxValue;
+        for (var run = 0; run < 5; run++)
+        {
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            action();
+            least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+
+        return least;
     }
 }
