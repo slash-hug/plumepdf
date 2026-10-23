@@ -1,14 +1,14 @@
 name: Raster perf calibration
 
-# The calibration MECHANISM for benchmarks/perf-baselines/raster-baselines.json, not a
-# per-commit gate: a full, multi-run statistical BenchmarkDotNet run of RasterizeBenchmarks on the
-# linux CI runner platform (ci.yml's raster-perf-gate job keeps its `--job short` fast run as the
-# per-commit regression gate). Trigger it from the Actions tab (or
-# `gh workflow run raster-perf-calibration.yml`) after any deliberate performance change, then
-# set each benchmark's baselineMs to the printed mean and size its toleranceFraction so the limit
-# clears the slowest recent per-commit raster-perf-gate reading (see the file's calibrationNote).
-# Raising a baselineMs or toleranceFraction needs a "PERF-LOOSEN:" token in a commit message
-# (scripts/check-raster-perf-baseline.sh); lowering one never does.
+# A full, multi-run statistical BenchmarkDotNet run of RasterizeBenchmarks on the linux CI
+# runner platform, for measuring a deliberate performance change precisely. It is NOT how
+# benchmarks/perf-baselines/raster-baselines.json is calibrated any more: the per-commit gate
+# (ci.yml's raster-perf-gate, `--job short`) reads differently from a full job, so its baselines
+# are centred on the gate's own readings — scripts/harvest-raster-perf-readings.sh derives them
+# (see the file's calibrationNote). Trigger this from the Actions tab (or
+# `gh workflow run raster-perf-calibration.yml`). Raising a baselineMs or a tolerance needs a
+# "PERF-LOOSEN:" token in a commit message (scripts/check-raster-perf-baseline.sh); lowering
+# one never does.
 on:
   workflow_dispatch: {}
 
@@ -38,7 +38,7 @@ jobs:
       # 2-core hosted runner that build overran the 120 s default, leaving every benchmark inert (NA).
       - name: Run RasterizeBenchmarks (full statistical job) and export JSON
         run: dotnet run -c Release --no-build --project benchmarks/PlumePdf.Benchmarks -- --filter '*RasterizeBenchmarks*' --exporters json --buildTimeout 900
-      - name: Print measured means (copy into raster-baselines.json by hand)
+      - name: Print measured means
         run: |
           echo "Measured means for this linux-CI run:"
           jq -r '.Benchmarks[] | "\(.FullName): \(.Statistics.Mean) ns  (\(.Statistics.Mean / 1000000) ms)"' \
