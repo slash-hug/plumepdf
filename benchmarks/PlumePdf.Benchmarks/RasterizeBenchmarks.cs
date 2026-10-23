@@ -16,9 +16,8 @@ namespace PlumePdf.Benchmarks;
 /// <see cref="RasterCodecBenchmarks"/> — every fixture is built in-memory through PlumePDF's own
 /// public creation API, no corpus fixture or <c>fetch-corpora.sh</c> prerequisite. Results are
 /// compared against <c>benchmarks/perf-baselines/raster-baselines.json</c> by
-/// <c>scripts/check-raster-perf-baseline.sh</c> — each benchmark relative to the others in the same
-/// run, plus a loose limit on the run's overall speed; NOT a per-commit CI gate on this suite's raw numbers (macro
-/// suites run manually/per-phase, mirroring every other suite here). JPEG
+/// <c>scripts/check-raster-perf-baseline.sh</c>, each benchmark relative to the others in the same
+/// run plus a loose limit on the run's overall speed. JPEG
 /// 2000/JPXDecode support adds <see cref="RasterizeJpxScanPage"/>: unlike the three
 /// suites above, the CI <c>raster-perf-gate</c> job runs THIS class's benchmarks on every
 /// push (<c>ci.yml</c>'s <c>--filter '*RasterizeBenchmarks*'</c>), so it is a real

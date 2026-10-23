@@ -4,17 +4,17 @@
   "runner": "linux-x64, GitHub Actions ubuntu-latest (4 logical cores since 2026-09-30; the gate prints the runner's CPU and core count), net8.0, BenchmarkDotNet --job short (ci.yml's raster-perf-gate). Hosted runners land on several CPU models whose speed differs by up to ~2x, and any single run can be ~1.5x slower than usual on every benchmark at once (a busy host). The relative check cancels both; only the suite backstop sees raw speed, which is why it is the loose one.",
   "calibrated": true,
   "calibratedAt": "2026-10-22",
-  "calibrationNote": "baselineMs is the median of the per-commit gate's own readings over 61 raster-perf-gate jobs from 2026-09-30 to 2026-10-22 (AMD EPYC 7763 x30, 9V45 x15, 9V74 x9, Intel Xeon Platinum 8370C x4, Xeon 6973P-C x3), not a full-job calibration mean, so r is centred on what the gate itself measures. Each relativeTolerance is the largest relative ratio seen plus about 10%, rounded up to 0.05, with a floor of 0.25; the single-threaded bands also cover 41 earlier jobs (2026-09-28/29, same code, 2-core runners). suiteTolerance is sized the same way from the slowest job's suite speed (1.51). Replayed through this script, none of the 61 jobs fails, and of the 41 earlier ones only FourDocumentsInParallel fails (2-core runners). In a typical job a regression in one benchmark fails from about 1.28x (Jpx, Minify), 1.33x (Magnify), 1.46x (Image), 1.52x (Text), 1.72x (FourDocumentsInParallel) or 2.2x (Transparency); one that hits everything at once fails only past the suite backstop (1.7x the baselines' speed), so on the fastest runners (9V45, ~0.6x) a uniform slowdown can pass up to ~2.8x. To re-derive after a deliberate performance change: scripts/harvest-raster-perf-readings.sh prints the medians and worst ratios from recent CI jobs. A benchmark made faster should have its baselineMs lowered in the same change (free under governance): leaving it high lowers the reference the others are compared with.",
+  "calibrationNote": "baselineMs is the median of the per-commit gate's own readings over 59 distinct raster-perf-gate jobs from 2026-10-05 to 2026-10-22 (AMD EPYC 7763 x30, 9V45 x15, 9V74 x9, Intel Xeon Platinum 8370C x3, Xeon 6973P-C x2; a re-run attempt that repeats an earlier job's log counts once), not a full-job calibration mean, so r is centred on what the gate itself measures. Each relativeTolerance covers the largest relative ratio seen with about 10% to spare, rounded up to 0.05 with a floor of 0.25; the single-threaded bands also cover 41 earlier jobs (2026-09-28/29, same code, 2-core runners), except that ImageHeavyPage's 0.5 clears its one 1.47 spike by only 2% rather than widening to 0.65 (see its description). suiteTolerance is sized the same way from the slowest job's suite speed (1.51), a run the previous raw-time gate failed on runner noise alone. Replayed through this script, none of the 59 jobs fails, and of the 41 earlier ones only FourDocumentsInParallel fails (2-core runners). In a typical job a regression in one benchmark fails from about 1.28x (Jpx, Minify), 1.33x (Magnify), 1.46x (Image), 1.52x (Text), 1.72x (FourDocumentsInParallel) or 2.2x (Transparency); one that hits everything at once fails only past the suite backstop (1.7x the baselines' speed), so on the fastest runners (9V45, ~0.6x) a uniform slowdown can pass up to ~2.8x. To re-derive after a deliberate performance change: scripts/harvest-raster-perf-readings.sh prints the medians and worst ratios from recent CI jobs. A benchmark made faster should have its baselineMs lowered in the same change (free under governance): leaving it high lowers the reference the others are compared with.",
   "suiteTolerance": 0.7,
   "benchmarks": {
     "RasterizeBenchmarks.RasterizeTextHeavyPage": {
-      "baselineMs": 45.4,
+      "baselineMs": 45.3,
       "relativeTolerance": 0.6,
       "reference": true,
       "description": "55 short paragraphs (~9pt) on one A4 page at 2048px width — glyph-shaping and glyph-rasterization throughput. Its relative ratio ran up to 1.42 (one Intel model runs text comparatively slowly), hence the wider band."
     },
     "RasterizeBenchmarks.RasterizeImageHeavyPage": {
-      "baselineMs": 62.9,
+      "baselineMs": 63.0,
       "relativeTolerance": 0.5,
       "reference": true,
       "description": "Six distinct 300x200 gradient images stacked on one A4 page at 2048px width — image-XObject decode/blit throughput. Relative ratio ran up to 1.22, plus one 1.47 spike (this benchmark alone, in an otherwise normal run), hence 0.5 rather than 0.35."
@@ -32,7 +32,7 @@
       "description": "Four independent PdfDocument.Open + Rasterize calls (each its own scratch ObjectRegistry) racing via Parallel.For — wall-clock throughput. Core count and neighbour load move it differently from single-threaded work (relative ratio up to 1.54), so it is compared with the reference set but not part of it. Concurrency correctness is proven separately by the raster-concurrency-stress pixel-identity lane. Its band assumes 4-logical-core runners: on the 2-core runners CI used until 2026-09-29 it reads about 2x and fails."
     },
     "RasterizeBenchmarks.RasterizeJpxScanPage": {
-      "baselineMs": 131.6,
+      "baselineMs": 131.8,
       "relativeTolerance": 0.25,
       "reference": true,
       "description": "A self-contained one-page PDF (composed byte-wise in [GlobalSetup], no corpus dependency) placing a 640x480 JPEG 2000 scan (9/7 irreversible, ICT, tiled RPCL) full-page — JPX decode-and-paint throughput. Relative ratio ran up to 1.07."

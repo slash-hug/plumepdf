@@ -42,6 +42,14 @@ for run in $(gh run list --workflow ci.yml -L "$RUNS" --json databaseId,status,c
                | {FullName: ("PlumePdf.Benchmarks.RasterizeBenchmarks." + .[0]),
                   Statistics: {Mean: ((.[1] | tonumber) * 1000000)}}]}' \
         > "${OUT}/${job}.json"
+      # A re-run attempt lists the jobs it carried over again, under new ids with the same log;
+      # keep one copy of each reading set.
+      digest="$(jq -c '[.Benchmarks[] | [.FullName, .Statistics.Mean]] | sort' "${OUT}/${job}.json")"
+      if grep -qxF "$digest" "${OUT}/seen" 2>/dev/null; then
+        rm "${OUT}/${job}.json"
+      else
+        echo "$digest" >> "${OUT}/seen"
+      fi
     done
   done
 done

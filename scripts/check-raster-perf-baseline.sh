@@ -8,10 +8,10 @@
 #      benchmarks/perf-baselines/raster-baselines.json's working-tree values against its values
 #      at BASE_REF (default: the merge-base with origin/main, or origin/main itself). A LOOSENED
 #      gate — the top-level suiteTolerance raised, a benchmark's baselineMs or relativeTolerance
-#      raised, or a benchmark taken out of the reference set — requires the literal token
-#      "PERF-LOOSEN:" somewhere in a commit message from BASE_REF..HEAD, or this fails. Unchanged
-#      or tightened values always pass. A key present on only one side (added or removed) is not
-#      a comparison and never requires justification.
+#      raised, a baselineMs set to zero or below, a benchmark taken out of the reference set
+#      (its "reference" no longer the JSON value true), or a benchmark removed — requires the
+#      literal token "PERF-LOOSEN:" somewhere in a commit message from BASE_REF..HEAD, or this
+#      fails. Unchanged or tightened values, and added benchmarks, always pass.
 #
 #   2. Measured-vs-stored (only when MEASURED_JSON is given): parses a BenchmarkDotNet full JSON
 #      export (JsonExporter.Full, wired into benchmarks/PlumePdf.Benchmarks/Program.cs). For each
@@ -24,7 +24,10 @@
 #                   1 + suiteTolerance: the backstop for a slowdown that hits everything at once,
 #                   which the relative check cancels by design. It sees raw runner speed, so it
 #                   is the loose one.
-#      A benchmark missing from the export fails (a run that measured nothing must not pass).
+#      A benchmark missing from the export fails (a run that measured nothing must not pass), as
+#      does a baselineMs or measured mean that isn't a positive finite number, or a reference set
+#      of fewer than two benchmarks. Benchmarks in the export that the file doesn't name are not
+#      gated.
 #      Lowering one reference benchmark's baselineMs raises its own r (stricter for it) and
 #      raises the others' reference slightly (looser for them, by the 1/(n-1) power); it can't
 #      be used to loosen the gate without failing that benchmark first.
@@ -102,13 +105,30 @@ else
       check_loosened "${key}.${field}" "$OLD_V" "$NEW_V"
     done
 
-    OLD_REF="$(jq -r --arg k "$key" '.benchmarks[$k].reference | if . == null then "null" else tostring end' <<<"$OLD_CONTENT")"
-    NEW_REF="$(jq -r --arg k "$key" '.benchmarks[$k].reference | if . == null then "null" else tostring end' "$BASELINE_FILE")"
-    if [ "$OLD_REF" = "true" ] && [ "$NEW_REF" = "false" ]; then
+    # The measured check counts a benchmark as a reference member only when "reference" is the
+    # JSON value true, so anything else it becomes (false, deleted, "true", 1) takes it out.
+    OLD_REF="$(jq -r --arg k "$key" '.benchmarks[$k].reference == true' <<<"$OLD_CONTENT")"
+    NEW_REF="$(jq -r --arg k "$key" '.benchmarks[$k].reference == true' "$BASELINE_FILE")"
+    if [ "$OLD_REF" = "true" ] && [ "$NEW_REF" != "true" ]; then
       echo "check-raster-perf-baseline: ${key} taken out of the reference set." >&2
       loosened_without_token="1"
     fi
+
+    # A baseline at or below zero makes the measured check's ratios meaningless.
+    NEW_MS="$(jq -r --arg k "$key" '.benchmarks[$k].baselineMs // "null"' "$BASELINE_FILE")"
+    if [ "$NEW_MS" != "null" ] && [ "$(awk -v v="$NEW_MS" 'BEGIN { print (v + 0 <= 0) ? "1" : "0" }')" = "1" ]; then
+      echo "check-raster-perf-baseline: ${key}.baselineMs is not positive (${NEW_MS})." >&2
+      loosened_without_token="1"
+    fi
   done <<<"$NEW_KEYS"
+
+  # A benchmark removed from the file is no longer gated at all.
+  REMOVED_KEYS="$(jq -r --slurpfile new "$BASELINE_FILE" '.benchmarks | keys - ($new[0].benchmarks | keys) | .[]' <<<"$OLD_CONTENT")"
+  while IFS= read -r key; do
+    [ -z "$key" ] && continue
+    echo "check-raster-perf-baseline: ${key} removed." >&2
+    loosened_without_token="1"
+  done <<<"$REMOVED_KEYS"
 
   if [ -n "$loosened_without_token" ]; then
     if grep -qF "PERF-LOOSEN:" <<<"$COMMIT_MESSAGES"; then
@@ -139,27 +159,32 @@ else
 
   # One line per result: "<kind> <PASS|FAIL> <message>". BenchmarkDotNet reports
   # Statistics.Mean in nanoseconds and names each report "Namespace.Type.Method"; the baseline
-  # keys are "Type.Method", matched by suffix.
+  # keys are "Type.Method" in the PlumePdf.Benchmarks namespace, matched exactly.
   RESULTS="$(jq -r --slurpfile measured "$MEASURED_JSON" '
-    def gm: if length == 0 then null else (map(log) | add / length | exp) end;
+    def gm: map(log) | add / length | exp;
     def f2: . * 100 | round / 100 | tostring;
+    def good: type == "number" and . > 0 and (isinfinite | not) and (isnan | not);
     . as $base
     | ($base.benchmarks | to_entries | map(
         .key as $k
-        | ([$measured[0].Benchmarks[] | select(.FullName | endswith("." + $k))][0].Statistics.Mean) as $ns
-        | {key: $k, ref: (.value.reference == true), tol: .value.relativeTolerance,
-           base: .value.baselineMs, ms: (if $ns == null then null else $ns / 1000000 end)}
-        | .r = (if .ms == null then null else .ms / .base end))) as $all
+        | ([$measured[0].Benchmarks[] | select(.FullName == "PlumePdf.Benchmarks." + $k)][0].Statistics.Mean) as $ns
+        | {key: $k, ref: (.value.reference == true), tol: (.value.relativeTolerance // 0),
+           base: .value.baselineMs, ms: (if $ns == null then null else $ns / 1000000 end)})) as $all
     | ($all | map(select(.ms == null))) as $missing
-    | if ($missing | length) > 0 then
-        $missing[] | "missing FAIL \(.key): no measured result in the export."
+    | ($all | map(select(.ms != null and ((.ms | good | not) or (.base | good | not))))) as $invalid
+    | ($all | map(select(.ref)) | length) as $refs
+    | if ($missing | length) > 0 or ($invalid | length) > 0 or $refs < 2 then
+        ($missing[] | "missing FAIL \(.key): no measured result in the export."),
+        ($invalid[] | "invalid FAIL \(.key): its baselineMs (\(.base)) or measured mean (\(.ms)) is not a positive finite number."),
+        (if $refs < 2 then "reference FAIL fewer than two benchmarks are marked \"reference\": true (\($refs))." else empty end)
       else
-        ($all[] as $b
+        ($all | map(.r = .ms / .base)) as $all
+        | ($all[] as $b
           | ([$all[] | select(.ref and .key != $b.key) | .r] | gm) as $refr
           | ($b.r / $refr) as $q
           | "relative \(if $q > 1 + $b.tol then "FAIL" else "PASS" end) \($b.key): \($b.ms | f2) ms, \($b.r | f2)x its baseline \($b.base) ms; \($q | f2)x the reference set (limit \(1 + $b.tol | f2)x)."),
         ([$all[] | select(.ref) | .r] | gm) as $s
-        | "suite \(if $s > 1 + $base.suiteTolerance then "FAIL" else "PASS" end) reference-set speed \($s | f2)x its baselines (limit \(1 + $base.suiteTolerance | f2)x)."
+        | "suite \(if $s > 1 + ($base.suiteTolerance // 0) then "FAIL" else "PASS" end) reference-set speed \($s | f2)x its baselines (limit \(1 + ($base.suiteTolerance // 0) | f2)x)."
       end
   ' "$BASELINE_FILE")"
 
