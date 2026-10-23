@@ -465,28 +465,25 @@ jobs:
       - name: Build benchmarks solution
         run: dotnet build benchmarks/bench.sln -c Release
 
-  # The raster perf-baseline gate. Two things happen here, both from
-  # scripts/check-raster-perf-baseline.sh — see that script's own header comment for the full
-  # two-check design:
-  #   1. Governance (always): a diff that RAISES (loosens) any stored baselineMs/
-  #      toleranceFraction in benchmarks/perf-baselines/raster-baselines.json must carry a
-  #      "PERF-LOOSEN:" commit-message token, mirroring the provenance job's SSIM-LOOSEN check
-  #      exactly — needs full history (fetch-depth: 0) for the same reason that job does.
-  #   2. Measured-vs-stored: a real, but deliberately FAST (`--job short`, ~3 iterations, no
-  #      pilot-heavy default job) `dotnet run` of RasterizeBenchmarks feeds its JSON export back
-  #      into the same script, which fails if any benchmark exceeds its baseline + tolerance band.
-  #      This is deliberately NOT the full statistical BenchmarkDotNet suite kept
-  #      manual for every other suite in this project (a full run's iteration/pilot
-  #      overhead doesn't belong in a per-commit gate on a shared runner) — `--job short` was
-  #      measured locally (this exact suite, this exact flag) at well under a minute end to end,
-  #      cheap enough to run every commit, with the stored tolerance band's deliberately generous
-  #      headroom (to tolerate BenchmarkDotNet runner variance) absorbing the extra noise a
-  #      3-iteration short job carries relative to a full statistical run.
+  # The raster perf-baseline gate. Three things happen here, all from scripts — see
+  # scripts/check-raster-perf-baseline.sh's header comment for the full design:
+  #   1. Self-test: scripts/test-raster-perf-gate.sh runs the gate against synthetic exports and a
+  #      scratch repository and fails if any verdict is wrong, so a broken gate can't pass green.
+  #   2. Governance (always): a diff that loosens benchmarks/perf-baselines/raster-baselines.json
+  #      (a baselineMs, relativeTolerance or suiteTolerance raised, or a benchmark taken out of
+  #      the reference set) must carry a "PERF-LOOSEN:" commit-message token, mirroring the
+  #      provenance job's SSIM-LOOSEN check — needs full history (fetch-depth: 0) for the same
+  #      reason that job does.
+  #   3. Measured-vs-stored: a deliberately FAST (`--job short`) run of RasterizeBenchmarks feeds
+  #      its JSON export back into the gate. Hosted runners differ in CPU model and load by up to
+  #      ~2x, so the gate compares each benchmark with the others in the same run (relative
+  #      check) and keeps only a loose limit on the run's overall speed (suite check). A
+  #      benchmark missing from the export fails.
   #   `--buildTimeout 900` (seconds) is load-bearing: BenchmarkDotNet builds its auto-generated
   #   boilerplate project out-of-process, and on the 2-core hosted runner that build overran the
   #   default 00:02:00 ("// Build Error: ... The configured timeout 00:02:00 was reached!"), so every
-  #   benchmark reported NA and check-raster-perf-baseline.sh only WARNed "no measured result" — the
-  #   gate ran green while measuring nothing. Do not "fix" this
+  #   benchmark reported NA and check-raster-perf-baseline.sh (which then only warned on a missing
+  #   result; it now fails) ran green while measuring nothing. Do not "fix" this
   #   with --inProcess: the stored baselines were measured out-of-process.
   raster-perf-gate:
     runs-on: ubuntu-latest
@@ -502,6 +499,8 @@ jobs:
           dotnet-version: |
             8.0.x
             10.0.x
+      - name: Self-test the raster perf gate
+        run: ./scripts/test-raster-perf-gate.sh
       - name: Check raster perf-baseline governance (no unjustified loosening)
         run: ./scripts/check-raster-perf-baseline.sh
       - name: Build benchmarks solution

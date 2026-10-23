@@ -1,46 +1,53 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema#",
-  "description": "Single source of the Phase 9 rasterizer perf-regression baselines. scripts/check-raster-perf-baseline.sh diffs a measured BenchmarkDotNet run (its full JSON export) against this file's per-benchmark 'baselineMs', gated by 'toleranceFraction' (or a benchmark's own override): measured <= baselineMs * (1 + toleranceFraction) passes; a measured time over that band fails unless justified. Independently of any live measurement, the script also runs the SSIM-LOOSEN-shaped governance check: a diff that raises any baselineMs/toleranceFraction value (loosening the gate) must carry a 'PERF-LOOSEN:' commit-message token, mirroring scripts/check-ssim-threshold.sh exactly; tightening (lowering a value) always passes freely.",
-  "runner": "same-platform-only (mirroring the SSIM gate's own constraint): every number below is measured on the CI runner platform (linux-x64, GitHub Actions ubuntu-latest). Hosted runners vary in CPU model and neighbour load, so each benchmark's tolerance is sized from the spread of the per-commit gate's own ShortRun readings, not from the calibration run's variance.",
+  "description": "Single source of the rasterizer perf-regression gate. scripts/check-raster-perf-baseline.sh reads a measured BenchmarkDotNet run (its full JSON export) and works with each benchmark's speed index, r = measured / baselineMs. Two checks: (1) relative — each benchmark's r divided by the geometric mean of r over the OTHER benchmarks marked 'reference' must not exceed 1 + relativeTolerance, so a regression confined to one code path fails however fast or slow the runner is; (2) suite — the geometric mean of r over every 'reference' benchmark must not exceed 1 + suiteTolerance, a backstop for a slowdown that hits everything at once. Independently of any measurement, the script runs the SSIM-LOOSEN-shaped governance check: raising a baselineMs, relativeTolerance or suiteTolerance, or taking a benchmark out of the reference set, needs a 'PERF-LOOSEN:' commit-message token; tightening always passes.",
+  "runner": "linux-x64, GitHub Actions ubuntu-latest (4 logical cores since 2026-09-30; the gate prints the runner's CPU and core count), net8.0, BenchmarkDotNet --job short (ci.yml's raster-perf-gate). Hosted runners land on several CPU models whose speed differs by up to ~2x, and any single run can be ~1.5x slower than usual on every benchmark at once (a busy host). The relative check cancels both; only the suite backstop sees raw speed, which is why it is the loose one.",
   "calibrated": true,
-  "calibratedAt": "2026-09-29",
-  "calibrationNote": "baselineMs is the mean of a multi-run statistical calibration, raster-perf-calibration run 36529163370 (2026-09-29, main 6c35d82, ubuntu-latest linux-x64, net8.0, full default BenchmarkDotNet job). toleranceFraction is set per benchmark so the limit clears the slowest of the last eight per-commit raster-perf-gate readings (ci.yml, --job short) with margin: those readings ran up to ~1.8x the calibrated mean on single-threaded pages and ~2.6x on the parallel suite, because hosted runners differ. Every effective limit is lower than before this calibration; the previous baselines predated the raster performance sprint and allowed roughly a 2x regression to pass. Re-run .github/workflows/raster-perf-calibration.yml after any deliberate performance change and re-derive both numbers the same way.",
-  "toleranceFraction": 1.0,
+  "calibratedAt": "2026-10-22",
+  "calibrationNote": "baselineMs is the median of the per-commit gate's own readings over 61 raster-perf-gate jobs from 2026-09-30 to 2026-10-22 (AMD EPYC 7763 x30, 9V45 x15, 9V74 x9, Intel Xeon Platinum 8370C x4, Xeon 6973P-C x3), not a full-job calibration mean, so r is centred on what the gate itself measures. Each relativeTolerance is the largest relative ratio seen plus about 10%, rounded up to 0.05, with a floor of 0.25; the single-threaded bands also cover 41 earlier jobs (2026-09-28/29, same code, 2-core runners). suiteTolerance is sized the same way from the slowest job's suite speed (1.51). Replayed through this script, none of the 61 jobs fails, and of the 41 earlier ones only FourDocumentsInParallel fails (2-core runners). In a typical job a regression in one benchmark fails from about 1.28x (Jpx, Minify), 1.33x (Magnify), 1.46x (Image), 1.52x (Text), 1.72x (FourDocumentsInParallel) or 2.2x (Transparency); one that hits everything at once fails only past the suite backstop (1.7x the baselines' speed), so on the fastest runners (9V45, ~0.6x) a uniform slowdown can pass up to ~2.8x. To re-derive after a deliberate performance change: scripts/harvest-raster-perf-readings.sh prints the medians and worst ratios from recent CI jobs. A benchmark made faster should have its baselineMs lowered in the same change (free under governance): leaving it high lowers the reference the others are compared with.",
+  "suiteTolerance": 0.7,
   "benchmarks": {
     "RasterizeBenchmarks.RasterizeTextHeavyPage": {
-      "baselineMs": 43.2,
-      "toleranceFraction": 0.5,
-      "description": "55 short paragraphs (~9pt) on one A4 page at 2048px width — glyph-shaping and glyph-rasterization throughput. Calibrated mean 43.2 ms; limit 64.8 ms at tolerance 0.5 (slowest recent per-commit reading 50.8 ms)."
+      "baselineMs": 45.4,
+      "relativeTolerance": 0.6,
+      "reference": true,
+      "description": "55 short paragraphs (~9pt) on one A4 page at 2048px width — glyph-shaping and glyph-rasterization throughput. Its relative ratio ran up to 1.42 (one Intel model runs text comparatively slowly), hence the wider band."
     },
     "RasterizeBenchmarks.RasterizeImageHeavyPage": {
-      "baselineMs": 51.2,
-      "toleranceFraction": 0.6,
-      "description": "Six distinct 300x200 gradient images stacked on one A4 page at 2048px width — image-XObject decode/blit throughput. Calibrated mean 51.2 ms; limit 81.9 ms at tolerance 0.6 (slowest recent per-commit reading 69.4 ms)."
+      "baselineMs": 62.9,
+      "relativeTolerance": 0.5,
+      "reference": true,
+      "description": "Six distinct 300x200 gradient images stacked on one A4 page at 2048px width — image-XObject decode/blit throughput. Relative ratio ran up to 1.22, plus one 1.47 spike (this benchmark alone, in an otherwise normal run), hence 0.5 rather than 0.35."
     },
     "RasterizeBenchmarks.RasterizeTransparencyHeavyPage": {
-      "baselineMs": 11.6,
-      "toleranceFraction": 1.2,
-      "description": "A rotated watermark plus four partially-transparent corner stamps over body content, one A4 page at 2048px width — alpha-compositing throughput. The calibration run reported a bimodal distribution, hence the wider tolerance. Calibrated mean 11.6 ms; limit 25.5 ms at tolerance 1.2 (slowest recent per-commit reading 21.1 ms)."
+      "baselineMs": 11.4,
+      "relativeTolerance": 1.25,
+      "reference": false,
+      "description": "A rotated watermark plus four partially-transparent corner stamps over body content, one A4 page at 2048px width — alpha-compositing throughput. At ~11 ms with a bimodal distribution its relative ratio ran up to 2.02, so it has the widest band and is kept out of the reference set the others are compared with."
     },
     "RasterizeBenchmarks.RasterizeFourDocumentsInParallel": {
-      "baselineMs": 63.9,
-      "toleranceFraction": 2.0,
-      "description": "Four independent PdfDocument.Open + Rasterize calls (each its own scratch ObjectRegistry) racing via Parallel.For — wall-clock throughput, the widest tolerance since a shared runner's core count and neighbour load move parallel throughput far more than single-threaded work. Concurrency correctness is proven separately by the raster-concurrency-stress pixel-identity lane. Calibrated mean 63.9 ms; limit 191.7 ms at tolerance 2.0 (slowest recent per-commit reading 166.8 ms)."
+      "baselineMs": 77.9,
+      "relativeTolerance": 0.7,
+      "reference": false,
+      "description": "Four independent PdfDocument.Open + Rasterize calls (each its own scratch ObjectRegistry) racing via Parallel.For — wall-clock throughput. Core count and neighbour load move it differently from single-threaded work (relative ratio up to 1.54), so it is compared with the reference set but not part of it. Concurrency correctness is proven separately by the raster-concurrency-stress pixel-identity lane. Its band assumes 4-logical-core runners: on the 2-core runners CI used until 2026-09-29 it reads about 2x and fails."
     },
     "RasterizeBenchmarks.RasterizeJpxScanPage": {
-      "baselineMs": 102.4,
-      "toleranceFraction": 0.6,
-      "description": "A self-contained one-page PDF (composed byte-wise in [GlobalSetup], no corpus dependency) placing a 640x480 JPEG 2000 scan (9/7 irreversible, ICT, tiled RPCL) full-page — JPX decode-and-paint throughput. Calibrated mean 102.4 ms; limit 163.8 ms at tolerance 0.6 (slowest recent per-commit reading 141.5 ms)."
+      "baselineMs": 131.6,
+      "relativeTolerance": 0.25,
+      "reference": true,
+      "description": "A self-contained one-page PDF (composed byte-wise in [GlobalSetup], no corpus dependency) placing a 640x480 JPEG 2000 scan (9/7 irreversible, ICT, tiled RPCL) full-page — JPX decode-and-paint throughput. Relative ratio ran up to 1.07."
     },
     "RasterizeBenchmarks.RasterizeScanPageMinify": {
-      "baselineMs": 36.8,
-      "toleranceFraction": 0.7,
-      "description": "A self-contained one-page scan-shaped placement rendered through the minify (box-filter) regime — the resampling knob's minify path. Calibrated mean 36.8 ms; limit 62.6 ms at tolerance 0.7 (slowest recent per-commit reading 55.3 ms)."
+      "baselineMs": 51.4,
+      "relativeTolerance": 0.25,
+      "reference": true,
+      "description": "A self-contained one-page scan-shaped placement rendered through the minify (box-filter) regime — the resampling knob's minify path. Relative ratio ran up to 1.13."
     },
     "RasterizeBenchmarks.RasterizeScanPageMagnify": {
-      "baselineMs": 23.1,
-      "toleranceFraction": 0.9,
-      "description": "The same scan-shaped placement rendered through the magnify (bilinear/nearest) regime — the resampling knob's magnify path. Calibrated mean 23.1 ms; limit 43.9 ms at tolerance 0.9 (slowest recent per-commit reading 39.3 ms)."
+      "baselineMs": 31.8,
+      "relativeTolerance": 0.3,
+      "reference": true,
+      "description": "The same scan-shaped placement rendered through the magnify (bilinear/nearest) regime — the resampling knob's magnify path. Relative ratio ran up to 1.15."
     }
   }
 }
