@@ -1,33 +1,45 @@
 #!/usr/bin/env bash
-# Mechanical enforcement of the Phase 9 raster perf-baseline governance ruling: the
-# SSIM-LOOSEN shape (scripts/check-ssim-threshold.sh) generalized from one threshold to N
-# per-benchmark baselines.
+# Mechanical enforcement of the raster perf-baseline governance ruling: the SSIM-LOOSEN shape
+# (scripts/check-ssim-threshold.sh) generalized from one threshold to N per-benchmark values.
 #
 # Two INDEPENDENT checks, both run every invocation:
 #
 #   1. Governance (always runs, needs no measurement): compares
 #      benchmarks/perf-baselines/raster-baselines.json's working-tree values against its values
-#      at BASE_REF (default: the merge-base with origin/main, or origin/main itself). Per
-#      benchmark, and for the top-level default toleranceFraction: unchanged or TIGHTENED
-#      (baselineMs lower, or toleranceFraction lower — a stricter gate) always passes; a LOOSENED
-#      value (baselineMs or toleranceFraction raised) requires the literal token "PERF-LOOSEN:"
-#      somewhere in a commit message from BASE_REF..HEAD, or this fails. A benchmark key present
-#      only in the working tree (newly added) or only at BASE_REF (removed) is not a comparison
-#      and never requires justification.
+#      at BASE_REF (default: the merge-base with origin/main, or origin/main itself). A LOOSENED
+#      gate — the top-level suiteTolerance raised, a benchmark's baselineMs or relativeTolerance
+#      raised, a baselineMs set to zero or below, a benchmark taken out of the reference set
+#      (its "reference" no longer the JSON value true), or a benchmark removed — requires the
+#      literal token "PERF-LOOSEN:" somewhere in a commit message from BASE_REF..HEAD, or this
+#      fails. Unchanged or tightened values, and added benchmarks, always pass.
 #
-#   2. Measured-vs-stored (only when MEASURED_JSON is given and exists): parses a BenchmarkDotNet
-#      full JSON export (JsonExporter.Full, wired into benchmarks/PlumePdf.Benchmarks/Program.cs)
-#      and, for every "PlumePdf.Benchmarks.RasterizeBenchmarks.*" entry the baseline file also
-#      names, fails if the measured mean exceeds baselineMs * (1 + effective toleranceFraction).
-#      Skipped (with a note, not a failure) when no MEASURED_JSON is given — this suite is NOT a
-#      per-commit CI gate on raw numbers (mirroring every other benchmarks/ suite here);
-#      the CI perf-gate job (ci.yml) supplies one from a scoped, fast run.
+#   2. Measured-vs-stored (only when MEASURED_JSON is given): parses a BenchmarkDotNet full JSON
+#      export (JsonExporter.Full, wired into benchmarks/PlumePdf.Benchmarks/Program.cs). For each
+#      benchmark the baseline file names, r = measured mean / baselineMs (its speed index). Then:
+#        relative — r divided by the geometric mean of r over the OTHER "reference" benchmarks
+#                   must not exceed 1 + relativeTolerance. Hosted runners differ in CPU model and
+#                   load, but a slow runner is slow on every benchmark, so this ratio barely moves
+#                   with the runner while a regression in one code path moves it fully.
+#        suite    — the geometric mean of r over every reference benchmark must not exceed
+#                   1 + suiteTolerance: the backstop for a slowdown that hits everything at once,
+#                   which the relative check cancels by design. It sees raw runner speed, so it
+#                   is the loose one.
+#      A benchmark missing from the export fails (a run that measured nothing must not pass), as
+#      does a baselineMs or measured mean that isn't a positive finite number, or a reference set
+#      of fewer than two benchmarks. Benchmarks in the export that the file doesn't name are not
+#      gated.
+#      Lowering one reference benchmark's baselineMs raises its own r (stricter for it) and
+#      raises the others' reference slightly (looser for them, by the 1/(n-1) power); it can't
+#      be used to loosen the gate without failing that benchmark first.
 #
 # Usage: scripts/check-raster-perf-baseline.sh [MEASURED_JSON] [BASE_REF]
+#        BASELINE_FILE=<path> overrides the baseline file.
+#        SKIP_GOVERNANCE=1 runs only the measured check (scripts/harvest-raster-perf-readings.sh
+#        replays old readings against uncommitted baselines with it; CI never sets it).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-BASELINE_FILE="benchmarks/perf-baselines/raster-baselines.json"
+BASELINE_FILE="${BASELINE_FILE:-benchmarks/perf-baselines/raster-baselines.json}"
 MEASURED_JSON="${1:-}"
 BASE_REF="${2:-}"
 
@@ -60,7 +72,9 @@ if [ -n "$BASE_REF" ]; then
   OLD_CONTENT="$(git show "${BASE_REF}:${BASELINE_FILE}" 2>/dev/null || true)"
 fi
 
-if [ -z "$OLD_CONTENT" ]; then
+if [ "${SKIP_GOVERNANCE:-}" = "1" ]; then
+  echo "check-raster-perf-baseline: SKIP_GOVERNANCE=1 — skipping the governance diff." >&2
+elif [ -z "$OLD_CONTENT" ]; then
   echo "check-raster-perf-baseline: $BASELINE_FILE did not exist at ${BASE_REF:-<no base ref>} — first-ever creation (or no base to diff against), passing the governance check." >&2
 else
   COMMIT_MESSAGES="$(git log --format=%B "${BASE_REF}..HEAD" 2>/dev/null || true)"
@@ -78,21 +92,43 @@ else
     fi
   }
 
-  OLD_DEFAULT_TOLERANCE="$(jq -r '.toleranceFraction // 0' <<<"$OLD_CONTENT")"
-  NEW_DEFAULT_TOLERANCE="$(jq -r '.toleranceFraction // 0' "$BASELINE_FILE")"
-  check_loosened "top-level default toleranceFraction" "$OLD_DEFAULT_TOLERANCE" "$NEW_DEFAULT_TOLERANCE"
+  OLD_SUITE="$(jq -r '.suiteTolerance // "null"' <<<"$OLD_CONTENT")"
+  NEW_SUITE="$(jq -r '.suiteTolerance // "null"' "$BASELINE_FILE")"
+  check_loosened "top-level suiteTolerance" "$OLD_SUITE" "$NEW_SUITE"
 
   NEW_KEYS="$(jq -r '.benchmarks | keys[]' "$BASELINE_FILE")"
   while IFS= read -r key; do
     [ -z "$key" ] && continue
-    OLD_MS="$(jq -r --arg k "$key" '.benchmarks[$k].baselineMs // "null"' <<<"$OLD_CONTENT")"
-    NEW_MS="$(jq -r --arg k "$key" '.benchmarks[$k].baselineMs // "null"' "$BASELINE_FILE")"
-    check_loosened "${key}.baselineMs" "$OLD_MS" "$NEW_MS"
+    for field in baselineMs relativeTolerance; do
+      OLD_V="$(jq -r --arg k "$key" --arg f "$field" '.benchmarks[$k][$f] // "null"' <<<"$OLD_CONTENT")"
+      NEW_V="$(jq -r --arg k "$key" --arg f "$field" '.benchmarks[$k][$f] // "null"' "$BASELINE_FILE")"
+      check_loosened "${key}.${field}" "$OLD_V" "$NEW_V"
+    done
 
-    OLD_TOL="$(jq -r --arg k "$key" '.benchmarks[$k].toleranceFraction // "null"' <<<"$OLD_CONTENT")"
-    NEW_TOL="$(jq -r --arg k "$key" '.benchmarks[$k].toleranceFraction // "null"' "$BASELINE_FILE")"
-    check_loosened "${key}.toleranceFraction (per-benchmark override)" "$OLD_TOL" "$NEW_TOL"
+    # The measured check counts a benchmark as a reference member only when "reference" is the
+    # JSON value true, so anything else it becomes (false, deleted, "true", 1) takes it out.
+    OLD_REF="$(jq -r --arg k "$key" '.benchmarks[$k].reference == true' <<<"$OLD_CONTENT")"
+    NEW_REF="$(jq -r --arg k "$key" '.benchmarks[$k].reference == true' "$BASELINE_FILE")"
+    if [ "$OLD_REF" = "true" ] && [ "$NEW_REF" != "true" ]; then
+      echo "check-raster-perf-baseline: ${key} taken out of the reference set." >&2
+      loosened_without_token="1"
+    fi
+
+    # A baseline at or below zero makes the measured check's ratios meaningless.
+    NEW_MS="$(jq -r --arg k "$key" '.benchmarks[$k].baselineMs // "null"' "$BASELINE_FILE")"
+    if [ "$NEW_MS" != "null" ] && [ "$(awk -v v="$NEW_MS" 'BEGIN { print (v + 0 <= 0) ? "1" : "0" }')" = "1" ]; then
+      echo "check-raster-perf-baseline: ${key}.baselineMs is not positive (${NEW_MS})." >&2
+      loosened_without_token="1"
+    fi
   done <<<"$NEW_KEYS"
+
+  # A benchmark removed from the file is no longer gated at all.
+  REMOVED_KEYS="$(jq -r --slurpfile new "$BASELINE_FILE" '.benchmarks | keys - ($new[0].benchmarks | keys) | .[]' <<<"$OLD_CONTENT")"
+  while IFS= read -r key; do
+    [ -z "$key" ] && continue
+    echo "check-raster-perf-baseline: ${key} removed." >&2
+    loosened_without_token="1"
+  done <<<"$REMOVED_KEYS"
 
   if [ -n "$loosened_without_token" ]; then
     if grep -qF "PERF-LOOSEN:" <<<"$COMMIT_MESSAGES"; then
@@ -100,7 +136,7 @@ else
     else
       echo "check-raster-perf-baseline: FAIL — baseline value(s) loosened in ${BASELINE_FILE} without a 'PERF-LOOSEN:' justification token in any commit message between ${BASE_REF} and HEAD." >&2
       echo "Add a commit message containing a line like:" >&2
-      echo "  PERF-LOOSEN: <why the baseline is being raised, e.g. a re-calibration on the CI runner platform>" >&2
+      echo "  PERF-LOOSEN: <why the gate is being loosened, e.g. a re-calibration on the CI runner platform>" >&2
       status=1
     fi
   else
@@ -118,38 +154,51 @@ elif [ ! -f "$MEASURED_JSON" ]; then
   status=1
 else
   echo "check-raster-perf-baseline: comparing measured results in ${MEASURED_JSON} against ${BASELINE_FILE}." >&2
-  DEFAULT_TOLERANCE="$(jq -r '.toleranceFraction // 0' "$BASELINE_FILE")"
+  CPU="$(jq -r '.HostEnvironmentInfo | "\(.ProcessorName // "unknown CPU"), \(.LogicalCoreCount // "?") logical cores"' "$MEASURED_JSON")"
+  echo "check-raster-perf-baseline: runner CPU: ${CPU} (the bands assume 4 logical cores)." >&2
 
-  KEYS="$(jq -r '.benchmarks | keys[]' "$BASELINE_FILE")"
-  while IFS= read -r key; do
-    [ -z "$key" ] && continue
-    BASELINE_MS="$(jq -r --arg k "$key" '.benchmarks[$k].baselineMs' "$BASELINE_FILE")"
-    TOLERANCE="$(jq -r --arg k "$key" --argjson def "$DEFAULT_TOLERANCE" '.benchmarks[$k].toleranceFraction // $def' "$BASELINE_FILE")"
+  # One line per result: "<kind> <PASS|FAIL> <message>". BenchmarkDotNet reports
+  # Statistics.Mean in nanoseconds and names each report "Namespace.Type.Method"; the baseline
+  # keys are "Type.Method" in the PlumePdf.Benchmarks namespace, matched exactly.
+  RESULTS="$(jq -r --slurpfile measured "$MEASURED_JSON" '
+    def gm: map(log) | add / length | exp;
+    def f2: . * 100 | round / 100 | tostring;
+    def good: type == "number" and . > 0 and (isinfinite | not) and (isnan | not);
+    . as $base
+    | ($base.benchmarks | to_entries | map(
+        .key as $k
+        | ([$measured[0].Benchmarks[] | select(.FullName == "PlumePdf.Benchmarks." + $k)][0].Statistics.Mean) as $ns
+        | {key: $k, ref: (.value.reference == true), tol: (.value.relativeTolerance // 0),
+           base: .value.baselineMs, ms: (if $ns == null then null else $ns / 1000000 end)})) as $all
+    | ($all | map(select(.ms == null))) as $missing
+    | ($all | map(select(.ms != null and ((.ms | good | not) or (.base | good | not))))) as $invalid
+    | ($all | map(select(.ref)) | length) as $refs
+    | if ($missing | length) > 0 or ($invalid | length) > 0 or $refs < 2 then
+        ($missing[] | "missing FAIL \(.key): no measured result in the export."),
+        ($invalid[] | "invalid FAIL \(.key): its baselineMs (\(.base)) or measured mean (\(.ms)) is not a positive finite number."),
+        (if $refs < 2 then "reference FAIL fewer than two benchmarks are marked \"reference\": true (\($refs))." else empty end)
+      else
+        ($all | map(.r = .ms / .base)) as $all
+        | ($all[] as $b
+          | ([$all[] | select(.ref and .key != $b.key) | .r] | gm) as $refr
+          | ($b.r / $refr) as $q
+          | "relative \(if $q > 1 + $b.tol then "FAIL" else "PASS" end) \($b.key): \($b.ms | f2) ms, \($b.r | f2)x its baseline \($b.base) ms; \($q | f2)x the reference set (limit \(1 + $b.tol | f2)x)."),
+        ([$all[] | select(.ref) | .r] | gm) as $s
+        | "suite \(if $s > 1 + ($base.suiteTolerance // 0) then "FAIL" else "PASS" end) reference-set speed \($s | f2)x its baselines (limit \(1 + ($base.suiteTolerance // 0) | f2)x)."
+      end
+  ' "$BASELINE_FILE")"
 
-    # BenchmarkDotNet's full JSON export names each report "Namespace.Type.Method" and reports
-    # Statistics.Mean in nanoseconds; $key here is "Type.Method" (e.g.
-    # "RasterizeBenchmarks.RasterizeTextHeavyPage") — matched by suffix so the namespace prefix
-    # doesn't have to be duplicated into the baseline file.
-    MEASURED_NS="$(jq -r --arg suffix ".${key}" \
-      '[.Benchmarks[] | select(.FullName | endswith($suffix))][0].Statistics.Mean // "null"' \
-      "$MEASURED_JSON")"
-
-    if [ "$MEASURED_NS" = "null" ]; then
-      echo "check-raster-perf-baseline: WARNING — no measured result found for '${key}' in ${MEASURED_JSON}; skipping (not a failure — the measured run may have used --filter)." >&2
-      continue
-    fi
-
-    MEASURED_MS="$(awk -v ns="$MEASURED_NS" 'BEGIN { printf "%.4f", ns / 1000000.0 }')"
-    LIMIT_MS="$(awk -v base="$BASELINE_MS" -v tol="$TOLERANCE" 'BEGIN { printf "%.4f", base * (1 + tol) }')"
-    OVER="$(awk -v m="$MEASURED_MS" -v l="$LIMIT_MS" 'BEGIN { print (m > l) ? "1" : "0" }')"
-
-    if [ "$OVER" = "1" ]; then
-      echo "check-raster-perf-baseline: FAIL — ${key} measured ${MEASURED_MS} ms, exceeding the baseline ${BASELINE_MS} ms + ${TOLERANCE} tolerance (limit ${LIMIT_MS} ms)." >&2
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    verdict="$(cut -d' ' -f2 <<<"$line")"
+    message="$(cut -d' ' -f3- <<<"$line")"
+    if [ "$verdict" = "FAIL" ]; then
+      echo "check-raster-perf-baseline: FAIL — ${message}" >&2
       status=1
     else
-      echo "check-raster-perf-baseline: ${key} measured ${MEASURED_MS} ms <= limit ${LIMIT_MS} ms (baseline ${BASELINE_MS} ms + ${TOLERANCE} tolerance). PASS." >&2
+      echo "check-raster-perf-baseline: ${message} PASS." >&2
     fi
-  done <<<"$KEYS"
+  done <<<"$RESULTS"
 fi
 
 if [ "$status" -eq 0 ]; then
