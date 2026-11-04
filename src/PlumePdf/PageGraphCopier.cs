@@ -44,6 +44,10 @@ internal sealed class PageGraphCopier
     private static readonly PdfName FieldTypeName = PdfName.Get("FT");
     private static readonly PdfName SignatureName = PdfName.Get("Sig");
     private static readonly PdfName ValueName = PdfName.Get("V");
+    private static readonly PdfName AppearanceName = PdfName.Get("AP");
+
+    // /FT is inheritable (ISO 32000-1 §12.7.3.1); a field hierarchy deeper than this is not a form.
+    private const int MaxFieldTypeDepth = 64;
 
     private readonly IImportTarget _target;
     private readonly ImportPolicy _policy;
@@ -157,10 +161,10 @@ internal sealed class PageGraphCopier
 
             case PdfDictionary dict:
                 var newDict = new PdfDictionary();
-                var dropValue = _policy.DropSignatureValues && IsSignatureField(dict);
+                var dropSignature = _policy.DropSignatureValues && IsSignatureField(source, dict);
                 foreach (var (key, item) in dict)
                 {
-                    if (!LeftOut(key) && !(dropValue && ReferenceEquals(key, ValueName)))
+                    if (!LeftOut(key) && !(dropSignature && (ReferenceEquals(key, ValueName) || ReferenceEquals(key, AppearanceName))))
                     {
                         newDict.Set(key, ImportValue(source, item));
                     }
@@ -239,10 +243,31 @@ internal sealed class PageGraphCopier
     private bool LeftOut(PdfName key)
         => _policy.StripStructureKeys && (ReferenceEquals(key, StructParentsName) || ReferenceEquals(key, StructParentName));
 
-    // A signature field declares /FT /Sig itself; one inheriting /FT from a parent field keeps
-    // its /V (a rare shape the signature reader treats the same way).
-    private static bool IsSignatureField(PdfDictionary dict)
-        => dict.TryGetValue(FieldTypeName, out var fieldType) && ReferenceEquals(fieldType, SignatureName);
+    // Whether dict is a signature field: /FT /Sig on itself or, since /FT is inheritable, on the
+    // nearest ancestor field (through /Parent, in the source) that declares an /FT at all.
+    private static bool IsSignatureField(ImportSource source, PdfDictionary dict)
+    {
+        var visited = new HashSet<int>();
+        var current = dict;
+        for (var depth = 0; depth < MaxFieldTypeDepth; depth++)
+        {
+            if (current.TryGetValue(FieldTypeName, out var fieldType))
+            {
+                return ReferenceEquals(fieldType, SignatureName);
+            }
+
+            if (!current.TryGetValue(ParentName, out var parent) || parent is not PdfReference parentReference
+                || !visited.Add(parentReference.Target.Number)
+                || source.Objects[parentReference.Target] is not PdfDictionary parentDict)
+            {
+                return false;
+            }
+
+            current = parentDict;
+        }
+
+        return false;
+    }
 
     private Dictionary<int, IndirectReference> MapFor(ImportSource source)
     {

@@ -8,7 +8,7 @@ namespace PlumePdf.Documents;
 /// <c>/AcroForm</c> entirely today, leaving every widget annotation still referenced from a
 /// page's <c>/Annots</c> but with no field tree pointing to it (272 orphaned widgets merging
 /// the f1040 fixture with itself). Called from <see cref="PageImporter.Compose"/>, reusing
-/// its exact <c>Reserve</c>/<c>ImportValue</c> closures so a field object also reachable from
+/// its <see cref="PageGraphCopier"/>'s <c>Reserve</c>/<c>ImportValue</c> so a field object also reachable from
 /// a page's <c>/Annots</c> (the merged field+widget case — the norm) gets exactly one copy,
 /// not two, in the merged graph.
 /// </summary>
