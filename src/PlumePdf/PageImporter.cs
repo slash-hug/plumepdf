@@ -56,7 +56,7 @@ internal static class PageImporter
         var target = new FreshDocumentTarget();
         var catalogReference = target.Allocate();
         var pagesReference = target.Allocate();
-        var copier = new PageGraphCopier(target, preparations);
+        var copier = new PageGraphCopier(target, preparations, ImportPolicy.Merge);
 
         var kidsReferences = new List<IndirectReference>();
         foreach (var (source, pageReference, _) in imports)

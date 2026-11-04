@@ -38,8 +38,15 @@ namespace PlumePdf;
 internal sealed class PageGraphCopier
 {
     private static readonly PdfName ParentName = PdfName.Get("Parent");
+    private static readonly PdfName StructParentsName = PdfName.Get("StructParents");
+    private static readonly PdfName StructParentName = PdfName.Get("StructParent");
+    private static readonly PdfName BeadsName = PdfName.Get("B");
+    private static readonly PdfName FieldTypeName = PdfName.Get("FT");
+    private static readonly PdfName SignatureName = PdfName.Get("Sig");
+    private static readonly PdfName ValueName = PdfName.Get("V");
 
     private readonly IImportTarget _target;
+    private readonly ImportPolicy _policy;
     private readonly Dictionary<ImportSource, Preparation> _preparations;
     private readonly Dictionary<ImportSource, Dictionary<int, IndirectReference>> _perSourceMaps = [];
 
@@ -53,10 +60,14 @@ internal sealed class PageGraphCopier
     // shape PageOverride already uses for pages.
     private readonly Queue<(ImportSource Source, int OriginalNumber, PdfDictionary? PageOverride, Func<PdfDictionary, PdfDictionary>? Transform)> _pending = new();
 
-    /// <summary>Creates a copier writing into <paramref name="target"/>, with each source prepared by <see cref="Prepare"/>.</summary>
-    public PageGraphCopier(IImportTarget target, Dictionary<ImportSource, Preparation> preparations)
+    /// <summary>
+    /// Creates a copier writing into <paramref name="target"/>, with each source prepared by
+    /// <see cref="Prepare"/>, leaving out what <paramref name="policy"/> says to.
+    /// </summary>
+    public PageGraphCopier(IImportTarget target, Dictionary<ImportSource, Preparation> preparations, ImportPolicy policy)
     {
         _target = target;
+        _policy = policy;
         _preparations = preparations;
     }
 
@@ -146,9 +157,13 @@ internal sealed class PageGraphCopier
 
             case PdfDictionary dict:
                 var newDict = new PdfDictionary();
+                var dropValue = _policy.DropSignatureValues && IsSignatureField(dict);
                 foreach (var (key, item) in dict)
                 {
-                    newDict.Set(key, ImportValue(source, item));
+                    if (!LeftOut(key) && !(dropValue && ReferenceEquals(key, ValueName)))
+                    {
+                        newDict.Set(key, ImportValue(source, item));
+                    }
                 }
 
                 return newDict;
@@ -157,7 +172,10 @@ internal sealed class PageGraphCopier
                 var newStreamDict = new PdfDictionary();
                 foreach (var (key, item) in stream.Dictionary)
                 {
-                    newStreamDict.Set(key, ImportValue(source, item));
+                    if (!LeftOut(key))
+                    {
+                        newStreamDict.Set(key, ImportValue(source, item));
+                    }
                 }
 
                 // RawBytes is already an independent managed copy (the
@@ -206,7 +224,7 @@ internal sealed class PageGraphCopier
         var newDict = new PdfDictionary();
         foreach (var (key, value) in pageDictionary)
         {
-            if (ReferenceEquals(key, ParentName))
+            if (ReferenceEquals(key, ParentName) || LeftOut(key) || (_policy.DropArticleBeads && ReferenceEquals(key, BeadsName)))
             {
                 continue;
             }
@@ -216,6 +234,15 @@ internal sealed class PageGraphCopier
 
         return newDict;
     }
+
+    // A key the policy leaves out of every dictionary and stream it copies.
+    private bool LeftOut(PdfName key)
+        => _policy.StripStructureKeys && (ReferenceEquals(key, StructParentsName) || ReferenceEquals(key, StructParentName));
+
+    // A signature field declares /FT /Sig itself; one inheriting /FT from a parent field keeps
+    // its /V (a rare shape the signature reader treats the same way).
+    private static bool IsSignatureField(PdfDictionary dict)
+        => dict.TryGetValue(FieldTypeName, out var fieldType) && ReferenceEquals(fieldType, SignatureName);
 
     private Dictionary<int, IndirectReference> MapFor(ImportSource source)
     {
