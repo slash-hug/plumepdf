@@ -6,6 +6,7 @@ One task per file; every snippet is embedded from a compiling, CI-run test in `t
 - [Merge PDFs](merge.md)
 - [Split a PDF into single pages](split.md)
 - [Reorder and remove pages](reorder-pages.md)
+- [Append pages to an existing PDF](append-pages.md)
 - [Save incrementally](save-incremental.md)
 - [Deterministic, byte-identical output](deterministic-output.md)
 - [Compress a document](compress.md)
