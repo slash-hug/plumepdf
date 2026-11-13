@@ -97,8 +97,10 @@ public class QpdfInteropTests
     [Theory]
     [InlineData("classic-xref.pdf")]
     [InlineData("object-stream.pdf")]
-    [InlineData("hybrid.pdf")]
     [InlineData("linearized-ish.pdf")]
+    // Not hybrid.pdf: its classic table lists object 4 at offset 0 (the object lives in the
+    // xref stream), which qpdf warns about in the fixture itself, and an incremental save keeps
+    // those bytes. PageAddXrefShapeTests covers the hybrid shape; the full save below checks it.
     public void IncrementalSaveAfterPageAdd_PassesQpdfCheck(string destination)
     {
         if (!QpdfOracle.AvailableOrFailIfRequired())
