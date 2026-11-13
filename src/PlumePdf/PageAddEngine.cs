@@ -185,7 +185,7 @@ internal static class PageAddEngine
 
         foreach (var (from, to) in formPlan?.ResourceRenames ?? [])
         {
-            destination.Diagnostics.Add(new PdfDiagnostic("PLUME6099", DiagnosticSeverity.Info, $"The copied form resource /{from} was added as /{to} because this document's form already uses /{from} for a different resource; the copied fields' /DA strings name /{to}."));
+            destination.Diagnostics.Add(new PdfDiagnostic("PLUME6099", DiagnosticSeverity.Info, $"The copied form font /{from} was added as /{to} because this document's form already uses /{from} for a different font; the copied fields' /DA strings name /{to}."));
         }
     }
 

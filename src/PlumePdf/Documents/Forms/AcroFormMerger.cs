@@ -233,14 +233,16 @@ internal static class AcroFormMerger
     /// destination's fields, <c>/DR</c> entries and form-level keys are never changed:
     /// <list type="bullet">
     /// <item>An incoming top-level field whose <c>/T</c> is taken gets a <c>~N</c> suffix.</item>
-    /// <item>An incoming <c>/DR</c> resource whose name is taken by a different resource is added
-    /// under a fresh <c>~N</c> name, and every copied <c>/DA</c> that names a renamed font is
-    /// rewritten to match. A non-embedded simple font with the same <c>/Subtype</c>,
-    /// <c>/BaseFont</c> and named <c>/Encoding</c> counts as the same resource and is shared.
-    /// <c>/DS</c> and <c>/RV</c> rich text are left as they are.</item>
-    /// <item>The source's form-level <c>/DA</c> and <c>/Q</c>, when they differ from the
-    /// destination's, are written onto incoming top-level fields that lack their own, so those
-    /// fields keep the defaults they inherited.</item>
+    /// <item>Only the source's <c>/DR</c> fonts that a copied <c>/DA</c> names are added (nothing
+    /// else in <c>/DR</c> is looked up by name). One whose name is taken by a different font is
+    /// added under a fresh <c>~N</c> name, and every copied <c>/DA</c> that names it is rewritten
+    /// to match. A non-embedded simple font with the same <c>/Subtype</c>, <c>/BaseFont</c> and
+    /// named <c>/Encoding</c> counts as the same font and is shared. <c>/DS</c> and <c>/RV</c>
+    /// rich text are left as they are.</item>
+    /// <item>The source's form-level <c>/DA</c> and <c>/Q</c> (a missing <c>/Q</c> meaning 0), when
+    /// they differ from what the destination's would give (after any font rename), are written
+    /// onto incoming top-level fields that lack their own, so those fields keep the defaults they
+    /// inherited.</item>
     /// <item><c>/NeedAppearances</c> is OR'd. <c>/SigFlags</c> gains <c>SignaturesExist</c> when a
     /// signature field comes along (empty: the copier drops its value) and never gains
     /// <c>AppendOnly</c> from the source.</item>
@@ -282,14 +284,14 @@ internal static class AcroFormMerger
 
         // The destination's form, and the indirect object that owns each container the plan
         // edits (null for a container the plan creates, which needs no marking).
-        var form = Container<PdfDictionary>(plan, objects, catalog.Dictionary, AcroFormNames.AcroForm, catalog.Reference, out var formOwner, create: () =>
+        var form = Container<PdfDictionary>(plan, objects, catalog.Dictionary, AcroFormNames.AcroForm, catalog.Reference, out var formOwner, static () => new PdfDictionary(), create: () =>
         {
             var created = new PdfDictionary();
             var reference = target.Allocate();
             target.Store(reference, created);
             return (created, new PdfReference(reference));
         });
-        var fields = Container<PdfArray>(plan, objects, form, AcroFormNames.Fields, formOwner, out var fieldsOwner);
+        var fields = Container<PdfArray>(plan, objects, form, AcroFormNames.Fields, formOwner, out var fieldsOwner, static () => new PdfArray());
 
         var usedNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (var entry in fields)
@@ -300,12 +302,15 @@ internal static class AcroFormMerger
             }
         }
 
-        var fontRenames = MergeResourcesInto(plan, objects, form, formOwner, source, sourceForm, copier);
+        var fontRenames = MergeResourcesInto(plan, objects, form, formOwner, source, sourceForm, incoming.Select(static i => i.Field), copier);
 
+        // An incoming field without its own /DA or /Q inherited the source form's; it keeps that
+        // value when it differs from what it would inherit here (after any font rename, and with
+        // a missing /Q meaning 0, left-aligned).
         var sourceDa = FormString(source.Objects, sourceForm, AcroFormNames.DA);
-        var inheritedDa = sourceDa is not null && sourceDa != FormString(objects, form, AcroFormNames.DA) ? sourceDa : null;
-        var sourceQ = FormInt(source.Objects, sourceForm, AcroFormNames.Q);
-        var inheritedQ = sourceQ is not null && sourceQ != FormInt(objects, form, AcroFormNames.Q) ? sourceQ : null;
+        var inheritedDa = sourceDa is not null && RenameDaText(sourceDa, fontRenames) != FormString(objects, form, AcroFormNames.DA) ? sourceDa : null;
+        var sourceQ = FormInt(source.Objects, sourceForm, AcroFormNames.Q) ?? 0;
+        int? inheritedQ = sourceQ != (FormInt(objects, form, AcroFormNames.Q) ?? 0) ? sourceQ : null;
 
         var included = new HashSet<int>();
         var signatureFieldCame = false;
@@ -350,7 +355,7 @@ internal static class AcroFormMerger
             var carried = sourceCo.OfType<PdfReference>().Where(r => included.Contains(r.Target.Number)).ToList();
             if (carried.Count > 0)
             {
-                var co = Container<PdfArray>(plan, objects, form, AcroFormNames.CO, formOwner, out var coOwner);
+                var co = Container<PdfArray>(plan, objects, form, AcroFormNames.CO, formOwner, out var coOwner, static () => new PdfArray());
                 foreach (var entry in carried)
                 {
                     plan.Appends.Add((co, new PdfReference(copier.Reserve(source, entry.Target))));
@@ -383,8 +388,8 @@ internal static class AcroFormMerger
     /// there (its owner is the reference it is stored under, or <paramref name="parentOwner"/> when
     /// it is direct), otherwise created and set on the parent by the plan (owner <see langword="null"/>).
     /// </summary>
-    private static T Container<T>(FormMergePlan plan, ObjectRegistry objects, PdfDictionary parent, PdfName key, IndirectReference? parentOwner, out IndirectReference? owner, Func<(T Value, PdfObject Stored)>? create = null)
-        where T : PdfObject, new()
+    private static T Container<T>(FormMergePlan plan, ObjectRegistry objects, PdfDictionary parent, PdfName key, IndirectReference? parentOwner, out IndirectReference? owner, Func<T> make, Func<(T Value, PdfObject Stored)>? create = null)
+        where T : PdfObject
     {
         if (parent.TryGetValue(key, out var value))
         {
@@ -405,7 +410,7 @@ internal static class AcroFormMerger
         PdfObject stored;
         if (create is null)
         {
-            created = new T();
+            created = make();
             stored = created;
         }
         else
@@ -428,59 +433,72 @@ internal static class AcroFormMerger
     }
 
     /// <summary>
-    /// Plans adding the source's <c>/DR</c> resources to the destination's, and returns the fonts
-    /// added under a fresh name (old name to new).
+    /// Plans adding to the destination's <c>/DR</c> the source's <c>/DR</c> fonts that a copied
+    /// field's <c>/DA</c> (its own, a descendant's, or the source form's it inherits) names, and
+    /// returns the fonts added under a fresh name (old name to new). Nothing else in the source's
+    /// <c>/DR</c> is copied: only a <c>/DA</c> looks resources up there by name.
     /// </summary>
-    private static Dictionary<string, string> MergeResourcesInto(FormMergePlan plan, ObjectRegistry objects, PdfDictionary form, IndirectReference? formOwner, ImportSource source, PdfDictionary sourceForm, PageGraphCopier copier)
+    private static Dictionary<string, string> MergeResourcesInto(FormMergePlan plan, ObjectRegistry objects, PdfDictionary form, IndirectReference? formOwner, ImportSource source, PdfDictionary sourceForm, IEnumerable<PdfDictionary> incomingFields, PageGraphCopier copier)
     {
         var fontRenames = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (!sourceForm.TryGetValue(AcroFormNames.DR, out var sourceDrValue) || AcroFormReader.Resolve(source.Objects, sourceDrValue) is not PdfDictionary sourceDr || sourceDr.Count == 0)
+        if (!sourceForm.TryGetValue(AcroFormNames.DR, out var sourceDrValue) || AcroFormReader.Resolve(source.Objects, sourceDrValue) is not PdfDictionary sourceDr
+            || !sourceDr.TryGetValue(FontName, out var sourceFontsValue) || AcroFormReader.Resolve(source.Objects, sourceFontsValue) is not PdfDictionary sourceFonts)
         {
             return fontRenames;
         }
 
-        var dr = Container<PdfDictionary>(plan, objects, form, AcroFormNames.DR, formOwner, out var drOwner);
-        foreach (var (category, categoryValue) in sourceDr)
+        var named = new HashSet<string>(StringComparer.Ordinal);
+        CollectDaNames(FormString(source.Objects, sourceForm, AcroFormNames.DA), named);
+        foreach (var field in incomingFields)
         {
-            if (AcroFormReader.Resolve(source.Objects, categoryValue) is not PdfDictionary sourceCategory || sourceCategory.Count == 0)
+            CollectFieldDaNames(source, field, named, depth: 0, visited: []);
+        }
+
+        var wanted = new PdfDictionary();
+        foreach (var (name, resource) in sourceFonts)
+        {
+            if (named.Contains(name.Value))
+            {
+                wanted.Set(name, resource);
+            }
+        }
+
+        if (wanted.Count == 0)
+        {
+            return fontRenames;
+        }
+
+        var dr = Container<PdfDictionary>(plan, objects, form, AcroFormNames.DR, formOwner, out var drOwner, static () => new PdfDictionary());
+        var fonts = Container<PdfDictionary>(plan, objects, dr, FontName, drOwner, out var fontsOwner, static () => new PdfDictionary());
+        var taken = new HashSet<string>(fonts.Select(static e => e.Key.Value), StringComparer.Ordinal);
+        foreach (var (name, resource) in wanted)
+        {
+            string chosen;
+            if (!taken.Contains(name.Value))
+            {
+                chosen = name.Value;
+            }
+            else if (SameStandardFont(objects, fonts[name], source.Objects, resource))
             {
                 continue;
             }
-
-            var destinationCategory = Container<PdfDictionary>(plan, objects, dr, category, drOwner, out var categoryOwner);
-            var taken = new HashSet<string>(destinationCategory.Select(static e => e.Key.Value), StringComparer.Ordinal);
-            foreach (var (name, resource) in sourceCategory)
+            else
             {
-                string chosen;
-                if (!taken.Contains(name.Value))
+                var suffix = 1;
+                do
                 {
-                    chosen = name.Value;
+                    suffix++;
+                    chosen = $"{name.Value}~{suffix}";
                 }
-                else if (ReferenceEquals(category, FontName) && SameStandardFont(objects, destinationCategory[name], source.Objects, resource))
-                {
-                    continue;
-                }
-                else
-                {
-                    var suffix = 1;
-                    do
-                    {
-                        suffix++;
-                        chosen = $"{name.Value}~{suffix}";
-                    }
-                    while (taken.Contains(chosen));
+                while (taken.Contains(chosen));
 
-                    plan.ResourceRenames.Add((name.Value, chosen));
-                    if (ReferenceEquals(category, FontName))
-                    {
-                        fontRenames[name.Value] = chosen;
-                    }
-                }
-
-                taken.Add(chosen);
-                plan.Sets.Add((destinationCategory, PdfName.Get(chosen), copier.ImportValue(source, resource)));
-                MarkOwner(plan, categoryOwner);
+                plan.ResourceRenames.Add((name.Value, chosen));
+                fontRenames[name.Value] = chosen;
             }
+
+            taken.Add(chosen);
+            plan.Sets.Add((fonts, PdfName.Get(chosen), copier.ImportValue(source, resource)));
+            MarkOwner(plan, fontsOwner);
         }
 
         return fontRenames;
@@ -529,6 +547,39 @@ internal static class AcroFormMerger
         return copy;
     }
 
+    private static void CollectDaNames(string? da, HashSet<string> into)
+    {
+        if (da is null)
+        {
+            return;
+        }
+
+        foreach (System.Text.RegularExpressions.Match match in DaFontName.Matches(da))
+        {
+            into.Add(match.Groups["name"].Value);
+        }
+    }
+
+    private static void CollectFieldDaNames(ImportSource source, PdfDictionary field, HashSet<string> into, int depth, HashSet<int> visited)
+    {
+        CollectDaNames(FormString(source.Objects, field, AcroFormNames.DA), into);
+        if (depth > MaxReachabilityDepth || !field.TryGetValue(AcroFormNames.Kids, out var kidsValue) || AcroFormReader.Resolve(source.Objects, kidsValue) is not PdfArray kids)
+        {
+            return;
+        }
+
+        foreach (var kid in kids)
+        {
+            if (kid is PdfReference kidRef && visited.Add(kidRef.Target.Number) && AcroFormReader.Resolve(source.Objects, kidRef) is PdfDictionary kidDict)
+            {
+                CollectFieldDaNames(source, kidDict, into, depth + 1, visited);
+            }
+        }
+    }
+
+    private static string RenameDaText(string text, Dictionary<string, string> fontRenames) =>
+        fontRenames.Count == 0 ? text : DaFontName.Replace(text, match => fontRenames.TryGetValue(match.Groups["name"].Value, out var to) ? "/" + to : match.Value);
+
     // dictionary (a copy the caller owns) with each renamed font in its /DA renamed.
     private static PdfDictionary RenameDaFonts(ObjectRegistry objects, PdfDictionary dictionary, Dictionary<string, string> fontRenames)
     {
@@ -538,7 +589,7 @@ internal static class AcroFormMerger
         }
 
         var text = Encoding.Latin1.GetString(da.Bytes.Span);
-        var renamed = DaFontName.Replace(text, match => fontRenames.TryGetValue(match.Groups["name"].Value, out var to) ? "/" + to : match.Value);
+        var renamed = RenameDaText(text, fontRenames);
         if (renamed != text)
         {
             dictionary.Set(AcroFormNames.DA, PdfString.FromLiteral(Encoding.Latin1.GetBytes(renamed)));
@@ -771,7 +822,7 @@ internal sealed class FormMergePlan
     /// <summary>Incoming top-level fields renamed because their name was taken: (from, to).</summary>
     public List<(string From, string To)> Renames { get; } = [];
 
-    /// <summary>Incoming <c>/DR</c> resources added under a fresh name because theirs was taken: (from, to).</summary>
+    /// <summary>Incoming <c>/DR</c> fonts added under a fresh name because theirs was taken: (from, to).</summary>
     public List<(string From, string To)> ResourceRenames { get; } = [];
 
     /// <summary>Replaces every value and item with <paramref name="rewrite"/>'s result.</summary>

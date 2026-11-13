@@ -306,7 +306,7 @@ This index is populated one page per code as codes are minted in `src/`, in the 
 | [PLUME6096](PLUME6096.md) | page added to a document with an XFA form (diagnostic) |
 | [PLUME6097](PLUME6097.md) | the document has no indirect /Pages to add a page under |
 | [PLUME6098](PLUME6098.md) | page added despite the document's assembly permission (diagnostic) |
-| [PLUME6099](PLUME6099.md) | copied form field or form resource renamed (diagnostic) |
+| [PLUME6099](PLUME6099.md) | copied form field or form font renamed (diagnostic) |
 | [PLUME7001](PLUME7001.md) | content-stream graphics-state stack underflow |
 | [PLUME7002](PLUME7002.md) | nested text object (`BT` while already inside one) |
 | [PLUME7003](PLUME7003.md) | `ET` with no matching `BT` |

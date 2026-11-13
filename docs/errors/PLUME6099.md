@@ -1,4 +1,4 @@
-# PLUME6099 — copied form field or form resource renamed (diagnostic)
+# PLUME6099 — copied form field or form font renamed (diagnostic)
 
 **Cause (diagnostic, `Info`):** `PageCollection.Add`/`Insert` copied a page whose form fields join
 the destination's form, and a name was already taken there:
@@ -6,10 +6,11 @@ the destination's form, and a name was already taken there:
 - A copied top-level field whose name the destination already uses gets a `~N` suffix (`Name`
   becomes `Name~2`, then `Name~3`, ...). Its descendants' full names follow, since they start with
   it.
-- A copied form resource (an `/AcroForm /DR` entry, typically a font) whose name the destination
-  uses for a *different* resource is added under a fresh `~N` name, and the copied fields' `/DA`
-  default appearance strings are rewritten to name it. A non-embedded standard font with the same
-  base font and encoding counts as the same resource and is shared instead.
+- A form font a copied field uses (an `/AcroForm /DR /Font` entry named by its `/DA` default
+  appearance string, or by the source form's `/DA` it inherited) whose name the destination uses
+  for a *different* font is added under a fresh `~N` name, and the copied fields' `/DA` strings
+  are rewritten to name it. A non-embedded standard font with the same base font and encoding
+  counts as the same font and is shared instead.
 
 The destination's own fields and resources never change. One entry per rename, naming both names.
 

@@ -45,6 +45,15 @@ internal sealed class PageGraphCopier
     private static readonly PdfName SignatureName = PdfName.Get("Sig");
     private static readonly PdfName ValueName = PdfName.Get("V");
     private static readonly PdfName AppearanceName = PdfName.Get("AP");
+    private static readonly PdfName StructureDestinationName = PdfName.Get("SD");
+    private static readonly PdfName StructTreeRootName = PdfName.Get("StructTreeRoot");
+    private static readonly PdfName OutlinesName = PdfName.Get("Outlines");
+    private static readonly PdfName KidsName = PdfName.Get("K");
+    private static readonly PdfName ParentTreeName = PdfName.Get("ParentTree");
+    private static readonly PdfName NumsName = PdfName.Get("Nums");
+    private static readonly PdfName TreeKidsName = PdfName.Get("Kids");
+    private static readonly PdfName FirstName = PdfName.Get("First");
+    private static readonly PdfName NextName = PdfName.Get("Next");
 
     // /FT is inheritable (ISO 32000-1 §12.7.3.1); a field hierarchy deeper than this is not a form.
     private const int MaxFieldTypeDepth = 64;
@@ -53,6 +62,7 @@ internal sealed class PageGraphCopier
     private readonly ImportPolicy _policy;
     private readonly Dictionary<ImportSource, Preparation> _preparations;
     private readonly Dictionary<ImportSource, Dictionary<int, IndirectReference>> _perSourceMaps = [];
+    private readonly Dictionary<ImportSource, HashSet<int>> _documentStructures = [];
 
     // Work queue for reference-chain discovery (see class remarks): reserving a target reference
     // for a not-yet-seen original object happens eagerly (so every other reference to it
@@ -133,7 +143,8 @@ internal sealed class PageGraphCopier
         => Reserve(source, pageReference, _preparations[source].PageCopies[pageReference.Number]);
 
     /// <summary>Whether object <paramref name="number"/> of <paramref name="source"/> must not come along.</summary>
-    public bool IsExcluded(ImportSource source, int number) => _preparations[source].Excluded.Contains(number);
+    public bool IsExcluded(ImportSource source, int number) =>
+        _preparations[source].Excluded.Contains(number) || (_policy.LeaveOutDocumentStructures && DocumentStructures(source).Contains(number));
 
     /// <summary>
     /// A copy of <paramref name="value"/> (from <paramref name="source"/>) for the target:
@@ -241,7 +252,74 @@ internal sealed class PageGraphCopier
 
     // A key the policy leaves out of every dictionary and stream it copies.
     private bool LeftOut(PdfName key)
-        => _policy.StripStructureKeys && (ReferenceEquals(key, StructParentsName) || ReferenceEquals(key, StructParentName));
+        => _policy.StripStructureKeys && (ReferenceEquals(key, StructParentsName) || ReferenceEquals(key, StructParentName) || ReferenceEquals(key, StructureDestinationName));
+
+    // The object numbers of source's structure tree (every element, and the parent-tree nodes) and
+    // outline (every item), walked once per source. Element content references (/OBJR /Obj, /Pg)
+    // and outline destinations are not followed: they point at pages and annotations, not into
+    // these trees.
+    private HashSet<int> DocumentStructures(ImportSource source)
+    {
+        if (_documentStructures.TryGetValue(source, out var cached))
+        {
+            return cached;
+        }
+
+        var numbers = new HashSet<int>();
+        var catalog = source.Catalog?.Dictionary;
+        var pending = new Queue<PdfObject>();
+        if (catalog is not null)
+        {
+            if (catalog.TryGetValue(StructTreeRootName, out var root))
+            {
+                pending.Enqueue(root);
+            }
+
+            if (catalog.TryGetValue(OutlinesName, out var outlines))
+            {
+                pending.Enqueue(outlines);
+            }
+        }
+
+        while (pending.Count > 0)
+        {
+            var value = pending.Dequeue();
+            if (value is PdfReference reference)
+            {
+                if (!numbers.Add(reference.Target.Number))
+                {
+                    continue;
+                }
+
+                value = source.Objects[reference.Target];
+            }
+
+            switch (value)
+            {
+                case PdfArray array:
+                    foreach (var item in array)
+                    {
+                        pending.Enqueue(item);
+                    }
+
+                    break;
+
+                case PdfDictionary dictionary:
+                    foreach (var key in new[] { KidsName, ParentTreeName, NumsName, TreeKidsName, FirstName, NextName })
+                    {
+                        if (dictionary.TryGetValue(key, out var child))
+                        {
+                            pending.Enqueue(child);
+                        }
+                    }
+
+                    break;
+            }
+        }
+
+        _documentStructures[source] = numbers;
+        return numbers;
+    }
 
     // Whether dict is a signature field: /FT /Sig on itself or, since /FT is inheritable, on the
     // nearest ancestor field (through /Parent, in the source) that declares an /FT at all.

@@ -106,6 +106,9 @@ If the call throws, the document is unchanged.
   by `Insert`.
 - The next save writes the page tree as one flat `/Pages` node, so on a document with a deep page
   tree the appended revision rewrites every page dictionary, not just the new one.
+- A page added and then removed is left out of a `Save` with its fields (a form font or
+  `/NeedAppearances` the add gave the form stays). `SaveIncremental` appends it anyway, and its
+  fields stay in the form with no page.
 - The appended revision keeps the original bytes, including anything removed with
   `Pages.RemoveAt` in the same session. When removed content must not survive in the file, use
   `Save` (a full rewrite; see [Reorder and remove pages](reorder-pages.md)) or `Pdf.Redact`.

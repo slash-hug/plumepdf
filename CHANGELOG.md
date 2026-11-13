@@ -19,8 +19,8 @@ only by diffing output. Entries land in the same change as the behavior they des
   longer covering the whole document); an encrypted document's appended revision is encrypted
   with its own key. `Save` works too.
   - Copied form fields join the destination's form with the destination as the base: its fields
-    and resources never change, a taken field name gets a `~N` suffix, a form resource under a
-    taken name gets a fresh one (the copied `/DA` strings follow), signature fields arrive empty,
+    and resources never change, a taken field name gets a `~N` suffix, a form font under a
+    taken name gets a fresh one (the copied `/DA` strings follow; only the form fonts copied fields use are added), signature fields arrive empty,
     and only fields placed on the copied page come along. `doc.Form` and `doc.Signatures` are
     read again after an add.
   - A page duplicated within its own document shares its resources and leaves its form widgets
@@ -30,7 +30,7 @@ only by diffing output. Entries land in the same change as the behavior they des
     (tagged source), `PLUME6094` (duplicate left widgets off), `PLUME6095` (tagged, PDF/A or
     PDF/UA destination), `PLUME6096` (XFA destination), `PLUME6097` (refused: no indirect
     `/Pages`), `PLUME6098` (assembly permission cleared, advisory) and `PLUME6099` (a copied field
-    or form resource renamed). Recipe: `docs/cookbook/append-pages.md`.
+    or form font renamed). Recipe: `docs/cookbook/append-pages.md`.
 
 ### Changed
 

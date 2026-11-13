@@ -39,14 +39,19 @@ internal sealed class FreshDocumentTarget : IImportTarget
 
 /// <summary>
 /// Where page-add copies a page before it touches the destination: every copy gets a provisional
-/// number (from <see cref="ProvisionalBase"/> up, far above any real object number), so the copy
-/// can be built, and fail, without allocating anything in the destination. <see cref="Commit"/>
-/// then allocates real numbers, registers the copies and rewrites every provisional reference.
+/// reference (a number from <see cref="ProvisionalBase"/> up, at generation
+/// <see cref="ProvisionalGeneration"/>, which no real reference uses), so the copy can be built,
+/// and fail, without allocating anything in the destination. <see cref="Commit"/> then allocates
+/// real numbers, registers the copies and rewrites every provisional reference; a reference that
+/// merely looks provisional (a malformed real one) is left as it is.
 /// </summary>
 internal sealed class StagingTarget : IImportTarget
 {
     /// <summary>The first provisional object number.</summary>
     internal const int ProvisionalBase = 1 << 30;
+
+    /// <summary>The generation of every provisional reference: above the 65,535 a real one can have.</summary>
+    internal const int ProvisionalGeneration = int.MaxValue;
 
     private int _nextNumber = ProvisionalBase;
     private Dictionary<int, IndirectReference>? _committed;
@@ -55,10 +60,10 @@ internal sealed class StagingTarget : IImportTarget
     public Dictionary<int, PdfObject> Objects { get; } = [];
 
     /// <summary>Whether <paramref name="reference"/> is a provisional number handed out by a staging target.</summary>
-    public static bool IsProvisional(IndirectReference reference) => reference.Number >= ProvisionalBase;
+    public static bool IsProvisional(IndirectReference reference) => reference.Number >= ProvisionalBase && reference.Generation == ProvisionalGeneration;
 
     /// <inheritdoc/>
-    public IndirectReference Allocate() => new(_nextNumber++, 0);
+    public IndirectReference Allocate() => new(_nextNumber++, ProvisionalGeneration);
 
     /// <inheritdoc/>
     public void Store(IndirectReference reference, PdfObject value) => Objects[reference.Number] = value;
@@ -97,8 +102,8 @@ internal sealed class StagingTarget : IImportTarget
     {
         switch (value)
         {
-            case PdfReference reference when IsProvisional(reference.Target):
-                return new PdfReference(_committed![reference.Target.Number]);
+            case PdfReference reference when IsProvisional(reference.Target) && _committed!.TryGetValue(reference.Target.Number, out var committed):
+                return new PdfReference(committed);
 
             case PdfArray array:
                 for (var i = 0; i < array.Count; i++)

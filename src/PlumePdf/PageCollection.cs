@@ -160,7 +160,7 @@ public sealed class PageCollection : IReadOnlyList<PdfPage>
     /// <para>
     /// The copied page's form fields join this document's form. Existing fields and form
     /// resources are untouched; an incoming field whose name is taken is renamed with a
-    /// <c>~N</c> suffix, and one whose form resource name is taken gets a fresh name. Copied
+    /// <c>~N</c> suffix, and a form font it uses whose name is taken gets a fresh one. Copied
     /// signature fields arrive empty: their signatures cover the source file, not this one.
     /// </para>
     /// <para>
@@ -199,9 +199,10 @@ public sealed class PageCollection : IReadOnlyList<PdfPage>
     /// not carried; integer page-index destinations and <c>/PageLabels</c> are not shifted. The
     /// next save writes the page tree as one flat <c>/Pages</c> node, so on a document with a
     /// deep page tree the appended revision rewrites every page dictionary, not just the new one.
-    /// A page added and then removed before <c>Save</c> is left out with its fields. Before
-    /// <c>SaveIncremental</c>, its objects are still appended and its fields stay in the form,
-    /// with no page to show them; use <c>Save</c> when that matters.
+    /// A page added and then removed before <c>Save</c> is left out with its fields, though a form
+    /// font or <c>/NeedAppearances</c> the add gave the form stays. Before <c>SaveIncremental</c>,
+    /// its objects are still appended and its fields stay in the form, with no page to show them;
+    /// use <c>Save</c> when that matters.
     /// </para>
     /// <para>
     /// If the call throws, this document is unchanged.
