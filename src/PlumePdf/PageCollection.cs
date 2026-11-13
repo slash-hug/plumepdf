@@ -22,15 +22,13 @@ namespace PlumePdf;
 /// </example>
 public sealed class PageCollection : IReadOnlyList<PdfPage>
 {
+    private readonly PdfDocument _owner;
     private readonly List<PdfPage> _pages;
-    private readonly Action _markDirty;
 
-    internal PageCollection(List<PdfPage> pages, Action markDirty)
+    internal PageCollection(PdfDocument owner, List<PdfPage> pages)
     {
-        ArgumentNullException.ThrowIfNull(pages);
-        ArgumentNullException.ThrowIfNull(markDirty);
+        _owner = owner;
         _pages = pages;
-        _markDirty = markDirty;
     }
 
     /// <inheritdoc/>
@@ -56,7 +54,7 @@ public sealed class PageCollection : IReadOnlyList<PdfPage>
         var page = _pages[fromIndex];
         _pages.RemoveAt(fromIndex);
         _pages.Insert(toIndex, page);
-        _markDirty();
+        MarkDirty();
     }
 
     /// <summary>Removes the page at <paramref name="index"/> from the document.</summary>
@@ -115,7 +113,24 @@ public sealed class PageCollection : IReadOnlyList<PdfPage>
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, _pages.Count);
 
         _pages.RemoveAt(index);
-        _markDirty();
+        MarkDirty();
+    }
+
+    // A reorder or removal is a mutation of the owning document exactly like
+    // Objects.MarkDirty/RegisterNew/AllocateNumber, so it goes through the same single-writer
+    // guard those do (ObjectRegistry's indexer asserts against it): one contract covering every
+    // way a document can be mutated.
+    private void MarkDirty()
+    {
+        _owner.Objects.EnterExternalMutation();
+        try
+        {
+            _owner.MarkPagesTreeDirty();
+        }
+        finally
+        {
+            _owner.Objects.ExitExternalMutation();
+        }
     }
 
     /// <inheritdoc/>

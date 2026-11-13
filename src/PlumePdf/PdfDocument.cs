@@ -80,22 +80,7 @@ public sealed class PdfDocument : IDisposable
 
         _openTimePages = [.. pageReferences.Select(static p => p.Reference)];
 
-        // R-n: a page reorder/removal is a mutation of this document exactly like
-        // Objects.MarkDirty/RegisterNew/AllocateNumber, so it participates in the same
-        // single-writer guard those go through (ObjectRegistry's indexer asserts against it) —
-        // one contract covering every way this document can be mutated, not just the newest one.
-        Pages = new PageCollection(pages, () =>
-        {
-            Objects.EnterExternalMutation();
-            try
-            {
-                _pagesTreeDirty = true;
-            }
-            finally
-            {
-                Objects.ExitExternalMutation();
-            }
-        });
+        Pages = new PageCollection(this, pages);
     }
 
     /// <summary>The deviations tolerated while reading this document — never thrown under default options, never silently dropped.</summary>
@@ -134,6 +119,12 @@ public sealed class PdfDocument : IDisposable
 
     /// <summary>Whether <see cref="Pages"/> has been reordered or had a page removed since this document was opened/created.</summary>
     internal bool PagesTreeDirty => _pagesTreeDirty;
+
+    /// <summary>
+    /// Records that <see cref="Pages"/> no longer matches the page tree this document was opened
+    /// with, so the next save rebuilds it. The caller holds <see cref="ObjectRegistry.EnterExternalMutation"/>.
+    /// </summary>
+    internal void MarkPagesTreeDirty() => _pagesTreeDirty = true;
 
     /// <summary>
     /// Whether this document has been marked as carrying a redaction. Once
