@@ -126,6 +126,23 @@ public sealed class PdfDocument : IDisposable
     /// </summary>
     internal void MarkPagesTreeDirty() => _pagesTreeDirty = true;
 
+    // Pages added through PageCollection.Add/Insert/AddImage/InsertImage since this document was
+    // opened. A full rewrite treats them like open-time pages, so one that is removed again
+    // before the save is left out with everything only it reached (its copied fields included).
+    private readonly List<IndirectReference> _addedPages = [];
+
+    /// <summary>
+    /// Records a page added to <see cref="Pages"/> since this document was opened, and drops the
+    /// cached <see cref="Form"/> and <see cref="Signatures"/> so they are read again with the added
+    /// page's fields. The caller holds <see cref="ObjectRegistry.EnterExternalMutation"/>.
+    /// </summary>
+    internal void RecordAddedPage(IndirectReference page)
+    {
+        _addedPages.Add(page);
+        _form = null;
+        _signatures = null;
+    }
+
     /// <summary>
     /// Whether this document has been marked as carrying a redaction. Once
     /// set, it is never cleared for the remainder of this <see cref="PdfDocument"/> instance's
@@ -819,7 +836,7 @@ public sealed class PdfDocument : IDisposable
     internal SaveCleanupContext PrepareFullRewrite(PdfOptions options)
     {
         var pages = Pages.Select(static p => (p.Reference, p.Dictionary)).ToList();
-        var (excluded, removedPages, removedFields) = RemovedSetBuilder.Build(Objects, Catalog?.Reference, Catalog?.Dictionary, _openTimePageTree, _openTimePages, pages, options);
+        var (excluded, removedPages, removedFields) = RemovedSetBuilder.Build(Objects, Catalog?.Reference, Catalog?.Dictionary, _openTimePageTree, _addedPages.Count == 0 ? _openTimePages : [.. _openTimePages, .. _addedPages], pages, options);
         var context = new SaveCleanupContext(Objects, Catalog?.Reference, Catalog?.Dictionary, pages, excluded, removedPages, options);
         context.RemovedFields.UnionWith(removedFields);
         SaveCleanup.Compute(context);
