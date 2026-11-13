@@ -93,4 +93,62 @@ public class QpdfInteropTests
             File.Delete(outputPath);
         }
     }
+
+    [Theory]
+    [InlineData("classic-xref.pdf")]
+    [InlineData("object-stream.pdf")]
+    [InlineData("hybrid.pdf")]
+    [InlineData("linearized-ish.pdf")]
+    public void IncrementalSaveAfterPageAdd_PassesQpdfCheck(string destination)
+    {
+        if (!QpdfOracle.AvailableOrFailIfRequired())
+        {
+            return;
+        }
+
+        var outputPath = TempPdfPath();
+        try
+        {
+            using (var document = PdfDocument.Open(Path.Combine(CorpusFixture.FixturesRoot, destination)))
+            using (var source = PdfDocument.Open(Path.Combine(CorpusFixture.FixturesRoot, "classic-xref.pdf")))
+            {
+                document.Pages.Add(source.Pages[0]);              // from another document
+                document.Pages.Insert(0, document.Pages[^1]);     // duplicated within this one
+                document.Pages.AddImage(new RasterImageFrame(new byte[] { 0, 128, 255, 64 }, 2, 2, RasterPixelFormat.Gray8));
+                document.SaveIncremental(outputPath);
+            }
+
+            QpdfOracle.AssertClean(outputPath);
+        }
+        finally
+        {
+            File.Delete(outputPath);
+        }
+    }
+
+    [Fact]
+    public void FullSaveAfterPageAdd_PassesQpdfCheck()
+    {
+        if (!QpdfOracle.AvailableOrFailIfRequired())
+        {
+            return;
+        }
+
+        var outputPath = TempPdfPath();
+        try
+        {
+            using (var document = PdfDocument.Open(Path.Combine(CorpusFixture.FixturesRoot, "hybrid.pdf")))
+            using (var source = PdfDocument.Open(Path.Combine(CorpusFixture.FixturesRoot, "object-stream.pdf")))
+            {
+                document.Pages.Add(source.Pages[0]);
+                document.Save(outputPath);
+            }
+
+            QpdfOracle.AssertClean(outputPath);
+        }
+        finally
+        {
+            File.Delete(outputPath);
+        }
+    }
 }
