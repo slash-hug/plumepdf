@@ -199,8 +199,9 @@ public sealed class PageCollection : IReadOnlyList<PdfPage>
     /// not carried; integer page-index destinations and <c>/PageLabels</c> are not shifted. The
     /// next save writes the page tree as one flat <c>/Pages</c> node, so on a document with a
     /// deep page tree the appended revision rewrites every page dictionary, not just the new one.
-    /// A page added and then removed before <c>Save</c> is left out with its fields; before
-    /// <c>SaveIncremental</c> its objects are still appended, unreachable.
+    /// A page added and then removed before <c>Save</c> is left out with its fields. Before
+    /// <c>SaveIncremental</c>, its objects are still appended and its fields stay in the form,
+    /// with no page to show them; use <c>Save</c> when that matters.
     /// </para>
     /// <para>
     /// If the call throws, this document is unchanged.
