@@ -6,9 +6,10 @@ internal static class PageAddFixtures
     /// <summary>
     /// A document with one page per entry of <paramref name="texts"/>. With
     /// <paramref name="inheritResources"/> the font lives on the <c>/Pages</c> node and the pages
-    /// inherit it; with <paramref name="catalogExtra"/> more catalog entries are added.
+    /// inherit it; <paramref name="catalogExtra"/> and <paramref name="pageExtra"/> add entries to
+    /// the catalog and to every page.
     /// </summary>
-    public static byte[] Text(string[] texts, bool inheritResources = false, string catalogExtra = "", (int Number, string Body)[]? extra = null)
+    public static byte[] Text(string[] texts, bool inheritResources = false, string catalogExtra = "", (int Number, string Body)[]? extra = null, string pageExtra = "")
     {
         const string Font = "<< /Font << /F1 3 0 R >> >>";
         var objects = new List<(int, string)>
@@ -23,7 +24,7 @@ internal static class PageAddFixtures
             var pageNumber = 10 + (2 * i);
             var contentNumber = pageNumber + 1;
             var content = $"BT /F1 12 Tf 20 50 Td ({texts[i]}) Tj ET";
-            objects.Add((pageNumber, $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] {(inheritResources ? "" : "/Resources " + Font)} /Contents {contentNumber} 0 R >>"));
+            objects.Add((pageNumber, $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] {(inheritResources ? "" : "/Resources " + Font)} /Contents {contentNumber} 0 R {pageExtra} >>"));
             objects.Add((contentNumber, $"<< /Length {content.Length} >>\nstream\n{content}\nendstream"));
             kids.Add($"{pageNumber} 0 R");
         }

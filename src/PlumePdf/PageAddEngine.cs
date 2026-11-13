@@ -94,21 +94,24 @@ internal static class PageAddEngine
     }
 
     /// <summary>
-    /// Registers the staged objects, applies <paramref name="formPlan"/> and puts the page into the
-    /// collection, all under the destination's mutation guard.
+    /// Registers the staged objects, applies <paramref name="formPlan"/> (when there is one) and puts
+    /// the page into the collection, all under the destination's mutation guard.
     /// </summary>
-    private static PdfPage Commit(PdfDocument destination, int index, StagingTarget staging, IndirectReference provisionalPage, PdfDictionary pageDictionary, FormMergePlan formPlan)
+    internal static PdfPage Commit(PdfDocument destination, int index, StagingTarget staging, IndirectReference provisionalPage, PdfDictionary pageDictionary, FormMergePlan? formPlan)
     {
         var objects = destination.Objects;
         objects.EnterExternalMutation();
         try
         {
             staging.Commit(objects);
-            formPlan.Rewrite(staging.Rewrite);
-            formPlan.Apply();
-            foreach (var dirty in formPlan.Dirty)
+            if (formPlan is not null)
             {
-                objects.MarkDirty(dirty);
+                formPlan.Rewrite(staging.Rewrite);
+                formPlan.Apply();
+                foreach (var dirty in formPlan.Dirty)
+                {
+                    objects.MarkDirty(dirty);
+                }
             }
 
             var reference = staging.RealReferenceOf(provisionalPage);
@@ -190,7 +193,7 @@ internal static class PageAddEngine
         $"'{certified.FieldName}' certifies this document at DocMDP P={certified.PValue} ({DocMdpCertification.DescribeP(certified.PValue)}), and adding a page changes it after certification"
         + (hasUsageRights ? "; it also invalidates the document's /Perms /UR3 usage rights" : string.Empty);
 
-    private static void ReportOnce(PdfDocument document, string code, DiagnosticSeverity severity, string message)
+    internal static void ReportOnce(PdfDocument document, string code, DiagnosticSeverity severity, string message)
     {
         if (!document.Diagnostics.Any(d => d.Code == code))
         {
