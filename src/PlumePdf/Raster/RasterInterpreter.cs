@@ -692,12 +692,14 @@ internal static class RasterInterpreter
         // origin bookkeeping; only initialization, readback, and compositing are windowed.
         // Pixels outside the window are simply never touched — bit-identical by construction.
         var (cropX, cropY, cropMaxX, cropMaxY) = GroupDeviceBounds(group, surface.Width, surface.Height);
-        var cropW = cropMaxX - cropX;
-        var cropH = cropMaxY - cropY;
-        if (cropW <= 0 || cropH <= 0)
+        // Compare edges rather than test the differences: the subtraction can overflow.
+        if (cropMaxX <= cropX || cropMaxY <= cropY)
         {
             return; // Nothing the group paints lands on the surface.
         }
+
+        var cropW = cropMaxX - cropX;
+        var cropH = cropMaxY - cropY;
 
         var cropPixels = cropW * cropH;
 
@@ -809,6 +811,14 @@ internal static class RasterInterpreter
             minY = Math.Min(minY, cMinY);
             maxX = Math.Max(maxX, cMaxX);
             maxY = Math.Max(maxY, cMaxY);
+        }
+
+        if (maxX <= minX || maxY <= minY)
+        {
+            // No child contributes (an empty group, or one whose children paint nothing): an
+            // empty box, not the int.MaxValue/MinValue starting values, which overflow when a
+            // caller subtracts them.
+            return (0, 0, 0, 0);
         }
 
         return (Math.Max(0, minX), Math.Max(0, minY), Math.Min(surfaceWidth, maxX), Math.Min(surfaceHeight, maxY));
