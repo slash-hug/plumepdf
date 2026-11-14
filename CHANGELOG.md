@@ -7,6 +7,13 @@ only by diffing output. Entries land in the same change as the behavior they des
 
 ## [Unreleased]
 
+## [1.0.0-preview.10] — 2026-11-13
+
+This release adds pages to an opened document: `doc.Pages.Add`/`Insert` copy a page from another
+open PDF (or duplicate one of the document's own), and `AddImage`/`InsertImage` add a page showing
+an image. `SaveIncremental` appends them as one revision, so an earlier signature still verifies.
+It also fixes `Rasterize` throwing for a transparency group that paints nothing.
+
 ### Added
 
 - **Pages can be added to an opened document.** `doc.Pages.Add(page)` and `Insert(index, page)`
@@ -372,7 +379,8 @@ circulated before the public repository existed, and NuGet would rank them above
 - Coded errors throughout: every failure carries a stable `PLUME####` code and an
   `Exception.HelpLink` to its reference page under `docs/errors/`.
 
-[Unreleased]: https://github.com/slash-hug/plumepdf/compare/v1.0.0-preview.9...HEAD
+[Unreleased]: https://github.com/slash-hug/plumepdf/compare/v1.0.0-preview.10...HEAD
+[1.0.0-preview.10]: https://github.com/slash-hug/plumepdf/releases/tag/v1.0.0-preview.10
 [1.0.0-preview.9]: https://github.com/slash-hug/plumepdf/releases/tag/v1.0.0-preview.9
 [1.0.0-preview.8]: https://github.com/slash-hug/plumepdf/releases/tag/v1.0.0-preview.8
 [1.0.0-preview.2]: https://github.com/slash-hug/plumepdf/releases/tag/v1.0.0-preview.2
