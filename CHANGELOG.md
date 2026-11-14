@@ -39,6 +39,15 @@ only by diffing output. Entries land in the same change as the behavior they des
   `Pdf.Merge`/`Pdf.Split` still refuse every encrypted source, with the same message as before.
   The error page no longer says to wait for encryption write.
 
+### Fixed
+
+- **`Rasterize` no longer throws for a transparency group that paints nothing** (#84). A group
+  whose content draws nothing, such as an emptied typewriter-style `/FreeText` annotation's
+  appearance, made `Rasterize` throw a raw `ArgumentOutOfRangeException` and left the whole
+  page unrenderable. Its device bounds came back as overflow-prone sentinel values that slipped
+  past the empty-group check. The group now composites nothing, and the page renders as if it
+  weren't there. Nothing changes for groups that paint.
+
 ## [1.0.0-preview.9] — 2026-10-21
 
 This release adds `Pdf.Compress`, which makes a document smaller (lossless by default, with
