@@ -55,6 +55,34 @@ public class AgentDocsCoverageTests
             "by a CookbookTests snippet. Missing:\n  " + string.Join("\n  ", missing.Select(v => $"Pdf.{v}")));
     }
 
+    [Theory]
+    [MemberData(nameof(AgentSurfaces))]
+    public void EveryPageCollectionMutationIsNamedInTheAgentSurface(string surface)
+    {
+        var text = File.ReadAllText(Path.Combine(FindRepoRoot(), surface));
+
+        var missing = PageMethods().Where(method => !NamesPageMethod(text, method)).ToList();
+
+        Assert.True(missing.Count == 0,
+            $"{surface} must name every public PageCollection mutation (as `Pages.<Method>`) so an agent " +
+            "reading it finds how to add, insert, move and remove pages. Add these:\n  " + string.Join("\n  ", missing.Select(m => $"Pages.{m}")));
+    }
+
+    [Fact]
+    public void EveryPageCollectionMutationHasACookbookRecipe()
+    {
+        var recipes = Directory.EnumerateFiles(Path.Combine(FindRepoRoot(), "docs", "cookbook"), "*.md")
+            .Where(static path => Path.GetFileName(path) != "README.md")
+            .Select(File.ReadAllText)
+            .ToList();
+
+        var missing = PageMethods().Where(method => !recipes.Any(recipe => NamesPageMethod(recipe, method))).ToList();
+
+        Assert.True(missing.Count == 0,
+            "Every public PageCollection mutation needs a cookbook recipe that names it (as `Pages.<Method>`). Missing:\n  " +
+            string.Join("\n  ", missing.Select(m => $"Pages.{m}")));
+    }
+
     [Fact]
     public void TheSkillStaysWithinItsBudget()
     {
@@ -78,6 +106,23 @@ public class AgentDocsCoverageTests
         Assert.NotEmpty(verbs); // sanity: the reflection scan itself still works.
         return verbs;
     }
+
+    // PageCollection's own methods (the mutations: Add, Insert, AddImage, InsertImage, Move, RemoveAt).
+    private static List<string> PageMethods()
+    {
+        var methods = typeof(PageCollection).GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Where(static method => !method.IsSpecialName && method.Name != nameof(PageCollection.GetEnumerator))
+            .Select(static method => method.Name)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToList();
+
+        Assert.Contains("AddImage", methods); // sanity: the reflection scan itself still works.
+        return methods;
+    }
+
+    private static bool NamesPageMethod(string text, string method) =>
+        Regex.IsMatch(text, $@"\bPages\.{method}(?![A-Za-z])");
 
     private static bool NamesVerb(string text, string verb) =>
         Regex.IsMatch(text, $@"\bPdf\.{verb}(?![A-Za-z])");

@@ -36,6 +36,9 @@ public sealed class PdfPage
     /// <summary>The page's own indirect-object identity in the document it was read from.</summary>
     public IndirectReference Reference { get; }
 
+    /// <summary>The document this page belongs to, or <see langword="null"/> for a page built outside one.</summary>
+    internal PdfDocument? Owner => _owner;
+
     /// <summary>
     /// The page's effective dictionary: its own entries, plus <c>/Resources</c>,
     /// <c>/MediaBox</c>, <c>/CropBox</c>, and <c>/Rotate</c> resolved onto it from the page

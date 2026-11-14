@@ -18,6 +18,7 @@ Important conventions: `SaveIncremental` is the default save (append-only, signa
 
 - Open/inspect: `PdfDocument.Open(path)` → `doc.Pages`, `doc.Diagnostics`, `doc.Objects`
 - Verbs: `Pdf.Merge`, `Pdf.Split`, `Pdf.ExtractText`, `Pdf.FillForm`, `Pdf.FlattenForm`, `Pdf.Sign`, `Pdf.Verify`, `Pdf.Redact`, `Pdf.Compress`, `Pdf.EstimateCompression`, `Pdf.ValidatePdfA`, `Pdf.Linearize`, `Pdf.Stamp`, `Pdf.Rasterize`, `Pdf.FromImages`
+- Pages: `doc.Pages.AddImage(frame)`/`doc.Pages.InsertImage`, `doc.Pages.Add(page)`/`doc.Pages.Insert` (copy from another open PDF, or duplicate), `doc.Pages.Move`, `doc.Pages.RemoveAt`; persist an add with `SaveIncremental` (one appended revision, signatures kept) — [recipe](docs/cookbook/append-pages.md)
 - Create: `PdfDocument.Compose(page => ...)` or `new Manuscript { ... }.Render(options)`
 - PDF/A: `PdfOptions.PdfAConformance = PdfAConformance.A2b`; validate with `Pdf.ValidatePdfA`
 - Render: `Pdf.Rasterize(path, new PdfRasterizeOptions { Dpi = 150 })` or `doc.Pages[i].Rasterize()` → `RasterImage`; decode images with `RasterImage.Decode(bytes)`

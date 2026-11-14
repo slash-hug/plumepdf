@@ -21,7 +21,7 @@ A fully-featured, high-performance, agent-forward PDF library for .NET, under Ap
 | SaveIncremental | `doc.SaveIncremental(...)` / `SaveIncrementalAsync(...)` — append-only update; the default recommendation for most edits |
 | Merge | `Pdf.Merge(...)` |
 | Split | `Pdf.Split(...)` |
-| Pages | `doc.Pages` — reorder and remove |
+| Pages | `doc.Pages` — `Pages.Move`, `Pages.RemoveAt`; add with `Pages.Add(page)`/`Pages.Insert(index, page)` (copied from another open document, or duplicated) and `Pages.AddImage(frame)`/`Pages.InsertImage(index, frame)`, then `SaveIncremental` appends one revision (earlier signatures still verify) |
 
 ## Creation
 

@@ -1082,7 +1082,7 @@ public static class Pdf
             throw lastFailure ?? new PlumePdfException("PLUME3611", "Pdf.FromImages: no source produced a decodable frame.");
         }
 
-        var manuscript = new Manuscript { Sections = frames.Select(BuildPageSection).ToList() };
+        var manuscript = new Manuscript { Sections = frames.Select(ImagePagePipeline.BuildPageSection).ToList() };
         var document = manuscript.Render(options);
         foreach (var deviation in diagnostics)
         {
@@ -1090,21 +1090,5 @@ public static class Pdf
         }
 
         return document;
-    }
-
-    /// <summary>One frame -> one same-size page: <see cref="Elements.Section.PageSize"/> and the body <see cref="Elements.Image"/>'s rendered size both come from the same DPI-derived point size (96 dpi fallback, <see cref="Elements.Image(RasterImageFrame)"/>'s own default), so <c>LayoutEngine.MeasureImage</c>'s width-fits-page check always passes exactly — <see cref="Elements.Margins.Uniform"/>(0) leaves no margin to mismatch against.</summary>
-    private static Elements.Section BuildPageSection(RasterImageFrame frame)
-    {
-        var dpiX = frame.XDpi ?? 96.0;
-        var dpiY = frame.YDpi ?? 96.0;
-        var pageWidth = frame.Width * 72.0 / dpiX;
-        var pageHeight = frame.Height * 72.0 / dpiY;
-
-        return new Elements.Section
-        {
-            PageSize = new Elements.PageSize(pageWidth, pageHeight),
-            Margins = Elements.Margins.Uniform(0),
-            Body = new Elements.Image(frame) { Width = pageWidth, Height = pageHeight },
-        };
     }
 }

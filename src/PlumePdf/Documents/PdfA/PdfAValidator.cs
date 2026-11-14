@@ -101,6 +101,11 @@ public static class PdfAValidator
         """<[\w:]+\s[^>]*xmlns:pdfaid\s*=\s*["']http://www\.aiim\.org/pdfa/ns/id/?["'][^>]*/?>""",
         SafeScan | RegexOptions.Singleline);
 
+    // The PDF/UA identification schema: the same shape as pdfaid, its own namespace.
+    private static readonly Regex PdfuaidElement = new(
+        """<[\w:]+\s[^>]*xmlns:pdfuaid\s*=\s*["']http://www\.aiim\.org/pdfua/ns/id/?["'][^>]*/?>""",
+        SafeScan | RegexOptions.Singleline);
+
     private static readonly Regex PdfaidAttributeName = new("""pdfaid:(?<name>[A-Za-z0-9_]+)\s*=""", SafeScan);
 
     // part/conformance are the two required properties; amd (amendment) and corr
@@ -162,6 +167,21 @@ public static class PdfAValidator
         }
 
         return (part, conformance, extraneous);
+    }
+
+    /// <summary>
+    /// The XMP packet's <c>pdfuaid:part</c> (the PDF/UA identification schema), in either RDF
+    /// serialization, or <see langword="null"/> when the packet declares none.
+    /// </summary>
+    internal static string? ReadPdfuaId(string? xmpText)
+    {
+        if (string.IsNullOrEmpty(xmpText))
+        {
+            return null;
+        }
+
+        var elementMatch = PdfuaidElement.Match(xmpText);
+        return elementMatch.Success ? ReadDeclaredProperty(ScopeToWholeElement(xmpText, elementMatch), "pdfuaid", "part") : null;
     }
 
     /// <summary>

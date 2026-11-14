@@ -7,6 +7,38 @@ only by diffing output. Entries land in the same change as the behavior they des
 
 ## [Unreleased]
 
+### Added
+
+- **Pages can be added to an opened document.** `doc.Pages.Add(page)` and `Insert(index, page)`
+  copy a page from another open PDF with everything it references (content, resources,
+  annotations, form fields), or duplicate one of the document's own pages; `AddImage(frame)` and
+  `InsertImage(index, frame)` add a page showing a `RasterImageFrame`, sized to it at its DPI (96
+  when it has none) and built the way `Pdf.FromImages` builds a page. Each returns the new page,
+  live at once, and the source can be disposed after the call. `SaveIncremental` appends one
+  revision, so the original bytes stay a prefix and an earlier signature still verifies (no
+  longer covering the whole document); an encrypted document's appended revision is encrypted
+  with its own key. `Save` works too.
+  - Copied form fields join the destination's form with the destination as the base: its fields
+    and resources never change, a taken field name gets a `~N` suffix, a form font under a
+    taken name gets a fresh one (the copied `/DA` strings follow; only the form fonts copied fields use are added), signature fields arrive empty,
+    and only fields placed on the copied page come along. `doc.Form` and `doc.Signatures` are
+    read again after an add.
+  - A page duplicated within its own document shares its resources and leaves its form widgets
+    off. Structure tags and article beads are not carried. If the call throws, the document is
+    unchanged.
+  - New codes: `PLUME6092` (DocMDP-certified destination; thrown under `Strict`), `PLUME6093`
+    (tagged source), `PLUME6094` (duplicate left widgets off), `PLUME6095` (tagged, PDF/A or
+    PDF/UA destination), `PLUME6096` (XFA destination), `PLUME6097` (refused: no indirect
+    `/Pages`), `PLUME6098` (assembly permission cleared, advisory) and `PLUME6099` (a copied field
+    or form font renamed). Recipe: `docs/cookbook/append-pages.md`.
+
+### Changed
+
+- **`PLUME6012` also covers page-add.** A page from an encrypted document can't be added to one
+  that isn't encrypted, with its own message; into an encrypted document it is allowed.
+  `Pdf.Merge`/`Pdf.Split` still refuse every encrypted source, with the same message as before.
+  The error page no longer says to wait for encryption write.
+
 ## [1.0.0-preview.9] — 2026-10-21
 
 This release adds `Pdf.Compress`, which makes a document smaller (lossless by default, with

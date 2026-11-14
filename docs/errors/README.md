@@ -229,7 +229,7 @@ This index is populated one page per code as codes are minted in `src/`, in the 
 | [PLUME6002](PLUME6002.md) | catalog's `/Pages` could not be resolved (diagnostic) |
 | [PLUME6010](PLUME6010.md) | malformed page-tree node skipped (diagnostic) |
 | [PLUME6011](PLUME6011.md) | page-tree cycle or depth cap exceeded (diagnostic) |
-| [PLUME6012](PLUME6012.md) | cannot merge/split pages from an encrypted source |
+| [PLUME6012](PLUME6012.md) | pages from an encrypted source can't go into unencrypted output |
 | [PLUME6020](PLUME6020.md) | Form XObject recursion exceeded the configured depth limit |
 | [PLUME6021](PLUME6021.md) | page text extraction produced more than the configured letter limit |
 | [PLUME6022](PLUME6022.md) | inline image skipped (diagnostic) |
@@ -299,6 +299,14 @@ This index is populated one page per code as codes are minted in `src/`, in the 
 | [PLUME6089](PLUME6089.md) | compression did not pack a PDF/A-1 document (diagnostic) |
 | [PLUME6090](PLUME6090.md) | compression ran with no image lever (diagnostic) |
 | [PLUME6091](PLUME6091.md) | compression wrote JPEGs at the fallback quality (diagnostic) |
+| [PLUME6092](PLUME6092.md) | page added to a DocMDP-certified document (diagnostic, or thrown under `Strict`) |
+| [PLUME6093](PLUME6093.md) | copied page came from a tagged document (diagnostic) |
+| [PLUME6094](PLUME6094.md) | duplicated page left its form widgets off (diagnostic) |
+| [PLUME6095](PLUME6095.md) | page added to a tagged, PDF/A or PDF/UA document (diagnostic) |
+| [PLUME6096](PLUME6096.md) | page added to a document with an XFA form (diagnostic) |
+| [PLUME6097](PLUME6097.md) | the document has no indirect /Pages to add a page under |
+| [PLUME6098](PLUME6098.md) | page added despite the document's assembly permission (diagnostic) |
+| [PLUME6099](PLUME6099.md) | copied form field or form font renamed (diagnostic) |
 | [PLUME7001](PLUME7001.md) | content-stream graphics-state stack underflow |
 | [PLUME7002](PLUME7002.md) | nested text object (`BT` while already inside one) |
 | [PLUME7003](PLUME7003.md) | `ET` with no matching `BT` |

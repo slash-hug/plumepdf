@@ -1,0 +1,5 @@
+﻿Pages after two appends: 5
+Original bytes kept: True
+Last page size: 12 x 12 pt
+Pages after copying one in: 6
+Encrypted file still encrypted: True, pages: 2

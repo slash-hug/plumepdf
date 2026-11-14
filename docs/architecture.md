@@ -291,6 +291,7 @@ result.
 
 - An opened `PdfDocument` supports **thread-safe concurrent reads**: parsed structures are immutable and the lazy object cache is lock-free (`ConcurrentDictionary`/`Interlocked` publication). Parallel page extraction is a first-class server scenario.
 - **Mutation is single-threaded by contract**: documented, and guarded by debug-build checks. A mutated document remains readable from the mutating thread only.
+- **Page-add** (`doc.Pages.Add`/`Insert` with a page of another document) reads the source without taking any guard on it: other threads may read the source during the call, but nothing may mutate it. The destination is changed only in the commit step, under its own guard, after the copy has been staged under provisional object numbers; a failure before the commit leaves the destination unchanged.
 - `Manuscript` is a plain mutable object graph with no thread-safety guarantees.
 - **`Rasterize` never mutates the opened document — the scratch-registry read-only invariant
   (Phase 9).** Rendering a

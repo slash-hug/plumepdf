@@ -193,7 +193,7 @@ internal static class FormFiller
             return;
         }
 
-        var (certifyingField, pValue) = FindDocMdpCertification(document.Objects, signatures);
+        var (certifyingField, pValue) = Signing.DocMdpCertification.Find(document.Objects, signatures);
         var violatesCertification = pValue switch
         {
             1 => true,
@@ -203,7 +203,7 @@ internal static class FormFiller
 
         if (violatesCertification && document.Options.Strict)
         {
-            throw new PlumePdfException("PLUME6038", $"'{certifyingField}' certifies this document at DocMDP P={pValue} ({DescribePValue(pValue!.Value)}), which this {(isFlatten ? "flatten" : "fill")} operation would violate — refused (PdfOptions.Strict).");
+            throw new PlumePdfException("PLUME6038", $"'{certifyingField}' certifies this document at DocMDP P={pValue} ({Signing.DocMdpCertification.DescribeP(pValue!.Value)}), which this {(isFlatten ? "flatten" : "fill")} operation would violate — refused (PdfOptions.Strict).");
         }
 
         var parts = new List<string>();
@@ -219,55 +219,13 @@ internal static class FormFiller
 
         if (pValue is int certifiedP)
         {
-            parts.Add($"'{certifyingField}' certifies this document at DocMDP P={certifiedP} ({DescribePValue(certifiedP)}) — this {(isFlatten ? "flatten" : "fill")} is {(violatesCertification ? "NOT permitted" : "permitted")} under it.");
+            parts.Add($"'{certifyingField}' certifies this document at DocMDP P={certifiedP} ({Signing.DocMdpCertification.DescribeP(certifiedP)}) — this {(isFlatten ? "flatten" : "fill")} is {(violatesCertification ? "NOT permitted" : "permitted")} under it.");
         }
 
         parts.Add("A third-party update invalidates usage rights and any existing signature's validity regardless of PlumePDF's involvement; the operation proceeded anyway (advisory stance).");
 
         document.Diagnostics.Add(new PdfDiagnostic("PLUME6038", DiagnosticSeverity.Warning, string.Join(" ", parts)));
     }
-
-    private static string DescribePValue(int pValue) => pValue switch
-    {
-        1 => "no changes allowed",
-        2 => "form fill-in and signing only",
-        3 => "form fill-in, signing, and annotations",
-        _ => "an unrecognized permission level",
-    };
-
-    private static (string? FieldName, int? PValue) FindDocMdpCertification(ObjectRegistry objects, IReadOnlyList<Signing.SignatureDictionaryInfo> signatures)
-    {
-        var referenceName = PdfName.Reference;
-        var transformMethodName = PdfName.TransformMethod;
-        var transformParamsName = PdfName.TransformParams;
-        var pName = PdfName.Get("P");
-
-        foreach (var signature in signatures)
-        {
-            if (!signature.Dictionary.TryGetValue(referenceName, out var referenceValue) || AcroFormReader.Resolve(objects, referenceValue) is not PdfArray references)
-            {
-                continue;
-            }
-
-            // Every level here may legally be indirect (ISO 32000-1 §12.8.2.2) — a producer that
-            // writes the sig-ref entries or /TransformParams as indirect objects must not make
-            // the certification invisible, so each is resolved before the type test.
-            foreach (var entry in references)
-            {
-                if (AcroFormReader.Resolve(objects, entry) is PdfDictionary sigRef
-                    && sigRef.TryGetValue(transformMethodName, out var methodValue) && PdfName.DocMDP.Equals(AcroFormReader.Resolve(objects, methodValue))
-                    && sigRef.TryGetValue(transformParamsName, out var transformParamsValue) && AcroFormReader.Resolve(objects, transformParamsValue) is PdfDictionary transformParams
-                    && transformParams.TryGetValue(pName, out var pValueObject) && AcroFormReader.Resolve(objects, pValueObject) is PdfNumber { IsInteger: true } number
-                    && number.TryToInt32(out var converted))
-                {
-                    return (signature.FieldName, converted);
-                }
-            }
-        }
-
-        return (null, null);
-    }
-
 
     /// <summary>
     /// Maps a filled field to the seam's <see cref="FieldValue"/> (null for kinds with nothing to paint).

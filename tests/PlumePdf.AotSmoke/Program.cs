@@ -328,6 +328,39 @@ finally
     }
 }
 
+// Page-add under NativeAOT: an image page and a page copied from another open document, appended
+// with SaveIncremental, so the original bytes stay a prefix of the output.
+var pageAddPath = Path.Combine(Path.GetTempPath(), $"plumepdf-aotsmoke-pageadd-{Guid.NewGuid():N}.pdf");
+try
+{
+    int pageAddBefore;
+    using (var destination = PdfDocument.Open(fixturePath))
+    using (var pageSource = PdfDocument.Open(fixturePath))
+    {
+        pageAddBefore = destination.Pages.Count;
+        destination.Pages.AddImage(pngImage.Frames[0]);
+        destination.Pages.Add(pageSource.Pages[0]);
+        destination.SaveIncremental(pageAddPath);
+    }
+
+    var pageAddOriginal = File.ReadAllBytes(fixturePath);
+    var pageAddOutput = File.ReadAllBytes(pageAddPath);
+    using var pageAddDocument = PdfDocument.Open(pageAddPath);
+    Console.WriteLine($"PageCollection.AddImage/Add: {pageAddBefore} -> {pageAddDocument.Pages.Count} page(s)");
+    if (pageAddDocument.Pages.Count != pageAddBefore + 2 || !pageAddOutput.AsSpan(0, pageAddOriginal.Length).SequenceEqual(pageAddOriginal))
+    {
+        Console.Error.WriteLine("AOT smoke FAILED: page-add did not append two pages in one incremental revision.");
+        return 1;
+    }
+}
+finally
+{
+    if (File.Exists(pageAddPath))
+    {
+        File.Delete(pageAddPath);
+    }
+}
+
 // Phase 8 rasterization path under NativeAOT: Pdf.Rasterize end to end
 // (RasterSurface/RasterInterpreter/AGG23 scan conversion — the phase's biggest new
 // AOT-reachability surface after Phase 7's JPEG codec), plus SubstituteFontStore's own
